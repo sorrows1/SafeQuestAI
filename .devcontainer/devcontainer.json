@@ -1,9 +1,12 @@
 {
     "name": "Safe Quest Platform",
-    "dockerComposeFile": "../docker-compose.yml",
+        "dockerComposeFile": [
+            "../docker-compose.yml",
+            "../docker-compose.dev.yml"
+        ],
     "service": "backend",
     "workspaceFolder": "/app",
-    "overrideCommand": true,
+    "overrideCommand": false,
     "customizations": {
         "vscode": {
             "extensions": [

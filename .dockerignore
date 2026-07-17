@@ -1,0 +1,25 @@
+# Environment
+.env
+.env.*
+
+# Source Control
+.git/
+.gitignore
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+.devcontainer/
+
+# Data
+postgres_data/
+*.db
+*.sqlite3
