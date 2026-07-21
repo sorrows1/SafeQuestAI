@@ -1,122 +1,55 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useMemo } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import { ThemeProvider, CssBaseline } from '@mui/material';
+import { SnackbarProvider } from 'notistack';
+import { store } from '@/store';
+import { useAppSelector } from '@/store';
+import { darkTheme, lightTheme } from '@/theme';
+import { Dashboard } from '@/pages/Dashboard';
+import { ScenarioEditor } from '@/pages/ScenarioEditor';
+import { PersonaEditor } from '@/pages/PersonaEditor';
+import { StageEditor } from '@/pages/StageEditor';
+import { ObjectiveEditor } from '@/pages/ObjectiveEditor';
+import { ConstraintEditor } from '@/pages/ConstraintEditor';
+import { PromptEditor } from '@/pages/PromptEditor';
+import { Simulator } from '@/pages/Simulator';
+import { ValidationConsole } from '@/pages/ValidationConsole';
+import { Settings } from '@/pages/Settings';
 
-function App() {
-  const [count, setCount] = useState(0)
+function ThemedApp() {
+  const themeMode = useAppSelector(s => s.ui.themeMode);
+  const theme = useMemo(() => themeMode === 'dark' ? darkTheme : lightTheme, [themeMode]);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <SnackbarProvider maxSnack={4} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        autoHideDuration={3000}>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/"            element={<Dashboard />} />
+            <Route path="/scenarios"   element={<ScenarioEditor />} />
+            <Route path="/scenarios/:id" element={<ScenarioEditor />} />
+            <Route path="/personas"    element={<PersonaEditor />} />
+            <Route path="/stages"      element={<StageEditor />} />
+            <Route path="/objectives"  element={<ObjectiveEditor />} />
+            <Route path="/constraints" element={<ConstraintEditor />} />
+            <Route path="/prompts"     element={<PromptEditor />} />
+            <Route path="/simulator"   element={<Simulator />} />
+            <Route path="/validation"  element={<ValidationConsole />} />
+            <Route path="/settings"    element={<Settings />} />
+          </Routes>
+        </BrowserRouter>
+      </SnackbarProvider>
+    </ThemeProvider>
+  );
 }
 
-export default App
+export default function App() {
+  return (
+    <Provider store={store}>
+      <ThemedApp />
+    </Provider>
+  );
+}
