@@ -1,16 +1,20 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector } from 'react-redux';
 import type { TypedUseSelectorHook } from 'react-redux';
+import { safeQuestApi } from './api';
 import uiReducer from './uiSlice';
-import scenariosReducer from './scenariosSlice';
+import scenariosUiReducer from './scenariosUiSlice';
 import simulatorReducer from './simulatorSlice';
 
 export const store = configureStore({
   reducer: {
+    [safeQuestApi.reducerPath]: safeQuestApi.reducer,
     ui: uiReducer,
-    scenarios: scenariosReducer,
+    scenariosUi: scenariosUiReducer,
     simulator: simulatorReducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware().concat(safeQuestApi.middleware),
 });
 
 export type RootState   = ReturnType<typeof store.getState>;

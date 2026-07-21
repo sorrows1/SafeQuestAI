@@ -1,40 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Box, Grid, Paper, Typography, CircularProgress,
-  Chip, Alert, LinearProgress, Divider,
+  Box, Grid, Paper, Typography, Chip, CircularProgress,
+  Alert, Button, Divider,
 } from '@mui/material';
-import MovieIcon from '@mui/icons-material/Movie';
-import PersonIcon from '@mui/icons-material/Person';
-import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import TrackChangesIcon from '@mui/icons-material/TrackChanges';
-import SecurityIcon from '@mui/icons-material/Security';
-import ArticleIcon from '@mui/icons-material/Article';
+import ScenarioIcon from '@mui/icons-material/Article';
+import PersonaIcon from '@mui/icons-material/Person';
+import StageIcon from '@mui/icons-material/AccountTree';
+import ObjectiveIcon from '@mui/icons-material/TrackChanges';
+import ConstraintIcon from '@mui/icons-material/Shield';
+import PromptIcon from '@mui/icons-material/Code';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon from '@mui/icons-material/Error';
-import { healthApi, validationApi } from '@/api';
-import type { ConfigSummary, ValidationReport } from '@/types';
+import WarningIcon from '@mui/icons-material/Warning';
+import { useGetSummaryQuery, useLazyValidateAllQuery } from '@/store/api';
 import { AppShell } from '@/components/common/AppShell';
 
-interface StatCardProps {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  color: string;
-}
+const DIFF_COLOR: Record<string, 'success' | 'warning' | 'error'> = {
+  Easy: 'success', Medium: 'warning', Hard: 'error',
+};
 
-function StatCard({ label, value, icon, color }: StatCardProps) {
+function StatCard({ icon, label, value, onClick }: {
+  icon: React.ReactNode; label: string; value: number; onClick?: () => void;
+}) {
   return (
-    <Paper variant="outlined" sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+    <Paper
+      variant="outlined"
+      onClick={onClick}
+      sx={{
+        p: 2.5, cursor: onClick ? 'pointer' : 'default',
+        transition: 'all 0.15s',
+        '&:hover': onClick ? { borderColor: 'primary.main', bgcolor: 'action.hover' } : {},
+        display: 'flex', alignItems: 'center', gap: 2,
+      }}
+    >
       <Box sx={{
-        width: 48, height: 48, borderRadius: 2,
-        bgcolor: `${color}22`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color,
+        width: 44, height: 44, borderRadius: 2,
+        bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        opacity: 0.9,
       }}>
         {icon}
       </Box>
       <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>{value}</Typography>
+        <Typography sx={{ fontSize: '1.75rem', fontWeight: 700, lineHeight: 1 }}>{value}</Typography>
         <Typography variant="caption" color="text.secondary">{label}</Typography>
       </Box>
     </Paper>
@@ -42,137 +50,103 @@ function StatCard({ label, value, icon, color }: StatCardProps) {
 }
 
 export function Dashboard() {
-  const [summary, setSummary] = useState<ConfigSummary | null>(null);
-  const [validation, setValidation] = useState<ValidationReport | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [s, v] = await Promise.all([healthApi.summary(), validationApi.validateAll()]);
-      setSummary(s.data);
-      setValidation(v.data);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
-
-  if (loading) return (
-    <AppShell>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-        <CircularProgress />
-      </Box>
-    </AppShell>
-  );
+  const navigate = useNavigate();
+  const { data: summary, isLoading, error } = useGetSummaryQuery();
+  const [triggerValidation, { data: validationResult, isFetching: validating }] = useLazyValidateAllQuery();
 
   return (
-    <AppShell onReload={load}>
-      <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
-        <Typography variant="h2" gutterBottom>Overview</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Safe Quest scenario authoring platform — all content is stored as JSON files.
-        </Typography>
+    <AppShell>
+      <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h2" sx={{ mb: 0.5 }}>Dashboard</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Safe Quest Scenario Authoring Platform — content overview
+          </Typography>
+        </Box>
 
-        {/* Stats */}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <StatCard label="Scenarios" value={summary?.scenarios.length ?? 0} icon={<MovieIcon />} color="#58a6ff" />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <StatCard label="Objectives" value={summary?.objectives.length ?? 0} icon={<TrackChangesIcon />} color="#3fb950" />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <StatCard label="Personas" value={summary?.personas.length ?? 0} icon={<PersonIcon />} color="#d29922" />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <StatCard label="Stages" value={summary?.stages.length ?? 0} icon={<AccountTreeIcon />} color="#a371f7" />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <StatCard label="Constraints" value={summary?.constraints.length ?? 0} icon={<SecurityIcon />} color="#f85149" />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <StatCard label="Prompt Templates" value={summary?.prompt_templates.length ?? 0} icon={<ArticleIcon />} color="#58a6ff" />
-          </Grid>
-        </Grid>
+        {isLoading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        )}
 
-        <Grid container spacing={2}>
-          {/* Scenarios list */}
-          <Grid size={{ xs: 12, md: 7 }}>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Scenarios</Typography>
-              {summary?.scenarios.length === 0 && (
-                <Typography variant="body2" color="text.secondary">No scenarios found.</Typography>
-              )}
-              {summary?.scenarios.map(s => (
-                <Box key={s.id} sx={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  py: 1, borderBottom: '1px solid', borderColor: 'divider',
-                  '&:last-child': { borderBottom: 'none' },
-                }}>
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>{s.display_name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{s.id}</Typography>
-                  </Box>
-                  <Chip
-                    label={s.difficulty}
-                    size="small"
-                    color={s.difficulty === 'Hard' ? 'error' : s.difficulty === 'Medium' ? 'warning' : 'success'}
-                    sx={{ height: 20, fontSize: '0.7rem' }}
-                  />
-                </Box>
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            Failed to load config summary. Is the backend running?
+          </Alert>
+        )}
+
+        {summary && (
+          <>
+            {/* Stats */}
+            <Grid container spacing={2} sx={{ mb: 4 }}>
+              {[
+                { icon: <ScenarioIcon sx={{ color: '#fff', fontSize: 22 }} />, label: 'Scenarios',       value: summary.scenarios.length,        path: '/scenarios' },
+                { icon: <PersonaIcon sx={{ color: '#fff', fontSize: 22 }} />,  label: 'Personas',        value: summary.personas.length,         path: '/personas' },
+                { icon: <StageIcon sx={{ color: '#fff', fontSize: 22 }} />,    label: 'Stages',          value: summary.stages.length,           path: '/stages' },
+                { icon: <ObjectiveIcon sx={{ color: '#fff', fontSize: 22 }} />,label: 'Objectives',      value: summary.objectives.length,       path: '/objectives' },
+                { icon: <ConstraintIcon sx={{ color: '#fff', fontSize: 22 }} />,label: 'Constraints',   value: summary.constraints.length,      path: '/constraints' },
+                { icon: <PromptIcon sx={{ color: '#fff', fontSize: 22 }} />,   label: 'Prompt Templates',value: summary.prompt_templates.length, path: '/prompts' },
+              ].map(s => (
+                <Grid key={s.label} size={{ xs: 12, sm: 6, md: 4 }}>
+                  <StatCard {...s} value={s.value} onClick={() => navigate(s.path)} />
+                </Grid>
               ))}
-            </Paper>
-          </Grid>
+            </Grid>
 
-          {/* Validation status */}
-          <Grid size={{ xs: 12, md: 5 }}>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                {validation?.valid
-                  ? <CheckCircleIcon sx={{ color: 'success.main' }} fontSize="small" />
-                  : <ErrorIcon sx={{ color: 'error.main' }} fontSize="small" />
+            <Divider sx={{ mb: 3 }} />
+
+            {/* Scenarios list */}
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
+              <Typography variant="h6" sx={{ flex: 1, fontWeight: 600 }}>Scenarios</Typography>
+              <Button
+                size="small"
+                startIcon={validating ? <CircularProgress size={14} /> : <PlayArrowIcon />}
+                variant="outlined"
+                onClick={() => triggerValidation()}
+                disabled={validating}
+              >
+                Validate All
+              </Button>
+            </Box>
+
+            {validationResult && (
+              <Alert
+                severity={validationResult.valid ? 'success' : 'error'}
+                icon={validationResult.valid ? <CheckCircleIcon /> : <WarningIcon />}
+                sx={{ mb: 2 }}
+                action={
+                  <Button size="small" onClick={() => navigate('/validation')}>View Details</Button>
                 }
-                <Typography variant="h6">
-                  {validation?.valid ? 'All Valid' : 'Validation Errors'}
-                </Typography>
-              </Box>
+              >
+                {validationResult.valid
+                  ? 'All content is valid.'
+                  : `${validationResult.errors.length} error(s), ${validationResult.warnings.length} warning(s) found.`}
+              </Alert>
+            )}
 
-              {validation && (
-                <>
-                  <Box sx={{ mb: 1 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption">Errors</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600 }} color="error.main">
-                        {validation.errors.length}
-                      </Typography>
+            <Grid container spacing={1.5}>
+              {summary.scenarios.map(s => (
+                <Grid key={s.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 2, cursor: 'pointer', transition: 'all 0.15s',
+                      '&:hover': { borderColor: 'primary.main' },
+                    }}
+                    onClick={() => navigate(`/scenarios`)}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>{s.display_name}</Typography>
+                      <Chip label={s.difficulty} size="small" color={DIFF_COLOR[s.difficulty]} sx={{ height: 18, fontSize: '0.65rem' }} />
                     </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption">Warnings</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600 }} color="warning.main">
-                        {validation.warnings.length}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  {validation.errors.slice(0, 3).map((e, i) => (
-                    <Alert key={i} severity="error" sx={{ mb: 0.5, py: 0 }} icon={false}>
-                      <Typography variant="caption">{e.message}</Typography>
-                    </Alert>
-                  ))}
-                  {validation.warnings.slice(0, 3).map((w, i) => (
-                    <Alert key={i} severity="warning" sx={{ mb: 0.5, py: 0 }} icon={false}>
-                      <Typography variant="caption">{w.message}</Typography>
-                    </Alert>
-                  ))}
-                </>
-              )}
-            </Paper>
-          </Grid>
-        </Grid>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{s.id}</Typography>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+          </>
+        )}
       </Box>
     </AppShell>
   );

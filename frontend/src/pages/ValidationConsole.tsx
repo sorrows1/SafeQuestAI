@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   Box, Paper, Typography, Button, CircularProgress, Alert,
-  Chip, Grid, Divider, List, ListItem, ListItemText, Accordion,
+  Chip, Grid, List, ListItem, Accordion,
   AccordionSummary, AccordionDetails, LinearProgress,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -10,8 +10,8 @@ import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
 import InfoIcon from '@mui/icons-material/Info';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { validationApi } from '@/api';
-import type { ValidationReport, ValidationError } from '@/types';
+import { useLazyValidateAllQuery } from '@/store/api';
+import type { ValidationError } from '@/types';
 import { AppShell } from '@/components/common/AppShell';
 
 const SEVERITY_CONFIG = {
@@ -42,26 +42,15 @@ function ValidationItem({ item }: { item: ValidationError }) {
 }
 
 export function ValidationConsole() {
-  const [report, setReport] = useState<ValidationReport | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const runValidation = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await validationApi.validateAll();
-      setReport(r.data);
-    } catch {
-      setReport(null);
-    } finally { setLoading(false); }
-  }, []);
+  const [triggerValidation, { data: report, isFetching: loading }] = useLazyValidateAllQuery();
 
   return (
-    <AppShell onReload={runValidation}>
+    <AppShell>
       <Box sx={{ p: 3, maxWidth: 1000, mx: 'auto' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, gap: 2 }}>
           <Typography variant="h2" sx={{ flex: 1 }}>Validation Console</Typography>
           <Button variant="contained" startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
-            onClick={runValidation} disabled={loading}>
+            onClick={() => triggerValidation()} disabled={loading}>
             Run Validation
           </Button>
         </Box>
@@ -76,7 +65,6 @@ export function ValidationConsole() {
 
         {report && (
           <>
-            {/* Summary */}
             <Alert
               severity={report.valid ? 'success' : 'error'}
               icon={report.valid ? <CheckCircleIcon /> : <ErrorIcon />}
@@ -88,14 +76,13 @@ export function ValidationConsole() {
               }
             </Alert>
 
-            {/* Stats */}
             <Grid container spacing={1} sx={{ mb: 3 }}>
               {[
                 { label: 'Scenarios', value: report.total_scenarios },
-                { label: 'Personas', value: report.total_personas },
-                { label: 'Stages', value: report.total_stages },
-                { label: 'Objectives', value: report.total_objectives },
-                { label: 'Constraints', value: report.total_constraints },
+                { label: 'Personas',  value: report.total_personas },
+                { label: 'Stages',    value: report.total_stages },
+                { label: 'Objectives',value: report.total_objectives },
+                { label: 'Constraints',value: report.total_constraints },
               ].map(s => (
                 <Grid key={s.label} size={{ xs: 6, sm: 4, md: 2 }}>
                   <Paper variant="outlined" sx={{ p: 1.5, textAlign: 'center' }}>
@@ -106,7 +93,6 @@ export function ValidationConsole() {
               ))}
             </Grid>
 
-            {/* Errors */}
             {report.errors.length > 0 && (
               <Accordion defaultExpanded>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -123,7 +109,6 @@ export function ValidationConsole() {
               </Accordion>
             )}
 
-            {/* Warnings */}
             {report.warnings.length > 0 && (
               <Accordion>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -140,7 +125,6 @@ export function ValidationConsole() {
               </Accordion>
             )}
 
-            {/* Info */}
             {report.info.length > 0 && (
               <Accordion>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>

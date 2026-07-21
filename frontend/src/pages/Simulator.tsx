@@ -2,11 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Box, Paper, Typography, TextField, Button, IconButton, Grid,
   Chip, CircularProgress, Select, MenuItem, FormControl, InputLabel,
-  Divider, LinearProgress, Tooltip, Switch, FormControlLabel, Alert,
+  Divider, LinearProgress, Tooltip, Switch, FormControlLabel,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
-import BugReportIcon from '@mui/icons-material/BugReport';
 import FlagIcon from '@mui/icons-material/Flag';
 import { useSnackbar } from 'notistack';
 import { useAppDispatch, useAppSelector } from '@/store';
@@ -14,25 +13,21 @@ import {
   startSession, addUserMessage, addAssistantMessage,
   setLoading, setDebugMode, resetSimulator,
 } from '@/store/simulatorSlice';
-import { simulatorApi, scenariosApi } from '@/api';
-import type { ScenarioDefinition } from '@/types';
+import { useListScenariosQuery, useStartSessionMutation, useChatMessageMutation } from '@/store/api';
 import { AppShell } from '@/components/common/AppShell';
-import { useEffect as useEffectOnce } from 'react';
 
 export function Simulator() {
   const { enqueueSnackbar } = useSnackbar();
   const dispatch = useAppDispatch();
   const sim = useAppSelector(s => s.simulator);
-  const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
   const [selectedScenarioId, setSelectedScenarioId] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
   const [message, setMessage] = useState('');
-  const [starting, setStarting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    scenariosApi.list().then(r => setScenarios(r.data)).catch(() => {});
-  }, []);
+  const { data: scenarios = [] } = useListScenariosQuery();
+  const [startSessionMutation, { isLoading: starting }] = useStartSessionMutation();
+  const [chatMessageMutation] = useChatMessageMutation();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -40,19 +35,18 @@ export function Simulator() {
 
   const handleStart = async () => {
     if (!selectedScenarioId) return;
-    setStarting(true);
     dispatch(resetSimulator());
     try {
-      const r = await simulatorApi.start({ scenario_id: selectedScenarioId, difficulty });
+      const r = await startSessionMutation({ scenario_id: selectedScenarioId, difficulty }).unwrap();
       dispatch(startSession({
-        sessionId: r.data.session_id,
-        scenarioId: r.data.scenario_id,
+        sessionId: r.session_id,
+        scenarioId: r.scenario_id,
         difficulty,
-        initialMessage: r.data.initial_message,
+        initialMessage: r.initial_message,
       }));
     } catch (e: any) {
-      enqueueSnackbar(e?.response?.data?.detail ?? 'Failed to start', { variant: 'error' });
-    } finally { setStarting(false); }
+      enqueueSnackbar(e?.data?.detail ?? 'Failed to start', { variant: 'error' });
+    }
   };
 
   const handleSend = async () => {
@@ -61,11 +55,11 @@ export function Simulator() {
     setMessage('');
     dispatch(addUserMessage(msg));
     try {
-      const r = await simulatorApi.chat({ session_id: sim.sessionId, message: msg }, sim.debugMode);
-      dispatch(addAssistantMessage(r.data));
+      const r = await chatMessageMutation({ req: { session_id: sim.sessionId, message: msg }, debug: sim.debugMode }).unwrap();
+      dispatch(addAssistantMessage(r));
     } catch (e: any) {
       dispatch(setLoading(false));
-      enqueueSnackbar(e?.response?.data?.detail ?? 'Chat failed', { variant: 'error' });
+      enqueueSnackbar(e?.data?.detail ?? 'Chat failed', { variant: 'error' });
     }
   };
 
@@ -90,7 +84,8 @@ export function Simulator() {
                 <MenuItem value="Hard">Hard</MenuItem>
               </Select>
             </FormControl>
-            <Button variant="contained" size="small" startIcon={starting ? <CircularProgress size={12} /> : <RestartAltIcon />}
+            <Button variant="contained" size="small"
+              startIcon={starting ? <CircularProgress size={12} /> : <RestartAltIcon />}
               onClick={handleStart} disabled={!selectedScenarioId || starting}>
               {sim.sessionId ? 'Restart' : 'Start'}
             </Button>
@@ -104,7 +99,7 @@ export function Simulator() {
           {/* Messages */}
           <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             {sim.messages.length === 0 && (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <Typography color="text.secondary" variant="body2">Select a scenario and press Start to begin the simulation.</Typography>
               </Box>
             )}
@@ -119,9 +114,7 @@ export function Simulator() {
                   {m.sender === 'assistant' && m.metadata && (
                     <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                       {m.metadata.flags.map((f: string) => (
-                        <Chip key={f} label={f} size="small" color="warning" icon={<FlagIcon />}
-                          sx={{ height: 18, fontSize: '0.65rem' }}
-                        />
+                        <Chip key={f} label={f} size="small" color="warning" icon={<FlagIcon />} sx={{ height: 18, fontSize: '0.65rem' }} />
                       ))}
                       <Chip label={`conf: ${m.metadata.confidence?.toFixed(2)}`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
                     </Box>
@@ -133,9 +126,9 @@ export function Simulator() {
               <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <Paper sx={{ px: 2, py: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
                   <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main', animation: 'pulse 1s infinite' }} />
-                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main', animation: 'pulse 1s infinite 0.2s' }} />
-                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main', animation: 'pulse 1s infinite 0.4s' }} />
+                    {[0, 0.2, 0.4].map(delay => (
+                      <Box key={delay} sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main', animation: `pulse 1s infinite ${delay}s` }} />
+                    ))}
                   </Box>
                 </Paper>
               </Box>
@@ -152,8 +145,7 @@ export function Simulator() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
             />
             <Button variant="contained" size="small" onClick={handleSend}
-              disabled={!sim.sessionId || sim.loading || !message.trim()}
-              sx={{ minWidth: 48, px: 1.5 }}>
+              disabled={!sim.sessionId || sim.loading || !message.trim()} sx={{ minWidth: 48, px: 1.5 }}>
               <SendIcon fontSize="small" />
             </Button>
           </Box>
@@ -161,7 +153,7 @@ export function Simulator() {
 
         {/* RIGHT — state panel */}
         <Box sx={{ width: 300, borderLeft: '1px solid', borderColor: 'divider', overflow: 'auto', p: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600,  mb: 2 }}>State Inspector</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>State Inspector</Typography>
 
           <Box sx={{ mb: 2 }}>
             <Typography variant="caption" color="text.secondary">SESSION</Typography>
@@ -189,7 +181,6 @@ export function Simulator() {
               <Typography variant="caption" sx={{ fontWeight: 600 }} color="success.main">{(sim.trust * 100).toFixed(0)}%</Typography>
             </Box>
             <LinearProgress variant="determinate" value={sim.trust * 100} color="success" sx={{ mb: 1.5, borderRadius: 1 }} />
-
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
               <Typography variant="caption">Suspicion</Typography>
               <Typography variant="caption" sx={{ fontWeight: 600 }} color="error.main">{(sim.suspicion * 100).toFixed(0)}%</Typography>
