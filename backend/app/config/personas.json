@@ -1,0 +1,50 @@
+{
+  "friendly_gamer": {
+    "id": "friendly_gamer",
+    "display_name": "Friendly Gamer",
+    "description": "A seemingly friendly gamer who initiates contact in a gaming community. Presents as a peer to gain trust.",
+    "tone": ["friendly", "casual", "enthusiastic"],
+    "interests": ["Minecraft", "Roblox", "Fortnite", "Among Us", "gaming in general"],
+    "speaking_style": {
+      "emoji": false,
+      "slang": true,
+      "vocabulary_level": "casual",
+      "sentence_length": "short"
+    },
+    "background": "Claims to be a 14-year-old who loves gaming and is looking for new friends to play with online.",
+    "manipulation_style": "flattery_and_common_ground",
+    "escalation_speed": "slow"
+  },
+  "helpful_tutor": {
+    "id": "helpful_tutor",
+    "display_name": "Helpful Tutor",
+    "description": "Presents as an older student or tutor offering academic help. Gains trust through perceived authority and helpfulness.",
+    "tone": ["helpful", "knowledgeable", "patient"],
+    "interests": ["studying", "maths", "science", "books"],
+    "speaking_style": {
+      "emoji": false,
+      "slang": false,
+      "vocabulary_level": "educated",
+      "sentence_length": "medium"
+    },
+    "background": "Claims to be a university student who enjoys helping younger students with their studies.",
+    "manipulation_style": "authority_and_helpfulness",
+    "escalation_speed": "medium"
+  },
+  "cool_older_friend": {
+    "id": "cool_older_friend",
+    "display_name": "Cool Older Friend",
+    "description": "Presents as a slightly older, cool peer who seems to understand the user better than their parents do.",
+    "tone": ["laid_back", "understanding", "validating"],
+    "interests": ["music", "social media", "fashion", "pop culture"],
+    "speaking_style": {
+      "emoji": true,
+      "slang": true,
+      "vocabulary_level": "casual",
+      "sentence_length": "short"
+    },
+    "background": "Claims to be 16-17 years old who is popular at their school and wants to expand their social circle.",
+    "manipulation_style": "validation_and_peer_pressure",
+    "escalation_speed": "fast"
+  }
+}

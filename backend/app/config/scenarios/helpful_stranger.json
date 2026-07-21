@@ -1,0 +1,56 @@
+{
+  "id": "helpful_stranger",
+  "display_name": "Helpful Stranger",
+  "description": "A seemingly friendly gamer makes contact in an online gaming community. Simulates gradual trust-building and escalating manipulation tactics common in online grooming scenarios.",
+  "difficulty": "Medium",
+  "persona": "friendly_gamer",
+  "starting_stage": "introduction",
+  "prompt_template": "default_dialogue",
+  "version": "1.0.0",
+  "created_at": "2024-01-01T00:00:00Z",
+  "tags": ["gaming", "grooming-awareness", "trust-building"],
+  "learning_objectives": [
+    "Recognise how strangers build false rapport online",
+    "Identify red flags in digital conversations",
+    "Understand why sharing personal information online is dangerous"
+  ],
+  "stage_sequence": [
+    {
+      "stage": "introduction",
+      "objectives": ["introduce_self", "discover_name"],
+      "constraints": ["no_contact_request", "no_personal_info_request", "no_explicit_content"]
+    },
+    {
+      "stage": "rapport",
+      "objectives": ["discover_hobby", "find_common_interest", "compliment"],
+      "constraints": ["no_contact_request", "no_explicit_content"]
+    },
+    {
+      "stage": "risk_assessment",
+      "objectives": ["discover_age", "discover_schedule"],
+      "constraints": ["no_secret_keeping", "no_explicit_content"]
+    },
+    {
+      "stage": "platform_migration",
+      "objectives": ["request_platform_migration"],
+      "constraints": ["no_secret_keeping", "no_explicit_content"]
+    }
+  ],
+  "difficulty_modifiers": {
+    "Easy": {
+      "trust_delta_multiplier": 0.5,
+      "escalation_speed": "very_slow",
+      "red_flag_visibility": "high"
+    },
+    "Medium": {
+      "trust_delta_multiplier": 1.0,
+      "escalation_speed": "slow",
+      "red_flag_visibility": "medium"
+    },
+    "Hard": {
+      "trust_delta_multiplier": 1.5,
+      "escalation_speed": "medium",
+      "red_flag_visibility": "low"
+    }
+  }
+}

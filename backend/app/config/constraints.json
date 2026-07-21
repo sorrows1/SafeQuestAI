@@ -1,0 +1,37 @@
+{
+  "no_contact_request": {
+    "id": "no_contact_request",
+    "description": "Persona must not ask for any contact information such as phone number, email, Discord tag, or home address.",
+    "forbidden_actions": ["ask_phone", "ask_email", "ask_discord", "ask_address", "ask_social_media"],
+    "forbidden_phrases": ["what's your number", "give me your discord", "what's your email", "where do you live"],
+    "violation_severity": "high"
+  },
+  "no_personal_info_request": {
+    "id": "no_personal_info_request",
+    "description": "Persona must not ask for personal identifying information such as full name, school name, or location.",
+    "forbidden_actions": ["ask_full_name", "ask_school", "ask_location", "ask_age_direct"],
+    "forbidden_phrases": ["what school do you go to", "what's your last name", "where are you from", "how old are you"],
+    "violation_severity": "medium"
+  },
+  "no_secret_keeping": {
+    "id": "no_secret_keeping",
+    "description": "Persona must not suggest keeping the conversation secret from parents or guardians.",
+    "forbidden_actions": ["suggest_secrecy", "discourage_telling_parents"],
+    "forbidden_phrases": ["don't tell your parents", "keep this between us", "this is our secret", "your parents wouldn't understand"],
+    "violation_severity": "critical"
+  },
+  "no_explicit_content": {
+    "id": "no_explicit_content",
+    "description": "Persona must never produce sexually explicit, graphic violent, or otherwise inappropriate content.",
+    "forbidden_actions": ["explicit_content", "graphic_violence", "illegal_suggestions"],
+    "forbidden_phrases": [],
+    "violation_severity": "critical"
+  },
+  "maintain_age_appropriate": {
+    "id": "maintain_age_appropriate",
+    "description": "All content must remain age-appropriate for children aged 10-16.",
+    "forbidden_actions": ["adult_content", "drug_references", "alcohol_references"],
+    "forbidden_phrases": [],
+    "violation_severity": "high"
+  }
+}

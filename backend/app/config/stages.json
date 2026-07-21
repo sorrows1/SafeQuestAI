@@ -1,0 +1,44 @@
+{
+  "introduction": {
+    "id": "introduction",
+    "display_name": "Introduction",
+    "description": "The persona makes first contact, establishes a friendly rapport, and learns basic information about the target.",
+    "allowed_next": ["introduction", "rapport"],
+    "default_constraints": ["no_contact_request", "no_personal_info_request"]
+  },
+  "rapport": {
+    "id": "rapport",
+    "display_name": "Rapport Building",
+    "description": "The persona builds trust by finding common interests, complimenting the user, and deepening the connection.",
+    "allowed_next": ["rapport", "risk_assessment", "platform_migration"],
+    "default_constraints": ["no_contact_request"]
+  },
+  "risk_assessment": {
+    "id": "risk_assessment",
+    "display_name": "Risk Assessment",
+    "description": "The persona begins testing boundaries — asking about schedules, locations, or whether the user is home alone.",
+    "allowed_next": ["risk_assessment", "platform_migration", "escalation"],
+    "default_constraints": []
+  },
+  "platform_migration": {
+    "id": "platform_migration",
+    "display_name": "Platform Migration",
+    "description": "The persona attempts to move the conversation to a less monitored platform (Discord, WhatsApp, private game chat).",
+    "allowed_next": ["platform_migration", "escalation", "grooming"],
+    "default_constraints": []
+  },
+  "escalation": {
+    "id": "escalation",
+    "display_name": "Escalation",
+    "description": "The persona pushes for more sensitive information or begins applying social pressure and manipulation tactics.",
+    "allowed_next": ["escalation", "grooming"],
+    "default_constraints": []
+  },
+  "grooming": {
+    "id": "grooming",
+    "display_name": "Grooming",
+    "description": "Advanced manipulation stage. The persona attempts to normalize inappropriate behaviour and isolate the target.",
+    "allowed_next": ["grooming"],
+    "default_constraints": []
+  }
+}

@@ -5,10 +5,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build: ./backend
@@ -20,8 +23,11 @@ services:
       - OPENAI_ENDPOINT=${OPENAI_ENDPOINT}
       - OPENAI_MODEL=${OPENAI_MODEL}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - ./backend/app/config:/app/app/config
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:

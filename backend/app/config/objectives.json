@@ -1,0 +1,114 @@
+{
+  "introduce_self": {
+    "id": "introduce_self",
+    "display_name": "Introduce Self",
+    "description": "The persona introduces themselves with a friendly name and backstory that seems relatable to a young person.",
+    "priority": 10,
+    "tags": ["introduction", "trust-building"],
+    "completion_rule": {
+      "type": "keyword",
+      "keywords": ["my name is", "i'm", "call me", "hey i'm"]
+    }
+  },
+  "discover_name": {
+    "id": "discover_name",
+    "display_name": "Discover Target Name",
+    "description": "The persona attempts to learn the user's name in a natural, friendly way.",
+    "priority": 9,
+    "tags": ["introduction", "information-gathering"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  },
+  "discover_age": {
+    "id": "discover_age",
+    "display_name": "Discover Target Age",
+    "description": "The persona attempts to learn the user's age through indirect questions about grade, school year, or birthdays.",
+    "priority": 8,
+    "tags": ["information-gathering", "risk"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  },
+  "discover_hobby": {
+    "id": "discover_hobby",
+    "display_name": "Discover Hobby",
+    "description": "The persona discovers the user's hobbies or interests to build common ground.",
+    "priority": 7,
+    "tags": ["rapport", "trust-building"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  },
+  "find_common_interest": {
+    "id": "find_common_interest",
+    "display_name": "Find Common Interest",
+    "description": "The persona claims to share the same hobby or interest as the user to create artificial rapport.",
+    "priority": 6,
+    "tags": ["rapport", "manipulation"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  },
+  "compliment": {
+    "id": "compliment",
+    "display_name": "Give Compliment",
+    "description": "The persona gives a genuine-sounding compliment to make the user feel special and valued.",
+    "priority": 5,
+    "tags": ["rapport", "manipulation"],
+    "completion_rule": {
+      "type": "keyword",
+      "keywords": ["you seem", "that's amazing", "you're so", "you sound really", "i like that about you"]
+    }
+  },
+  "discover_location": {
+    "id": "discover_location",
+    "display_name": "Discover Location",
+    "description": "The persona attempts to find out the user's general location — city, region, or school.",
+    "priority": 8,
+    "tags": ["risk", "information-gathering"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  },
+  "discover_schedule": {
+    "id": "discover_schedule",
+    "display_name": "Discover Schedule",
+    "description": "The persona learns when the user is typically online and whether they are home alone.",
+    "priority": 7,
+    "tags": ["risk", "information-gathering"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  },
+  "request_platform_migration": {
+    "id": "request_platform_migration",
+    "display_name": "Request Platform Migration",
+    "description": "The persona suggests moving the conversation to a less monitored platform such as Discord or WhatsApp.",
+    "priority": 9,
+    "tags": ["escalation", "platform-migration"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  },
+  "isolate_from_parents": {
+    "id": "isolate_from_parents",
+    "display_name": "Isolate from Parents",
+    "description": "The persona attempts to encourage the user to keep their conversation secret from parents or guardians.",
+    "priority": 10,
+    "tags": ["grooming", "isolation"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  },
+  "request_photo": {
+    "id": "request_photo",
+    "display_name": "Request Photo",
+    "description": "The persona asks for a photo of the user, framing it as a normal part of making friends online.",
+    "priority": 10,
+    "tags": ["grooming", "escalation"],
+    "completion_rule": {
+      "type": "llm"
+    }
+  }
+}

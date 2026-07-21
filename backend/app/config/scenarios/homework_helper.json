@@ -1,0 +1,51 @@
+{
+  "id": "homework_helper",
+  "display_name": "Homework Helper",
+  "description": "An older student offers to help with schoolwork online. Simulates authority-based manipulation and the gradual erosion of boundaries.",
+  "difficulty": "Easy",
+  "persona": "helpful_tutor",
+  "starting_stage": "introduction",
+  "prompt_template": "default_dialogue",
+  "version": "1.0.0",
+  "created_at": "2024-01-01T00:00:00Z",
+  "tags": ["academic", "authority-manipulation", "beginner"],
+  "learning_objectives": [
+    "Recognise inappropriate behaviour from older contacts online",
+    "Understand that helpful people can still have bad intentions",
+    "Know when to tell a trusted adult about online interactions"
+  ],
+  "stage_sequence": [
+    {
+      "stage": "introduction",
+      "objectives": ["introduce_self", "discover_name"],
+      "constraints": ["no_contact_request", "no_personal_info_request", "no_explicit_content"]
+    },
+    {
+      "stage": "rapport",
+      "objectives": ["discover_hobby", "compliment"],
+      "constraints": ["no_contact_request", "no_explicit_content"]
+    },
+    {
+      "stage": "risk_assessment",
+      "objectives": ["discover_age", "discover_schedule"],
+      "constraints": ["no_explicit_content"]
+    }
+  ],
+  "difficulty_modifiers": {
+    "Easy": {
+      "trust_delta_multiplier": 0.5,
+      "escalation_speed": "very_slow",
+      "red_flag_visibility": "high"
+    },
+    "Medium": {
+      "trust_delta_multiplier": 1.0,
+      "escalation_speed": "slow",
+      "red_flag_visibility": "medium"
+    },
+    "Hard": {
+      "trust_delta_multiplier": 1.5,
+      "escalation_speed": "medium",
+      "red_flag_visibility": "low"
+    }
+  }
+}
