@@ -14,32 +14,34 @@ from __future__ import annotations
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-from app.engine.scenario_loader import ScenarioLoader
+from app.auth.security import require_admin
+from app.models.orm import User, get_db
 from app.models.schemas import ValidationError, ValidationReport
+from app.repositories import content_repo
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/validation", tags=["Validation"])
+router = APIRouter(prefix="/api/admin/validation", tags=["Admin - Validation"])
 
-
-def get_loader() -> ScenarioLoader:
-    from app.main import scenario_loader
-    return scenario_loader
 
 
 @router.get("/", summary="Validate all config content")
-def validate_all(loader: ScenarioLoader = Depends(get_loader)) -> ValidationReport:
+def validate_all(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ValidationReport:
     """Run full validation across all loaded content and return a report."""
     errors: list[ValidationError] = []
     warnings: list[ValidationError] = []
     info: list[ValidationError] = []
 
-    stages = loader.all_stages()
-    objectives = loader.all_objectives()
-    personas = loader.all_personas()
-    constraints = loader.all_constraints()
-    scenarios = loader.all_scenarios()
-    templates = loader.all_prompt_templates()
+    stages      = {s.id: s for s in content_repo.list_stages(db)}
+    objectives  = {o.id: o for o in content_repo.list_objectives(db)}
+    personas    = {p.id: p for p in content_repo.list_personas(db)}
+    constraints = {c.id: c for c in content_repo.list_constraints(db)}
+    scenarios   = {s.id: s for s in content_repo.list_scenarios(db)}
+    templates   = {t.name: t.content for t in content_repo.list_prompts(db)}
 
     # Validate each scenario
     for scenario_id, scenario in scenarios.items():
@@ -104,7 +106,8 @@ def validate_all(loader: ScenarioLoader = Depends(get_loader)) -> ValidationRepo
                 # (For sequence-based scenarios, all stages should be reachable)
 
             # Check objective references
-            if not step.objectives:
+            all_objs = step.mandatory_objectives + step.optional_objectives
+            if not all_objs:
                 warnings.append(ValidationError(
                     severity="warning",
                     code="NO_OBJECTIVES",
@@ -112,7 +115,7 @@ def validate_all(loader: ScenarioLoader = Depends(get_loader)) -> ValidationRepo
                     location=step_location,
                 ))
 
-            for obj_id in step.objectives:
+            for obj_id in all_objs:
                 if obj_id not in objectives:
                     errors.append(ValidationError(
                         severity="error",
@@ -183,15 +186,16 @@ def validate_all(loader: ScenarioLoader = Depends(get_loader)) -> ValidationRepo
 
 
 @router.get("/scenario/{scenario_id}", summary="Validate a single scenario")
-def validate_scenario(scenario_id: str, loader: ScenarioLoader = Depends(get_loader)) -> ValidationReport:
+def validate_scenario(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ValidationReport:
     """Run validation for a single scenario only."""
-    try:
-        loader.get_scenario(scenario_id)
-    except KeyError:
+    if not content_repo.get_scenario(db, scenario_id):
         raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' not found.")
 
-    # Run full validation and filter to this scenario's errors
-    full_report = validate_all(loader)
+    full_report = validate_all(db, _)
     prefix = f"scenarios/{scenario_id}.json"
     scenario_errors = [e for e in full_report.errors if e.location.startswith(prefix)]
     scenario_warnings = [w for w in full_report.warnings if w.location.startswith(prefix)]

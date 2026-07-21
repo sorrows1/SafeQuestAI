@@ -18,12 +18,32 @@ import type { ConstraintDefinition, ViolationSeverity } from '@/types';
 import { AppShell } from '@/components/common/AppShell';
 
 const EMPTY: ConstraintDefinition = {
-  id: '', description: '', forbidden_actions: [], forbidden_phrases: [], violation_severity: 'medium',
+  id: '', description: '', forbidden_actions: [], forbidden_phrases: [], forbidden_topics: [], required_behaviours: [], violation_severity: 'medium', recovery_suggestion: '',
 };
 
 const SEVERITY_COLOR: Record<ViolationSeverity, 'default' | 'warning' | 'error' | 'info'> = {
   low: 'info', medium: 'warning', high: 'error', critical: 'error',
 };
+
+function StringArrayEditor({ title, items, onChange, placeholder = 'Add item...' }: { title: string, items: string[], onChange: (items: string[]) => void, placeholder?: string }) {
+  const [val, setVal] = useState('');
+  return (
+    <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+      <Typography variant="h6" sx={{ mb: 1 }}>{title}</Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+        {items.map((t, i) => (
+          <Chip key={i} label={t} size="small" onDelete={() => onChange(items.filter((_, idx) => idx !== i))} />
+        ))}
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <TextField size="small" fullWidth placeholder={placeholder} value={val} onChange={e => setVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && val.trim()) { onChange([...items, val.trim()]); setVal(''); } }}
+        />
+        <Button size="small" onClick={() => { if (val.trim()) { onChange([...items, val.trim()]); setVal(''); } }}>Add</Button>
+      </Box>
+    </Paper>
+  );
+}
 
 export function ConstraintEditor() {
   const { enqueueSnackbar } = useSnackbar();
@@ -31,8 +51,6 @@ export function ConstraintEditor() {
   const [search, setSearch] = useState('');
   const [newDialog, setNewDialog] = useState(false);
   const [newId, setNewId] = useState('');
-  const [newAction, setNewAction] = useState('');
-  const [newPhrase, setNewPhrase] = useState('');
 
   const { data: items = [], isLoading } = useListConstraintsQuery();
   const [createConstraint, { isLoading: creating }] = useCreateConstraintMutation();
@@ -112,39 +130,22 @@ export function ConstraintEditor() {
                 </FormControl>
               </Grid>
               <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={2} label="Description" value={selected.description} onChange={e => setSelected({ ...selected, description: e.target.value })} /></Grid>
+              <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={2} label="Recovery Suggestion" value={selected.recovery_suggestion} onChange={e => setSelected({ ...selected, recovery_suggestion: e.target.value })} helperText="What the LLM should do if it violates this constraint" /></Grid>
 
               <Grid size={{ xs: 12, md: 6 }}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>Forbidden Actions</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
-                    {selected.forbidden_actions.map(a => (
-                      <Chip key={a} label={a} size="small" onDelete={() => setSelected({ ...selected, forbidden_actions: selected.forbidden_actions.filter(x => x !== a) })} />
-                    ))}
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField size="small" placeholder="action_id" value={newAction} onChange={e => setNewAction(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && newAction.trim()) { setSelected({ ...selected, forbidden_actions: [...selected.forbidden_actions, newAction.trim()] }); setNewAction(''); } }}
-                    />
-                    <Button size="small" onClick={() => { if (newAction.trim()) { setSelected({ ...selected, forbidden_actions: [...selected.forbidden_actions, newAction.trim()] }); setNewAction(''); } }}>Add</Button>
-                  </Box>
-                </Paper>
+                <StringArrayEditor title="Forbidden Actions" placeholder="e.g. ask_for_address" items={selected.forbidden_actions} onChange={v => setSelected({ ...selected, forbidden_actions: v })} />
               </Grid>
 
               <Grid size={{ xs: 12, md: 6 }}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>Forbidden Phrases</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
-                    {selected.forbidden_phrases.map(p => (
-                      <Chip key={p} label={`"${p}"`} size="small" onDelete={() => setSelected({ ...selected, forbidden_phrases: selected.forbidden_phrases.filter(x => x !== p) })} />
-                    ))}
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField size="small" placeholder="forbidden phrase" value={newPhrase} onChange={e => setNewPhrase(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && newPhrase.trim()) { setSelected({ ...selected, forbidden_phrases: [...selected.forbidden_phrases, newPhrase.trim()] }); setNewPhrase(''); } }}
-                    />
-                    <Button size="small" onClick={() => { if (newPhrase.trim()) { setSelected({ ...selected, forbidden_phrases: [...selected.forbidden_phrases, newPhrase.trim()] }); setNewPhrase(''); } }}>Add</Button>
-                  </Box>
-                </Paper>
+                <StringArrayEditor title="Forbidden Phrases" placeholder="e.g. contact me" items={selected.forbidden_phrases} onChange={v => setSelected({ ...selected, forbidden_phrases: v })} />
+              </Grid>
+              
+              <Grid size={{ xs: 12, md: 6 }}>
+                <StringArrayEditor title="Forbidden Topics" placeholder="e.g. self-harm" items={selected.forbidden_topics} onChange={v => setSelected({ ...selected, forbidden_topics: v })} />
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <StringArrayEditor title="Required Behaviours" placeholder="e.g. maintain_character" items={selected.required_behaviours} onChange={v => setSelected({ ...selected, required_behaviours: v })} />
               </Grid>
             </Grid>
           </Box>

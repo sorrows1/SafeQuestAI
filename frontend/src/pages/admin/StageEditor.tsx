@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
   Box, List, ListItemButton, ListItemText, IconButton, TextField, Button,
-  Typography, CircularProgress, Paper, Grid, Tooltip, Chip,
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Typography, CircularProgress, Paper, Grid, Tooltip,
+  Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -10,7 +10,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import SearchIcon from '@mui/icons-material/Search';
 import { useSnackbar } from 'notistack';
 import {
-  useListStagesQuery,
+  useListStagesQuery, useListConstraintsQuery,
   useCreateStageMutation, useUpdateStageMutation, useDeleteStageMutation,
 } from '@/store/api';
 import type { StageDefinition } from '@/types';
@@ -18,6 +18,7 @@ import { AppShell } from '@/components/common/AppShell';
 
 const EMPTY: StageDefinition = {
   id: '', display_name: '', description: '', allowed_next: [], default_constraints: [],
+  min_turns: 3, max_turns: 15, preferred_style: ''
 };
 
 export function StageEditor() {
@@ -26,10 +27,9 @@ export function StageEditor() {
   const [search, setSearch] = useState('');
   const [newDialog, setNewDialog] = useState(false);
   const [newId, setNewId] = useState('');
-  const [newNext, setNewNext] = useState('');
-  const [newConstraint, setNewConstraint] = useState('');
 
   const { data: items = [], isLoading } = useListStagesQuery();
+  const { data: constraints = [] } = useListConstraintsQuery();
   const [createStage, { isLoading: creating }] = useCreateStageMutation();
   const [updateStage, { isLoading: updating }] = useUpdateStageMutation();
   const [deleteStage] = useDeleteStageMutation();
@@ -96,38 +96,52 @@ export function StageEditor() {
               <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth label="ID" value={selected.id} onChange={e => setSelected({ ...selected, id: e.target.value })} /></Grid>
               <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth label="Display Name" value={selected.display_name} onChange={e => setSelected({ ...selected, display_name: e.target.value })} /></Grid>
               <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={3} label="Description" value={selected.description} onChange={e => setSelected({ ...selected, description: e.target.value })} /></Grid>
+              <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={2} label="Preferred Style" value={selected.preferred_style} onChange={e => setSelected({ ...selected, preferred_style: e.target.value })} helperText="Guidance for the LLM on how to behave during this stage" /></Grid>
+              
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField fullWidth type="number" label="Min Turns" value={selected.min_turns}
+                  onChange={e => setSelected({ ...selected, min_turns: Number(e.target.value) })}
+                  slotProps={{ htmlInput: { step: 1, min: 0 } }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField fullWidth type="number" label="Max Turns" value={selected.max_turns}
+                  onChange={e => setSelected({ ...selected, max_turns: Number(e.target.value) })}
+                  slotProps={{ htmlInput: { step: 1, min: 1 } }}
+                />
+              </Grid>
 
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>Allowed Next Stages</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
-                    {selected.allowed_next.map(n => (
-                      <Chip key={n} label={n} size="small" onDelete={() => setSelected({ ...selected, allowed_next: selected.allowed_next.filter(x => x !== n) })} />
-                    ))}
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField size="small" placeholder="stage_id" value={newNext} onChange={e => setNewNext(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && newNext.trim()) { setSelected({ ...selected, allowed_next: [...selected.allowed_next, newNext.trim()] }); setNewNext(''); } }}
-                    />
-                    <Button size="small" onClick={() => { if (newNext.trim()) { setSelected({ ...selected, allowed_next: [...selected.allowed_next, newNext.trim()] }); setNewNext(''); } }}>Add</Button>
-                  </Box>
+                  <Typography variant="h6" sx={{ mb: 2 }}>Allowed Next Stages</Typography>
+                  <Autocomplete
+                    multiple
+                    options={items.filter(s => s.id !== selected.id && !selected.allowed_next.includes(s.id))}
+                    getOptionLabel={(opt) => typeof opt === 'string' ? opt : `${opt.display_name} (${opt.id})`}
+                    value={selected.allowed_next.map(id => items.find(i => i.id === id) || id)}
+                    onChange={(_, val) => {
+                      const newVals = val.map(v => typeof v === 'string' ? v : v.id);
+                      setSelected({ ...selected, allowed_next: newVals });
+                    }}
+                    renderInput={(params) => <TextField {...params} placeholder="Search stages..." size="small" />}
+                  />
                 </Paper>
               </Grid>
 
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>Default Constraints</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
-                    {selected.default_constraints.map(c => (
-                      <Chip key={c} label={c} size="small" onDelete={() => setSelected({ ...selected, default_constraints: selected.default_constraints.filter(x => x !== c) })} />
-                    ))}
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField size="small" placeholder="constraint_id" value={newConstraint} onChange={e => setNewConstraint(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && newConstraint.trim()) { setSelected({ ...selected, default_constraints: [...selected.default_constraints, newConstraint.trim()] }); setNewConstraint(''); } }}
-                    />
-                    <Button size="small" onClick={() => { if (newConstraint.trim()) { setSelected({ ...selected, default_constraints: [...selected.default_constraints, newConstraint.trim()] }); setNewConstraint(''); } }}>Add</Button>
-                  </Box>
+                  <Typography variant="h6" sx={{ mb: 2 }}>Default Constraints</Typography>
+                  <Autocomplete
+                    multiple
+                    options={constraints.filter(c => !selected.default_constraints.includes(c.id))}
+                    getOptionLabel={(opt) => typeof opt === 'string' ? opt : `${opt.id} - ${opt.description}`}
+                    value={selected.default_constraints.map(id => constraints.find(c => c.id === id) || id)}
+                    onChange={(_, val) => {
+                      const newVals = val.map(v => typeof v === 'string' ? v : v.id);
+                      setSelected({ ...selected, default_constraints: newVals });
+                    }}
+                    renderInput={(params) => <TextField {...params} placeholder="Search constraints..." size="small" />}
+                  />
                 </Paper>
               </Grid>
             </Grid>

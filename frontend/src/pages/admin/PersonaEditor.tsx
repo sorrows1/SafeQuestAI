@@ -3,7 +3,7 @@ import {
   Box, List, ListItemButton, ListItemText, IconButton, TextField, Button,
   Typography, CircularProgress, Paper, Grid, Tooltip, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem,
-  FormControl, InputLabel,
+  FormControl, InputLabel, Switch, FormControlLabel,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -14,13 +14,26 @@ import {
   useListPersonasQuery,
   useCreatePersonaMutation, useUpdatePersonaMutation, useDeletePersonaMutation,
 } from '@/store/api';
-import type { PersonaDefinition } from '@/types';
+import type { PersonaDefinition, ConversationStyle } from '@/types';
 import { AppShell } from '@/components/common/AppShell';
+
+const EMPTY_STYLE: ConversationStyle = {
+  uses_lowercase: true,
+  omits_end_punctuation: true,
+  emoji_frequency: 0,
+  average_message_length: 'short',
+  double_texts: false,
+  initiates_topic_changes: false,
+  uses_slang: true,
+  humour: 'playful',
+  response_style: 'reactive',
+};
 
 const EMPTY: PersonaDefinition = {
   id: '', display_name: '', description: '', tone: [], interests: [],
-  speaking_style: { emoji: false, slang: false, vocabulary_level: 'medium', sentence_length: 'medium' },
-  background: '', manipulation_style: '', escalation_speed: 'gradual',
+  cover_story: '', claimed_age: 18, claimed_location: '', claimed_interests: [],
+  conversation_style: EMPTY_STYLE,
+  background: '', manipulation_style: '', escalation_speed: 'medium',
 };
 
 export function PersonaEditor() {
@@ -31,6 +44,7 @@ export function PersonaEditor() {
   const [newId, setNewId] = useState('');
   const [newTone, setNewTone] = useState('');
   const [newInterest, setNewInterest] = useState('');
+  const [newClaimedInterest, setNewClaimedInterest] = useState('');
 
   const { data: items = [], isLoading } = useListPersonasQuery();
   const [createPersona, { isLoading: creating }] = useCreatePersonaMutation();
@@ -99,26 +113,112 @@ export function PersonaEditor() {
               <Typography variant="h5" sx={{ fontWeight: 600, flex: 1 }}>{selected.display_name || selected.id}</Typography>
               <Button variant="contained" size="small" startIcon={saving ? <CircularProgress size={12} /> : <SaveIcon />} onClick={save} disabled={saving}>Save</Button>
             </Box>
+            
+            <Typography variant="h6" sx={{ mb: 2, mt: 4 }}>Basic Info</Typography>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth label="ID" value={selected.id} onChange={e => setSelected({ ...selected, id: e.target.value })} /></Grid>
               <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth label="Display Name" value={selected.display_name} onChange={e => setSelected({ ...selected, display_name: e.target.value })} /></Grid>
-              <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={3} label="Description" value={selected.description} onChange={e => setSelected({ ...selected, description: e.target.value })} /></Grid>
-              <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={3} label="Background" value={selected.background} onChange={e => setSelected({ ...selected, background: e.target.value })} /></Grid>
+              <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={2} label="Description (Admin Only)" value={selected.description} onChange={e => setSelected({ ...selected, description: e.target.value })} /></Grid>
+              <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={2} label="Background (Legacy)" value={selected.background} onChange={e => setSelected({ ...selected, background: e.target.value })} /></Grid>
+            </Grid>
+
+            <Typography variant="h6" sx={{ mb: 2, mt: 4 }}>Cover Story & World Knowledge</Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12 }}><TextField fullWidth label="Cover Story" value={selected.cover_story} onChange={e => setSelected({ ...selected, cover_story: e.target.value })} helperText="Summary of who the persona claims to be." /></Grid>
+              <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth type="number" label="Claimed Age" value={selected.claimed_age} onChange={e => setSelected({ ...selected, claimed_age: Number(e.target.value) })} /></Grid>
+              <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth label="Claimed Location" value={selected.claimed_location} onChange={e => setSelected({ ...selected, claimed_location: e.target.value })} /></Grid>
+              <Grid size={{ xs: 12 }}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Claimed Interests</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                    {selected.claimed_interests?.map(i => (
+                      <Chip key={i} label={i} size="small" onDelete={() => setSelected({ ...selected, claimed_interests: selected.claimed_interests.filter(x => x !== i) })} />
+                    ))}
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField size="small" placeholder="e.g. Fortnite" value={newClaimedInterest} onChange={e => setNewClaimedInterest(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && newClaimedInterest.trim()) { setSelected({ ...selected, claimed_interests: [...(selected.claimed_interests || []), newClaimedInterest.trim()] }); setNewClaimedInterest(''); } }}
+                    />
+                    <Button size="small" onClick={() => { if (newClaimedInterest.trim()) { setSelected({ ...selected, claimed_interests: [...(selected.claimed_interests || []), newClaimedInterest.trim()] }); setNewClaimedInterest(''); } }}>Add</Button>
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            <Typography variant="h6" sx={{ mb: 2, mt: 4 }}>Manipulation Profile</Typography>
+            <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth label="Manipulation Style" value={selected.manipulation_style} onChange={e => setSelected({ ...selected, manipulation_style: e.target.value })} /></Grid>
               <Grid size={{ xs: 12, md: 6 }}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Escalation Speed</InputLabel>
-                  <Select value={selected.escalation_speed} label="Escalation Speed" onChange={e => setSelected({ ...selected, escalation_speed: e.target.value })}>
+                  <Select value={selected.escalation_speed} label="Escalation Speed" onChange={e => setSelected({ ...selected, escalation_speed: e.target.value as any })}>
                     <MenuItem value="slow">Slow</MenuItem>
-                    <MenuItem value="gradual">Gradual</MenuItem>
+                    <MenuItem value="medium">Medium</MenuItem>
                     <MenuItem value="fast">Fast</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
+            </Grid>
 
+            <Typography variant="h6" sx={{ mb: 2, mt: 4 }}>Conversation Style</Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel control={<Switch checked={selected.conversation_style?.uses_lowercase ?? true} onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, uses_lowercase: e.target.checked } })} />} label="Uses Lowercase" />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel control={<Switch checked={selected.conversation_style?.omits_end_punctuation ?? true} onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, omits_end_punctuation: e.target.checked } })} />} label="Omits End Punctuation" />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel control={<Switch checked={selected.conversation_style?.double_texts ?? false} onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, double_texts: e.target.checked } })} />} label="Double Texts" />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel control={<Switch checked={selected.conversation_style?.initiates_topic_changes ?? false} onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, initiates_topic_changes: e.target.checked } })} />} label="Initiates Topic Changes" />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel control={<Switch checked={selected.conversation_style?.uses_slang ?? true} onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, uses_slang: e.target.checked } })} />} label="Uses Slang" />
+              </Grid>
+              
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField fullWidth type="number" label="Emoji Frequency (0.0 - 1.0)" slotProps={{ htmlInput: { step: 0.1, min: 0, max: 1 } }} value={selected.conversation_style?.emoji_frequency ?? 0} onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, emoji_frequency: Number(e.target.value) } })} />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Message Length</InputLabel>
+                  <Select value={selected.conversation_style?.average_message_length ?? 'short'} label="Message Length" onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, average_message_length: e.target.value as any } })}>
+                    <MenuItem value="very_short">Very Short</MenuItem>
+                    <MenuItem value="short">Short</MenuItem>
+                    <MenuItem value="medium">Medium</MenuItem>
+                    <MenuItem value="long">Long</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Humour Style</InputLabel>
+                  <Select value={selected.conversation_style?.humour ?? 'playful'} label="Humour Style" onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, humour: e.target.value as any } })}>
+                    <MenuItem value="none">None</MenuItem>
+                    <MenuItem value="dry">Dry</MenuItem>
+                    <MenuItem value="playful">Playful</MenuItem>
+                    <MenuItem value="sarcastic">Sarcastic</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Response Style</InputLabel>
+                  <Select value={selected.conversation_style?.response_style ?? 'reactive'} label="Response Style" onChange={e => setSelected({ ...selected, conversation_style: { ...selected.conversation_style, response_style: e.target.value as any } })}>
+                    <MenuItem value="reactive">Reactive</MenuItem>
+                    <MenuItem value="proactive">Proactive</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+
+            <Typography variant="h6" sx={{ mb: 2, mt: 4 }}>Legacy Display (Tone & Interests)</Typography>
+            <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>Tone</Typography>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Tone</Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
                     {selected.tone.map(t => (
                       <Chip key={t} label={t} size="small" onDelete={() => setSelected({ ...selected, tone: selected.tone.filter(x => x !== t) })} />
@@ -135,7 +235,7 @@ export function PersonaEditor() {
 
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>Interests</Typography>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Interests</Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
                     {selected.interests.map(i => (
                       <Chip key={i} label={i} size="small" onDelete={() => setSelected({ ...selected, interests: selected.interests.filter(x => x !== i) })} />
@@ -150,6 +250,7 @@ export function PersonaEditor() {
                 </Paper>
               </Grid>
             </Grid>
+
           </Box>
         ) : (
           <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 }}>

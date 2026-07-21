@@ -36,11 +36,18 @@ class ConversationState(BaseModel):
     # Stage tracking
     current_stage: str = ""
     stage_sequence_index: int = 0  # index into scenario.stage_sequence
+    turns_in_stage: int = 0        # resets on stage transition; used for min/max_turns enforcement
 
     # Objective tracking
     current_objective: str = ""
     objective_index: int = 0  # index within the current stage's objectives list
     completed_objectives: list[str] = Field(default_factory=list)
+    # Counts turns elapsed since the current objective was assigned — drives dynamic priority
+    objective_patience_counter: int = 0
+
+    # Conversation inertia tracking
+    current_topic: str = ""        # heuristic label for what the conversation is currently about
+    turns_on_topic: int = 0        # resets when topic changes
 
     # Emotional metrics — float 0.0 to 1.0
     trust: float = 0.0
@@ -88,3 +95,4 @@ class ConversationState(BaseModel):
     def from_db_dict(cls, data: dict[str, Any]) -> "ConversationState":
         """Deserialize state from the DB JSON column."""
         return cls.model_validate(data)
+

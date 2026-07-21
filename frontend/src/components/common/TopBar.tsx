@@ -6,18 +6,7 @@ import { useAppDispatch, useAppSelector } from '@/store';
 import { toggleTheme } from '@/store/uiSlice';
 import { useLocation } from 'react-router-dom';
 
-const PAGE_TITLES: Record<string, string> = {
-  '/':            'Dashboard',
-  '/scenarios':   'Scenarios',
-  '/personas':    'Personas',
-  '/stages':      'Stages',
-  '/objectives':  'Objectives',
-  '/constraints': 'Constraints',
-  '/prompts':     'Prompt Templates',
-  '/simulator':   'Simulator',
-  '/validation':  'Validation Console',
-  '/settings':    'Settings',
-};
+
 
 interface Props {
   onReload?: () => void;
@@ -26,11 +15,8 @@ interface Props {
 export function TopBar({ onReload }: Props) {
   const dispatch = useAppDispatch();
   const themeMode = useAppSelector(s => s.ui.themeMode);
-  const location = useLocation();
 
-  const title = Object.entries(PAGE_TITLES).find(([path]) =>
-    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
-  )?.[1] ?? 'Safe Quest';
+  const title = 'Safe Quest';
 
   return (
     <AppBar position="static" elevation={0} sx={{ zIndex: 1 }}>

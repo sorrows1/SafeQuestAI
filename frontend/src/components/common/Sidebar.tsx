@@ -14,31 +14,37 @@ import PlayCircleIcon from '@mui/icons-material/PlayCircle';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
+import GroupIcon from '@mui/icons-material/Group';
+import ChatIcon from '@mui/icons-material/Chat';
 
 const SIDEBAR_WIDTH = 240;
 
 const navItems = [
-  { label: 'Dashboard',       path: '/',            icon: <DashboardIcon fontSize="small" /> },
-  { label: 'Scenarios',       path: '/scenarios',   icon: <MovieIcon fontSize="small" /> },
-  { label: 'Personas',        path: '/personas',    icon: <PersonIcon fontSize="small" /> },
-  { label: 'Stages',          path: '/stages',      icon: <AccountTreeIcon fontSize="small" /> },
-  { label: 'Objectives',      path: '/objectives',  icon: <TrackChangesIcon fontSize="small" /> },
-  { label: 'Constraints',     path: '/constraints', icon: <SecurityIcon fontSize="small" /> },
-  { label: 'Prompt Templates',path: '/prompts',     icon: <ArticleIcon fontSize="small" /> },
+  { label: 'Dashboard',       path: '/admin',            icon: <DashboardIcon fontSize="small" /> },
+  { label: 'Scenarios',       path: '/admin/scenarios',   icon: <MovieIcon fontSize="small" /> },
+  { label: 'Personas',        path: '/admin/personas',    icon: <PersonIcon fontSize="small" /> },
+  { label: 'Stages',          path: '/admin/stages',      icon: <AccountTreeIcon fontSize="small" /> },
+  { label: 'Objectives',      path: '/admin/objectives',  icon: <TrackChangesIcon fontSize="small" /> },
+  { label: 'Constraints',     path: '/admin/constraints', icon: <SecurityIcon fontSize="small" /> },
+  { label: 'Prompt Templates',path: '/admin/prompts',     icon: <ArticleIcon fontSize="small" /> },
 ] as const;
 
 const bottomItems = [
-  { label: 'Simulator',   path: '/simulator',  icon: <PlayCircleIcon fontSize="small" /> },
-  { label: 'Validation',  path: '/validation', icon: <FactCheckIcon fontSize="small" /> },
-  { label: 'Settings',    path: '/settings',   icon: <SettingsIcon fontSize="small" /> },
+  { label: 'Users',       path: '/admin/users',      icon: <GroupIcon fontSize="small" /> },
+  { label: 'Simulator',   path: '/admin/simulator',  icon: <PlayCircleIcon fontSize="small" /> },
+  { label: 'Validation',  path: '/admin/validation', icon: <FactCheckIcon fontSize="small" /> },
+  { label: 'Settings',    path: '/admin/settings',   icon: <SettingsIcon fontSize="small" /> },
+  { label: 'Return to Chat', path: '/chat',          icon: <ChatIcon fontSize="small" /> },
 ] as const;
 
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isActive = (path: string) =>
-    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+  const isActive = (path: string) => {
+    if (path === '/admin') return location.pathname === '/admin' || location.pathname === '/admin/';
+    return location.pathname.startsWith(path);
+  };
 
   const renderItem = (item: { label: string; path: string; icon: React.ReactNode }) => (
     <ListItemButton

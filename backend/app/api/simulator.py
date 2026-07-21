@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.engine.conversation_state import ConversationState
 from app.engine.dialogue_policy import DialoguePolicyEngine
 from app.engine.prompt_builder import PromptBuilder
-from app.engine.scenario_loader import ScenarioLoader
+from app.repositories import content_repo
 from app.engine.state_updater import StateUpdater
 from app.engine.validator import Validator
 from app.llm.llm_service import LLMService
@@ -37,15 +37,14 @@ from app.models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/simulator", tags=["Simulator"])
+router = APIRouter(prefix="/api/admin/simulator", tags=["Admin - Simulator"])
 
 # Validator is stateless — one instance is fine
 _validator = Validator()
 
 
-def get_loader() -> ScenarioLoader:
-    from app.main import scenario_loader
-    return scenario_loader
+from app.auth.security import require_admin
+from app.models.orm import User
 
 
 def get_llm() -> LLMService:
@@ -57,15 +56,14 @@ def get_llm() -> LLMService:
 def start_simulation(
     request: SimulatorStartRequest,
     db: DBSession = Depends(get_db),
-    loader: ScenarioLoader = Depends(get_loader),
+    _: User = Depends(require_admin),
 ):
     """
     Initialise a new conversation session for the given scenario.
     Returns the session ID and initial state.
     """
-    try:
-        scenario = loader.get_scenario(request.scenario_id)
-    except KeyError:
+    scenario = content_repo.get_scenario(db, request.scenario_id)
+    if not scenario:
         raise HTTPException(status_code=404, detail=f"Scenario '{request.scenario_id}' not found.")
 
     if not scenario.stage_sequence:
@@ -83,7 +81,7 @@ def start_simulation(
 
     # Build initial state
     first_step = scenario.stage_sequence[0]
-    first_objective = first_step.objectives[0] if first_step.objectives else ""
+    first_objective = first_step.mandatory_objectives[0] if first_step.mandatory_objectives else ""
 
     state = ConversationState(
         session_id=db_session.id,
@@ -99,13 +97,11 @@ def start_simulation(
     db.commit()
 
     # Build welcome message from persona
-    try:
-        persona = loader.get_persona(scenario.persona)
-        initial_message = (
-            f"Hey! I'm {persona.display_name.split()[0] if ' ' in persona.display_name else persona.display_name}. "
-            f"Just saw you here and thought I'd say hi!"
-        )
-    except KeyError:
+    persona = content_repo.get_persona(db, scenario.persona)
+    if persona:
+        first_name = persona.display_name.split()[0] if ' ' in persona.display_name else persona.display_name
+        initial_message = f"Hey! I'm {first_name}. Just saw you here and thought I'd say hi!"
+    else:
         initial_message = "Hey! Just saw you here and thought I'd say hi!"
 
     return SimulatorStartResponse(
@@ -121,7 +117,7 @@ async def chat(
     request: SimulatorChatRequest,
     debug: bool = False,
     db: DBSession = Depends(get_db),
-    loader: ScenarioLoader = Depends(get_loader),
+    _: User = Depends(require_admin),
     llm: LLMService = Depends(get_llm),
 ):
     """
@@ -148,17 +144,30 @@ async def chat(
         content=request.message,
     ))
 
+    # Build a temporary in-memory loader for the engine (adapter pattern)
+    from app.engine.scenario_loader import ScenarioLoader as _Loader
+    from pathlib import Path
+    _loader = _Loader(Path("/tmp"))  # dummy path — we override caches below
+    _loader._scenarios = {s.id: s for s in content_repo.list_scenarios(db)}
+    _loader._personas  = {p.id: p for p in content_repo.list_personas(db)}
+    _loader._stages    = {s.id: s for s in content_repo.list_stages(db)}
+    _loader._objectives= {o.id: o for o in content_repo.list_objectives(db)}
+    _loader._constraints={c.id: c for c in content_repo.list_constraints(db)}
+    _loader._prompt_templates = {t.name: t for t in content_repo.list_prompts(db)}
+
     # 1. Dialogue policy decision
-    policy_engine = DialoguePolicyEngine(loader)
+    policy_engine = DialoguePolicyEngine(_loader)
     try:
         decision = policy_engine.decide(state)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"Policy engine error: {exc}")
 
     # 2. Build prompt
-    prompt_builder = PromptBuilder(loader)
-    scenario = loader.get_scenario(state.scenario_id)
-    prompt = prompt_builder.build(scenario.prompt_template, decision.prompt_variables)
+    prompt_builder = PromptBuilder(_loader)
+    scenario = content_repo.get_scenario(db, state.scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found.")
+    prompt = prompt_builder.build(scenario.prompt_template, decision.prompt_blocks)
 
     # 3. LLM call
     try:
@@ -168,7 +177,7 @@ async def chat(
         raise HTTPException(status_code=502, detail=f"LLM call failed: {exc}")
 
     # 4. Validate
-    known_stage_ids = list(loader.all_stages().keys())
+    known_stage_ids = list(_loader._stages.keys())
     validation_result = _validator.validate(
         raw_output=raw_output,
         known_stage_ids=known_stage_ids,

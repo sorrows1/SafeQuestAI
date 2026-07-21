@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   Box, Paper, Typography, List, ListItemButton, ListItemText,
   IconButton, TextField, Button, Chip, CircularProgress,
   Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
   Select, MenuItem, FormControl, InputLabel, Tabs, Tab,
-  Alert, Grid,
+   Grid, Autocomplete
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -13,7 +14,18 @@ import SearchIcon from '@mui/icons-material/Search';
 import CodeIcon from '@mui/icons-material/Code';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import SaveIcon from '@mui/icons-material/Save';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { useSnackbar } from 'notistack';
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+  useSensor, useSensors
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates,
+  verticalListSortingStrategy, useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import ReactFlow, { Background, Controls, MiniMap, useNodesState, useEdgesState } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {
@@ -35,7 +47,7 @@ const EMPTY_SCENARIO: ScenarioDefinition = {
 function scenarioToFlow(scenario: ScenarioDefinition) {
   const nodes = scenario.stage_sequence.map((step, i) => ({
     id: step.stage,
-    data: { label: step.stage, objectives: step.objectives.length },
+    data: { label: step.stage, objectives: step.mandatory_objectives.length + step.optional_objectives.length },
     position: { x: 200 * (i % 3), y: 150 * Math.floor(i / 3) },
     style: {
       background: '#21262d', border: '1px solid #30363d', borderRadius: 8,
@@ -51,8 +63,49 @@ function scenarioToFlow(scenario: ScenarioDefinition) {
   return { nodes, edges };
 }
 
+function SortableStageStep({ step, index, onDelete, onUpdate, objectives }: { step: any; index: number; onDelete: (idx: number) => void; onUpdate: (idx: number, step: any) => void; objectives: any[] }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `step-${index}` });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  
+  return (
+    <Paper ref={setNodeRef} style={style} variant="outlined" sx={{ p: 1.5, mb: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+        <IconButton {...attributes} {...listeners} size="small" sx={{ cursor: 'grab' }}>
+          <DragIndicatorIcon fontSize="small" />
+        </IconButton>
+        <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>
+          Step {index + 1}: {step.stage}
+        </Typography>
+        <IconButton size="small" color="error" onClick={() => onDelete(index)}>
+          <DeleteIcon sx={{ fontSize: 14 }} />
+        </IconButton>
+      </Box>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
+        <Autocomplete
+          multiple size="small"
+          options={objectives.filter(o => !step.mandatory_objectives.includes(o.id) && !step.optional_objectives.includes(o.id))}
+          getOptionLabel={(opt) => typeof opt === 'string' ? opt : `${opt.display_name} (${opt.id})`}
+          value={step.mandatory_objectives.map((id: string) => objectives.find(o => o.id === id) || id)}
+          onChange={(_, val) => onUpdate(index, { ...step, mandatory_objectives: val.map((v: any) => typeof v === 'string' ? v : v.id) })}
+          renderInput={(params) => <TextField {...params} label="Mandatory Objectives" />}
+        />
+        <Autocomplete
+          multiple size="small"
+          options={objectives.filter(o => !step.mandatory_objectives.includes(o.id) && !step.optional_objectives.includes(o.id))}
+          getOptionLabel={(opt) => typeof opt === 'string' ? opt : `${opt.display_name} (${opt.id})`}
+          value={step.optional_objectives.map((id: string) => objectives.find(o => o.id === id) || id)}
+          onChange={(_, val) => onUpdate(index, { ...step, optional_objectives: val.map((v: any) => typeof v === 'string' ? v : v.id) })}
+          renderInput={(params) => <TextField {...params} label="Optional Objectives" />}
+        />
+      </Box>
+    </Paper>
+  );
+}
+
 export function ScenarioEditor() {
   const { enqueueSnackbar } = useSnackbar();
+  const { id: urlId } = useParams<{ id?: string }>();
   const [selected, setSelected] = useState<ScenarioDefinition | null>(null);
   const [search, setSearch]     = useState('');
   const [tab, setTab]           = useState(0);
@@ -61,6 +114,11 @@ export function ScenarioEditor() {
   const [newName, setNewName]     = useState('');
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   // ── RTK Query ──────────────────────────────────────────────────────────────
   const { data: scenarios = [], isLoading } = useListScenariosQuery();
@@ -78,8 +136,15 @@ export function ScenarioEditor() {
 
   const personas    = personaList.map(p => p.id);
   const stages      = stageList;
-  const objectives  = objectiveList.map(o => o.id);
-  const constraints = constraintList.map(c => c.id);
+
+  useEffect(() => {
+    if (urlId && scenarios.length > 0 && !selected) {
+      const match = scenarios.find(s => s.id === urlId);
+      if (match) {
+        selectScenario(match);
+      }
+    }
+  }, [urlId, scenarios, selected]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const selectScenario = (s: ScenarioDefinition) => {
@@ -113,6 +178,38 @@ export function ScenarioEditor() {
   const handleDuplicate = async (id: string) => {
     await duplicateScenario(id).unwrap();
     enqueueSnackbar('Duplicated', { variant: 'success' });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id && selected) {
+      const oldIndex = parseInt((active.id as string).split('-')[1], 10);
+      const newIndex = parseInt((over.id as string).split('-')[1], 10);
+      
+      const newSeq = arrayMove(selected.stage_sequence, oldIndex, newIndex);
+      
+      // Validate transition logic
+      let isValid = true;
+      let errorMsg = '';
+      for (let i = 0; i < newSeq.length - 1; i++) {
+        const fromStage = stageList.find(s => s.id === newSeq[i].stage);
+        if (fromStage && !fromStage.allowed_next.includes(newSeq[i+1].stage)) {
+          isValid = false;
+          errorMsg = `Cannot place '${newSeq[i+1].stage}' after '${newSeq[i].stage}' because it is not in its allowed next stages.`;
+          break;
+        }
+      }
+
+      if (!isValid) {
+        enqueueSnackbar(errorMsg, { variant: 'error' });
+        return;
+      }
+
+      const updated = { ...selected, stage_sequence: newSeq };
+      setSelected(updated);
+      const { nodes: n, edges: e } = scenarioToFlow(updated);
+      setNodes(n); setEdges(e);
+    }
   };
 
   const createNew = () => {
@@ -218,6 +315,27 @@ export function ScenarioEditor() {
                       </Select>
                     </FormControl>
                   </Grid>
+                  
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <Autocomplete
+                      multiple size="small"
+                      options={[]}
+                      freeSolo
+                      value={selected.tags || []}
+                      onChange={(_, val) => setSelected({ ...selected, tags: val })}
+                      renderInput={(params) => <TextField {...params} label="Tags" placeholder="Add tag..." />}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <Autocomplete
+                      multiple size="small"
+                      options={[]}
+                      freeSolo
+                      value={selected.learning_objectives || []}
+                      onChange={(_, val) => setSelected({ ...selected, learning_objectives: val })}
+                      renderInput={(params) => <TextField {...params} label="Learning Objectives" placeholder="Add objective..." />}
+                    />
+                  </Grid>
                   <Grid size={{ xs: 12, md: 4 }}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Persona</InputLabel>
@@ -239,32 +357,42 @@ export function ScenarioEditor() {
 
                   <Grid size={{ xs: 12 }}>
                     <Typography variant="h6" gutterBottom>Stage Sequence</Typography>
-                    {selected.stage_sequence.map((step, i) => (
-                      <Paper key={i} variant="outlined" sx={{ p: 1.5, mb: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>
-                            Step {i + 1}: {step.stage}
-                          </Typography>
-                          <IconButton size="small" color="error"
-                            onClick={() => setSelected({
-                              ...selected, stage_sequence: selected.stage_sequence.filter((_, j) => j !== i)
-                            })}>
-                            <DeleteIcon sx={{ fontSize: 14 }} />
-                          </IconButton>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Objectives: {step.objectives.join(', ') || 'none'} |{' '}
-                          Constraints: {step.constraints.join(', ') || 'none'}
-                        </Typography>
-                      </Paper>
-                    ))}
-                    <Button size="small" startIcon={<AddIcon />}
-                      onClick={() => setSelected({
-                        ...selected,
-                        stage_sequence: [...selected.stage_sequence, { stage: stages[0]?.id ?? '', objectives: [], constraints: [] }],
-                      })}>
-                      Add Stage Step
-                    </Button>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                      <SortableContext items={selected.stage_sequence.map((_, i) => `step-${i}`)} strategy={verticalListSortingStrategy}>
+                        {selected.stage_sequence.map((step, i) => (
+                          <SortableStageStep key={`step-${i}`} step={step} index={i}
+                            objectives={objectiveList}
+                            onDelete={(idx) => {
+                              setSelected({
+                                ...selected, stage_sequence: selected.stage_sequence.filter((_, j) => j !== idx)
+                              });
+                            }}
+                            onUpdate={(idx, newStep) => {
+                              const newSeq = [...selected.stage_sequence];
+                              newSeq[idx] = newStep;
+                              setSelected({ ...selected, stage_sequence: newSeq });
+                            }}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                    <Box sx={{ mt: 2 }}>
+                      <Autocomplete
+                        size="small"
+                        options={stages.filter(s => !selected.stage_sequence.find(seq => seq.stage === s.id))}
+                        getOptionLabel={(opt) => typeof opt === 'string' ? opt : `${opt.display_name} (${opt.id})`}
+                        value={null}
+                        onChange={(_, val) => {
+                          if (val) {
+                            setSelected({
+                              ...selected,
+                              stage_sequence: [...selected.stage_sequence, { stage: typeof val === 'string' ? val : val.id, mandatory_objectives: [], optional_objectives: [], constraints: [] }],
+                            });
+                          }
+                        }}
+                        renderInput={(params) => <TextField {...params} label="Add Stage Step..." />}
+                      />
+                    </Box>
                   </Grid>
                 </Grid>
               </Box>

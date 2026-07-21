@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
+  envDir: '../',
   plugins: [react()],
   resolve: {
     alias: {
@@ -14,7 +15,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target:   'http://backend:8000',
+        target: process.env.BACKEND_PROXY_URL || 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },

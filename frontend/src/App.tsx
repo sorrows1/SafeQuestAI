@@ -1,21 +1,32 @@
 import { useMemo } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { SnackbarProvider } from 'notistack';
 import { store } from '@/store';
 import { useAppSelector } from '@/store';
 import { darkTheme, lightTheme } from '@/theme';
-import { Dashboard } from '@/pages/Dashboard';
-import { ScenarioEditor } from '@/pages/ScenarioEditor';
-import { PersonaEditor } from '@/pages/PersonaEditor';
-import { StageEditor } from '@/pages/StageEditor';
-import { ObjectiveEditor } from '@/pages/ObjectiveEditor';
-import { ConstraintEditor } from '@/pages/ConstraintEditor';
-import { PromptEditor } from '@/pages/PromptEditor';
-import { Simulator } from '@/pages/Simulator';
-import { ValidationConsole } from '@/pages/ValidationConsole';
-import { Settings } from '@/pages/Settings';
+
+import { ProtectedRoute, AdminRoute } from '@/auth/ProtectedRoute';
+
+import { Login } from '@/pages/auth/Login';
+import { Register } from '@/pages/auth/Register';
+import { AuthCallback } from '@/pages/auth/AuthCallback';
+
+import { ChatLayout } from '@/pages/chat/ChatLayout';
+import { ChatView } from '@/pages/chat/ChatView';
+
+import { Dashboard } from '@/pages/admin/Dashboard';
+import { ScenarioEditor } from '@/pages/admin/ScenarioEditor';
+import { PersonaEditor } from '@/pages/admin/PersonaEditor';
+import { StageEditor } from '@/pages/admin/StageEditor';
+import { ObjectiveEditor } from '@/pages/admin/ObjectiveEditor';
+import { ConstraintEditor } from '@/pages/admin/ConstraintEditor';
+import { PromptEditor } from '@/pages/admin/PromptEditor';
+import { Simulator } from '@/pages/admin/Simulator';
+import { ValidationConsole } from '@/pages/admin/ValidationConsole';
+import { Settings } from '@/pages/admin/Settings';
+import { Users } from '@/pages/admin/Users';
 
 function ThemedApp() {
   const themeMode = useAppSelector(s => s.ui.themeMode);
@@ -24,21 +35,36 @@ function ThemedApp() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <SnackbarProvider maxSnack={4} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        autoHideDuration={3000}>
+      <SnackbarProvider maxSnack={4} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} autoHideDuration={3000}>
         <BrowserRouter>
           <Routes>
-            <Route path="/"            element={<Dashboard />} />
-            <Route path="/scenarios"   element={<ScenarioEditor />} />
-            <Route path="/scenarios/:id" element={<ScenarioEditor />} />
-            <Route path="/personas"    element={<PersonaEditor />} />
-            <Route path="/stages"      element={<StageEditor />} />
-            <Route path="/objectives"  element={<ObjectiveEditor />} />
-            <Route path="/constraints" element={<ConstraintEditor />} />
-            <Route path="/prompts"     element={<PromptEditor />} />
-            <Route path="/simulator"   element={<Simulator />} />
-            <Route path="/validation"  element={<ValidationConsole />} />
-            <Route path="/settings"    element={<Settings />} />
+            {/* Auth Routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+
+            {/* Public App (Chat) */}
+            <Route path="/chat" element={<ProtectedRoute><ChatLayout /></ProtectedRoute>}>
+              <Route path=":id" element={<ChatView />} />
+            </Route>
+            
+            {/* Redirect root based on auth/role would be nice, but for now we just send to chat */}
+            <Route path="/" element={<Navigate to="/chat" replace />} />
+
+            {/* Admin CMS */}
+            <Route path="/admin" element={<AdminRoute><Dashboard /></AdminRoute>} />
+            <Route path="/admin/scenarios" element={<AdminRoute><ScenarioEditor /></AdminRoute>} />
+            <Route path="/admin/scenarios/:id" element={<AdminRoute><ScenarioEditor /></AdminRoute>} />
+            <Route path="/admin/personas" element={<AdminRoute><PersonaEditor /></AdminRoute>} />
+            <Route path="/admin/stages" element={<AdminRoute><StageEditor /></AdminRoute>} />
+            <Route path="/admin/objectives" element={<AdminRoute><ObjectiveEditor /></AdminRoute>} />
+            <Route path="/admin/constraints" element={<AdminRoute><ConstraintEditor /></AdminRoute>} />
+            <Route path="/admin/prompts" element={<AdminRoute><PromptEditor /></AdminRoute>} />
+            <Route path="/admin/simulator" element={<AdminRoute><Simulator /></AdminRoute>} />
+            <Route path="/admin/validation" element={<AdminRoute><ValidationConsole /></AdminRoute>} />
+            <Route path="/admin/settings" element={<AdminRoute><Settings /></AdminRoute>} />
+            <Route path="/admin/users" element={<AdminRoute><Users /></AdminRoute>} />
+
           </Routes>
         </BrowserRouter>
       </SnackbarProvider>

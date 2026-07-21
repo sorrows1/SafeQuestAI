@@ -2,13 +2,13 @@
 // Mirrors app/models/content_schemas.py
 
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
-export type CompletionRuleType = 'llm' | 'keyword' | 'always';
 export type ViolationSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type MessageLength = 'very_short' | 'short' | 'medium' | 'long';
+export type HumourStyle = 'dry' | 'playful' | 'sarcastic' | 'none';
+export type ResponseStyle = 'reactive' | 'proactive';
+export type EscalationSpeed = 'slow' | 'medium' | 'fast';
 
-export interface CompletionRule {
-  type: CompletionRuleType;
-  keywords?: string[];
-}
+// ── Stage ──────────────────────────────────────────────────────────────────
 
 export interface StageDefinition {
   id: string;
@@ -16,43 +16,69 @@ export interface StageDefinition {
   description: string;
   allowed_next: string[];
   default_constraints: string[];
+  min_turns: number;
+  max_turns: number;
+  preferred_style: string;
 }
+
+// ── Objective — modelled as a hidden intent ────────────────────────────────
 
 export interface ObjectiveDefinition {
   id: string;
   display_name: string;
-  description: string;
+  description: string;       // admin display only
+  hidden_intent: string;     // what the LLM sees — background desire, not task
+  natural_triggers: string[];
   priority: number;
-  tags: string[];
-  completion_rule: CompletionRule;
+  patience: number;
+  success_signals: string[];
 }
 
-export interface SpeakingStyle {
-  emoji: boolean;
-  slang: boolean;
-  vocabulary_level: string;
-  sentence_length: string;
+// ── Persona ────────────────────────────────────────────────────────────────
+
+export interface ConversationStyle {
+  uses_lowercase: boolean;
+  omits_end_punctuation: boolean;
+  emoji_frequency: number;              // 0.0–1.0
+  average_message_length: MessageLength;
+  double_texts: boolean;
+  initiates_topic_changes: boolean;
+  uses_slang: boolean;
+  humour: HumourStyle;
+  response_style: ResponseStyle;
 }
 
 export interface PersonaDefinition {
   id: string;
   display_name: string;
-  description: string;
+  description: string;           // admin display only
+  cover_story: string;
+  claimed_age: number;
+  claimed_location: string;
+  claimed_interests: string[];
+  manipulation_style: string;
+  escalation_speed: EscalationSpeed;
+  conversation_style: ConversationStyle;
+  // Legacy — kept for admin UI display
+  background: string;
   tone: string[];
   interests: string[];
-  speaking_style: SpeakingStyle;
-  background: string;
-  manipulation_style: string;
-  escalation_speed: string;
 }
+
+// ── Constraint ─────────────────────────────────────────────────────────────
 
 export interface ConstraintDefinition {
   id: string;
   description: string;
   forbidden_actions: string[];
   forbidden_phrases: string[];
+  forbidden_topics: string[];
+  required_behaviours: string[];
   violation_severity: ViolationSeverity;
+  recovery_suggestion: string;
 }
+
+// ── Scenario ───────────────────────────────────────────────────────────────
 
 export interface DifficultyModifier {
   trust_delta_multiplier: number;
@@ -62,7 +88,8 @@ export interface DifficultyModifier {
 
 export interface StageStep {
   stage: string;
-  objectives: string[];
+  mandatory_objectives: string[];
+  optional_objectives: string[];
   constraints: string[];
 }
 
@@ -133,6 +160,10 @@ export interface ConversationStateSnapshot {
   suspicion: number;
   flags: string[];
   history: HistoryEntry[];
+  // New inertia tracking fields
+  current_topic: string;
+  turns_on_topic: number;
+  turns_in_stage: number;
 }
 
 export interface HistoryEntry {
@@ -174,3 +205,4 @@ export interface ConfigSummary {
   constraints: string[];
   prompt_templates: string[];
 }
+

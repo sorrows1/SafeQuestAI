@@ -26,6 +26,17 @@ services:
       - OPENAI_ENDPOINT=${OPENAI_ENDPOINT}
       - OPENAI_MODEL=${OPENAI_MODEL}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_DISPLAY_NAME=${ADMIN_DISPLAY_NAME}
+      - APP_BASE_URL=${APP_BASE_URL}
     volumes:
       - ./backend:/app
     depends_on:
@@ -39,7 +50,8 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=${VITE_API_URL}
+      - VITE_API_URL=http://localhost:8000
+      - BACKEND_PROXY_URL=http://backend:8000
     volumes:
       - ./frontend:/app
       - /app/node_modules

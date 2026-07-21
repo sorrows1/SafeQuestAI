@@ -81,12 +81,12 @@ export function Dashboard() {
             {/* Stats */}
             <Grid container spacing={2} sx={{ mb: 4 }}>
               {[
-                { icon: <ScenarioIcon sx={{ color: '#fff', fontSize: 22 }} />, label: 'Scenarios',       value: summary.scenarios.length,        path: '/scenarios' },
-                { icon: <PersonaIcon sx={{ color: '#fff', fontSize: 22 }} />,  label: 'Personas',        value: summary.personas.length,         path: '/personas' },
-                { icon: <StageIcon sx={{ color: '#fff', fontSize: 22 }} />,    label: 'Stages',          value: summary.stages.length,           path: '/stages' },
-                { icon: <ObjectiveIcon sx={{ color: '#fff', fontSize: 22 }} />,label: 'Objectives',      value: summary.objectives.length,       path: '/objectives' },
-                { icon: <ConstraintIcon sx={{ color: '#fff', fontSize: 22 }} />,label: 'Constraints',   value: summary.constraints.length,      path: '/constraints' },
-                { icon: <PromptIcon sx={{ color: '#fff', fontSize: 22 }} />,   label: 'Prompt Templates',value: summary.prompt_templates.length, path: '/prompts' },
+                { icon: <ScenarioIcon sx={{ color: '#fff', fontSize: 22 }} />, label: 'Scenarios',       value: summary.scenarios.length,        path: '/admin/scenarios' },
+                { icon: <PersonaIcon sx={{ color: '#fff', fontSize: 22 }} />,  label: 'Personas',        value: summary.personas.length,         path: '/admin/personas' },
+                { icon: <StageIcon sx={{ color: '#fff', fontSize: 22 }} />,    label: 'Stages',          value: summary.stages.length,           path: '/admin/stages' },
+                { icon: <ObjectiveIcon sx={{ color: '#fff', fontSize: 22 }} />,label: 'Objectives',      value: summary.objectives.length,       path: '/admin/objectives' },
+                { icon: <ConstraintIcon sx={{ color: '#fff', fontSize: 22 }} />,label: 'Constraints',   value: summary.constraints.length,      path: '/admin/constraints' },
+                { icon: <PromptIcon sx={{ color: '#fff', fontSize: 22 }} />,   label: 'Prompt Templates',value: summary.prompt_templates.length, path: '/admin/prompts' },
               ].map(s => (
                 <Grid key={s.label} size={{ xs: 12, sm: 6, md: 4 }}>
                   <StatCard {...s} value={s.value} onClick={() => navigate(s.path)} />
@@ -116,7 +116,7 @@ export function Dashboard() {
                 icon={validationResult.valid ? <CheckCircleIcon /> : <WarningIcon />}
                 sx={{ mb: 2 }}
                 action={
-                  <Button size="small" onClick={() => navigate('/validation')}>View Details</Button>
+                  <Button size="small" onClick={() => navigate('/admin/validation')}>View Details</Button>
                 }
               >
                 {validationResult.valid
@@ -134,7 +134,7 @@ export function Dashboard() {
                       p: 2, cursor: 'pointer', transition: 'all 0.15s',
                       '&:hover': { borderColor: 'primary.main' },
                     }}
-                    onClick={() => navigate(`/scenarios`)}
+                    onClick={() => navigate(`/admin/scenarios/${s.id}`)}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>{s.display_name}</Typography>

@@ -1,57 +1,40 @@
-"""Objectives API — CRUD for the objectives.json registry."""
+"""Admin — Objectives CRUD (DB-backed)."""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-from __future__ import annotations
-
-from fastapi import APIRouter, Depends, HTTPException, status
-
-from app.engine.scenario_loader import ScenarioLoader
+from app.auth.security import require_admin
+from app.models.orm import User, get_db
 from app.models.content_schemas import ObjectiveDefinition
+from app.repositories import content_repo
 
-router = APIRouter(prefix="/api/objectives", tags=["Objectives"])
-
-
-def get_loader() -> ScenarioLoader:
-    from app.main import scenario_loader
-    return scenario_loader
+router = APIRouter(prefix="/api/admin/objectives", tags=["Admin - Objectives"])
 
 
-@router.get("/", summary="List all objectives")
-def list_objectives(loader: ScenarioLoader = Depends(get_loader)):
-    return list(loader.all_objectives().values())
+@router.get("/", response_model=list[ObjectiveDefinition])
+def list_objectives(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    return content_repo.list_objectives(db)
 
 
-@router.get("/{objective_id}", summary="Get a single objective")
-def get_objective(objective_id: str, loader: ScenarioLoader = Depends(get_loader)):
-    try:
-        return loader.get_objective(objective_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+@router.get("/{id}", response_model=ObjectiveDefinition)
+def get_objective(id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    o = content_repo.get_objective(db, id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Objective not found")
+    return o
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, summary="Create an objective")
-def create_objective(objective: ObjectiveDefinition, loader: ScenarioLoader = Depends(get_loader)):
-    if objective.id in loader.all_objectives():
-        raise HTTPException(status_code=409, detail=f"Objective '{objective.id}' already exists.")
-    loader.save_objective(objective)
-    return objective
+@router.post("/", response_model=ObjectiveDefinition, status_code=201)
+def create_objective(body: ObjectiveDefinition, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    return content_repo.upsert_objective(db, body)
 
 
-@router.put("/{objective_id}", summary="Update an objective")
-def update_objective(
-    objective_id: str,
-    objective: ObjectiveDefinition,
-    loader: ScenarioLoader = Depends(get_loader),
-):
-    if objective.id != objective_id:
-        raise HTTPException(status_code=400, detail="ID mismatch between path and body.")
-    loader.save_objective(objective)
-    return objective
+@router.put("/{id}", response_model=ObjectiveDefinition)
+def update_objective(id: str, body: ObjectiveDefinition, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    body.id = id
+    return content_repo.upsert_objective(db, body)
 
 
-@router.delete("/{objective_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete an objective")
-def delete_objective(objective_id: str, loader: ScenarioLoader = Depends(get_loader)):
-    try:
-        loader.get_objective(objective_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Objective '{objective_id}' not found.")
-    loader.delete_objective(objective_id)
+@router.delete("/{id}", status_code=204)
+def delete_objective(id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    if not content_repo.delete_objective(db, id):
+        raise HTTPException(status_code=404, detail="Objective not found")

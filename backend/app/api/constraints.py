@@ -1,57 +1,40 @@
-"""Constraints API — CRUD for the constraints.json registry."""
+"""Admin — Constraints CRUD (DB-backed)."""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-from __future__ import annotations
-
-from fastapi import APIRouter, Depends, HTTPException, status
-
-from app.engine.scenario_loader import ScenarioLoader
+from app.auth.security import require_admin
+from app.models.orm import User, get_db
 from app.models.content_schemas import ConstraintDefinition
+from app.repositories import content_repo
 
-router = APIRouter(prefix="/api/constraints", tags=["Constraints"])
-
-
-def get_loader() -> ScenarioLoader:
-    from app.main import scenario_loader
-    return scenario_loader
+router = APIRouter(prefix="/api/admin/constraints", tags=["Admin - Constraints"])
 
 
-@router.get("/", summary="List all constraints")
-def list_constraints(loader: ScenarioLoader = Depends(get_loader)):
-    return list(loader.all_constraints().values())
+@router.get("/", response_model=list[ConstraintDefinition])
+def list_constraints(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    return content_repo.list_constraints(db)
 
 
-@router.get("/{constraint_id}", summary="Get a single constraint")
-def get_constraint(constraint_id: str, loader: ScenarioLoader = Depends(get_loader)):
-    try:
-        return loader.get_constraint(constraint_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+@router.get("/{id}", response_model=ConstraintDefinition)
+def get_constraint(id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    c = content_repo.get_constraint(db, id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Constraint not found")
+    return c
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, summary="Create a constraint")
-def create_constraint(constraint: ConstraintDefinition, loader: ScenarioLoader = Depends(get_loader)):
-    if constraint.id in loader.all_constraints():
-        raise HTTPException(status_code=409, detail=f"Constraint '{constraint.id}' already exists.")
-    loader.save_constraint(constraint)
-    return constraint
+@router.post("/", response_model=ConstraintDefinition, status_code=201)
+def create_constraint(body: ConstraintDefinition, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    return content_repo.upsert_constraint(db, body)
 
 
-@router.put("/{constraint_id}", summary="Update a constraint")
-def update_constraint(
-    constraint_id: str,
-    constraint: ConstraintDefinition,
-    loader: ScenarioLoader = Depends(get_loader),
-):
-    if constraint.id != constraint_id:
-        raise HTTPException(status_code=400, detail="ID mismatch between path and body.")
-    loader.save_constraint(constraint)
-    return constraint
+@router.put("/{id}", response_model=ConstraintDefinition)
+def update_constraint(id: str, body: ConstraintDefinition, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    body.id = id
+    return content_repo.upsert_constraint(db, body)
 
 
-@router.delete("/{constraint_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a constraint")
-def delete_constraint(constraint_id: str, loader: ScenarioLoader = Depends(get_loader)):
-    try:
-        loader.get_constraint(constraint_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Constraint '{constraint_id}' not found.")
-    loader.delete_constraint(constraint_id)
+@router.delete("/{id}", status_code=204)
+def delete_constraint(id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    if not content_repo.delete_constraint(db, id):
+        raise HTTPException(status_code=404, detail="Constraint not found")
