@@ -44,7 +44,6 @@ def _seed_admin() -> None:
     email    = os.getenv("ADMIN_EMAIL")
     password = os.getenv("ADMIN_PASSWORD")
     name     = os.getenv("ADMIN_DISPLAY_NAME", "Administrator")
-
     if not email or not password:
         logger.info("ADMIN_EMAIL/ADMIN_PASSWORD not set — skipping admin seed.")
         return
@@ -72,6 +71,53 @@ def _seed_admin() -> None:
         db.close()
 
 
+def _init_db() -> None:
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine.url import make_url
+    from app.models.orm import DATABASE_URL, create_tables
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    was_created = False
+    try:
+        url = make_url(DATABASE_URL)
+        db_name = url.database
+        
+        if db_name:
+            postgres_url = url.set(database="postgres")
+            engine = create_engine(postgres_url, isolation_level="AUTOCOMMIT")
+            
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :db"),
+                    {"db": db_name}
+                ).scalar()
+                
+                if not result:
+                    logger.info("Database '%s' does not exist. Creating...", db_name)
+                    conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+                    was_created = True
+                else:
+                    logger.info("Database '%s' already exists.", db_name)
+    except Exception as e:
+        logger.warning("Could not check or create database: %s", e)
+
+    logger.info("Creating database tables...")
+    create_tables()
+    
+    if was_created:
+        logger.info("Running initial JSON-to-DB migration script...")
+        script_path = Path(__file__).parent.parent / "scripts" / "migrate_json_to_db.py"
+        try:
+            subprocess.run([sys.executable, str(script_path)], check=True)
+            logger.info("Migration script completed successfully.")
+        except subprocess.CalledProcessError as e:
+            logger.error("Migration script failed: %s", e)
+        except Exception as e:
+            logger.error("Failed to run migration script: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
@@ -79,8 +125,7 @@ def _seed_admin() -> None:
 async def lifespan(app: FastAPI):
     global llm_service
 
-    logger.info("Creating database tables...")
-    create_tables()
+    _init_db()
 
     logger.info("Seeding admin account...")
     _seed_admin()
