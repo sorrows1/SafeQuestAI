@@ -15,10 +15,12 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import logging
 from sqlalchemy import (
     String, DateTime, JSON, Integer, ForeignKey, Text,
-    Boolean, Float, UniqueConstraint, create_engine,
+    Boolean, Float, UniqueConstraint, create_engine, text,
 )
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import (
     declarative_base, sessionmaker, Mapped,
     mapped_column, relationship,
@@ -26,13 +28,47 @@ from sqlalchemy.orm import (
 from dotenv import load_dotenv
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 env_path = Path(__file__).parent.parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path, override=True)
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg://user:password@db:5432/safe_quest"
+    "postgresql+psycopg://user:password@db:5432/SQ_DB"
 )
+
+def ensure_database_exists(db_url: str) -> bool:
+    """Check if target database exists in Postgres; if not, connect to default db and create it. Returns True if created."""
+    try:
+        url = make_url(db_url)
+        if not url.drivername.startswith("postgresql"):
+            return False
+
+        db_name = url.database
+        if not db_name or db_name in ("postgres", "template0", "template1"):
+            return False
+
+        default_url = url._replace(database="postgres")
+        default_engine = create_engine(default_url, isolation_level="AUTOCOMMIT")
+
+        created = False
+        with default_engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :dbname"),
+                {"dbname": db_name},
+            )
+            if not result.scalar():
+                logger.info("Database '%s' does not exist. Auto-creating database...", db_name)
+                conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+                logger.info("Database '%s' created successfully.", db_name)
+                created = True
+
+        default_engine.dispose()
+        return created
+    except Exception as exc:
+        logger.warning("Auto database creation check encountered an issue: %s", exc)
+        return False
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -256,5 +292,20 @@ class ContentPrompt(Base):
 
 
 def create_tables() -> None:
-    """Create all tables. Called on application startup."""
+    """Ensure database exists and create all tables. Called on application startup."""
+    created = ensure_database_exists(DATABASE_URL)
     Base.metadata.create_all(bind=engine)
+
+    if created:
+        logger.info("New database created. Running content migration script...")
+        import subprocess
+        import sys
+        script_path = Path(__file__).parent.parent.parent / "scripts" / "migrate_json_to_db.py"
+        try:
+            subprocess.run([sys.executable, str(script_path)], check=True)
+            logger.info("Content migration completed successfully.")
+        except subprocess.CalledProcessError as e:
+            logger.error("Failed to run content migration script: %s", e)
+        except FileNotFoundError:
+            logger.error("Migration script not found at %s", script_path)
+
