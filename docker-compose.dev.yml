@@ -17,7 +17,7 @@ services:
 
   backend:
     build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --reload --port 8000
+    command: sh -c "pip install --no-cache-dir -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --reload --port 8000"
     ports:
       - "8000:8000"
     environment:
@@ -50,7 +50,6 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:8000
       - BACKEND_PROXY_URL=http://backend:8000
     volumes:
       - ./frontend:/app

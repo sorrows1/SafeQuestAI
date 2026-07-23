@@ -1,0 +1,48 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "1. Start Database",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.dev.yml up -d db  && docker network connect safequestai_default $(hostname) || true",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "2. Start Backend",
+      "type": "shell",
+      "command": "until [ -f /tmp/.devcontainer_ready ] ; do echo \"Waiting for devcontainer postCreateCommand setup to finish...\"; sleep 2; done; python -m uvicorn app.main:app --host 0.0.0.0 --reload --port 8000 --env-file ../.env",
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "presentation": {
+        "group": "dev-servers",
+        "panel": "dedicated"
+      },
+      "dependsOn": ["1. Start Database"]
+    },
+    {
+      "label": "3. Start Frontend",
+      "type": "shell",
+      "command": "until [ -f /tmp/.devcontainer_ready ] ; do echo \"Waiting for devcontainer postCreateCommand setup to finish...\"; sleep 2; done; npm run dev -- --host 0.0.0.0",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "presentation": {
+        "group": "dev-servers",
+        "panel": "dedicated"
+      }
+    },
+    
+    {
+      "label": "Start all tasks",
+      "dependsOn": ["2. Start Backend", "3. Start Frontend"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}

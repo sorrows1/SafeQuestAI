@@ -18,7 +18,7 @@ from typing import Any, Optional
 import logging
 from sqlalchemy import (
     String, DateTime, JSON, Integer, ForeignKey, Text,
-    Boolean, Float, UniqueConstraint, create_engine, text,
+    Boolean, create_engine,
 )
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import (
@@ -92,13 +92,19 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    avatar_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)  # "user" | "admin"
-    google_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    avatar_url: Mapped[Optional[str]] = mapped_column(
+        String(512), nullable=True)
+    role: Mapped[str] = mapped_column(
+        String(20), default="user", nullable=False)  # "user" | "admin"
+    google_id: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -122,13 +128,19 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
-    scenario_id: Mapped[str] = mapped_column(String(255), index=True)  # hidden from public API
-    contact_name: Mapped[str] = mapped_column(String(100), nullable=False)    # e.g. "Alex"
-    contact_avatar: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), index=True)
+    scenario_id: Mapped[str] = mapped_column(
+        String(255), index=True)  # hidden from public API
+    contact_name: Mapped[str] = mapped_column(
+        String(100), nullable=False)    # e.g. "Alex"
+    contact_avatar: Mapped[Optional[str]] = mapped_column(
+        String(512), nullable=True)
     difficulty: Mapped[str] = mapped_column(String(50), default="Medium")
-    status: Mapped[str] = mapped_column(String(20), default="active")  # active|archived|deleted
-    engine_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # dialogue engine state
+    status: Mapped[str] = mapped_column(
+        String(20), default="active")  # active|archived|deleted
+    engine_state: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict)  # dialogue engine state
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -155,15 +167,18 @@ class UserMessage(Base):
     conversation_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("conversations.id"), index=True
     )
-    sender: Mapped[str] = mapped_column(String(20), nullable=False)  # "user" | "contact"
+    sender: Mapped[str] = mapped_column(
+        String(20), nullable=False)  # "user" | "contact"
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[Optional[dict[str, Any]]
+                          ] = mapped_column(JSON, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    conversation: Mapped[Conversation] = relationship("Conversation", back_populates="messages")
+    conversation: Mapped[Conversation] = relationship(
+        "Conversation", back_populates="messages")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -201,7 +216,8 @@ class ConversationMessage(Base):
     )
     sender: Mapped[str] = mapped_column(String(50))
     content: Mapped[str] = mapped_column(Text)
-    metadata_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[Optional[dict[str, Any]]
+                          ] = mapped_column(JSON, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -296,16 +312,8 @@ def create_tables() -> None:
     created = ensure_database_exists(DATABASE_URL)
     Base.metadata.create_all(bind=engine)
 
-    if created:
-        logger.info("New database created. Running content migration script...")
-        import subprocess
-        import sys
-        script_path = Path(__file__).parent.parent.parent / "scripts" / "migrate_json_to_db.py"
-        try:
-            subprocess.run([sys.executable, str(script_path)], check=True)
-            logger.info("Content migration completed successfully.")
-        except subprocess.CalledProcessError as e:
-            logger.error("Failed to run content migration script: %s", e)
-        except FileNotFoundError:
-            logger.error("Migration script not found at %s", script_path)
+
+
+
+
 
