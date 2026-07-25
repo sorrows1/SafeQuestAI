@@ -65,6 +65,9 @@ class ObjectiveDefinition(BaseModel):
     success_signals: list[str] = Field(default_factory=list)
     # Legacy / admin display only — kept for the admin UI, NOT injected into the LLM prompt
     description: str = ""
+    kind: Literal["system", "dialogue", "single_pass"] = "dialogue"
+    role_scope: Literal["initiator", "respondent", "either", "authoring", "system"] = "either"
+    version: str = "1.0.0"
 
 
 # ---------------------------------------------------------------------------
@@ -109,12 +112,9 @@ class PersonaDefinition(BaseModel):
     # ── Conversation style ───────────────────────────────────────────────────
     conversation_style: ConversationStyle = Field(default_factory=ConversationStyle)
 
-    # ── Legacy / admin display only ──────────────────────────────────────────
-    # Kept for backward compatibility and the admin UI. NOT injected into the LLM prompt.
+    # ── Admin display metadata ───────────────────────────────────────────────
     description: str = ""
-    background: str = ""
     tone: list[str] = Field(default_factory=list)
-    interests: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -142,3 +142,6 @@ class PromptTemplate(BaseModel):
     content: str
     variables: list[str] = Field(default_factory=list)
     description: str = ""
+    kind: Literal["system", "dialogue", "single_pass"] = "dialogue"
+    role_scope: Literal["initiator", "respondent", "either", "authoring", "system"] = "either"
+    version: str = "1.0.0"

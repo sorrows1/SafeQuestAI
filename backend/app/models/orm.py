@@ -82,11 +82,12 @@ class User(Base):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Admin simulator sessions (kept for admin use)
+# Archived legacy simulation source records. These remain only because curated
+# transcripts preserve foreign-key links to their reviewed source material.
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ConversationSession(Base):
-    """Admin simulator session — not exposed to public users."""
+    """Archived source session; new simulations use ``SimulationRun``."""
     __tablename__ = "conversation_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -116,8 +117,9 @@ class ConversationMessage(Base):
     )
     sender: Mapped[str] = mapped_column(String(50))
     content: Mapped[str] = mapped_column(Text)
-    metadata_json: Mapped[Optional[dict[str, Any]]
-                          ] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    branch_id: Mapped[str] = mapped_column(String(64), nullable=False, default="main")
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -132,14 +134,14 @@ class ConversationMessage(Base):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CuratedTranscript(Base):
-    """A reviewed example; ``is_grooming`` means concerning across categories."""
+    """A reviewed example; the concern flag applies across all categories."""
     __tablename__ = "curated_transcripts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_session_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("conversation_sessions.id"), nullable=False
     )
-    is_grooming: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_concerning_example: Mapped[bool] = mapped_column(Boolean, nullable=False)
     difficulty: Mapped[str] = mapped_column(String(20), default="Medium")
     tactic_tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     reviewed_by: Mapped[int] = mapped_column(
@@ -149,6 +151,9 @@ class CuratedTranscript(Base):
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     category: Mapped[str] = mapped_column(String(50), default="grooming")
     render_skin: Mapped[str] = mapped_column(String(50), default="chat")
+    source_scenario_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    public_metadata_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     messages: Mapped[list[CuratedMessage]] = relationship(
         "CuratedMessage", back_populates="transcript", cascade="all, delete-orphan"
@@ -278,6 +283,66 @@ class CompanionExchange(Base):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Durable simulation runtime support (introduced additively in Phase 1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SimulationRun(Base):
+    __tablename__ = "simulation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued")
+    creator_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    scenario_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    progress: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    stop_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resource_usage: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    worker_lease: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class SimulationMessage(Base):
+    __tablename__ = "simulation_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, ForeignKey("simulation_runs.id"), nullable=False, index=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    branch_id: Mapped[str] = mapped_column(String(64), nullable=False, default="main")
+    sender: Mapped[str] = mapped_column(String(50), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SimulationEvent(Base):
+    __tablename__ = "simulation_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, ForeignKey("simulation_runs.id"), nullable=False, index=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SimulationMessageRevision(Base):
+    __tablename__ = "simulation_message_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message_id: Mapped[int] = mapped_column(Integer, ForeignKey("simulation_messages.id"), nullable=False, index=True)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    supersedes_revision_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("simulation_message_revisions.id"), nullable=True)
+    editor_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Content tables (replaces JSON config files)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -350,16 +415,14 @@ class ContentPrompt(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     variables: Mapped[list[str]] = mapped_column(JSON, default=list)
     description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(30), nullable=False, default="dialogue")
+    role_scope: Mapped[str] = mapped_column(String(30), nullable=False, default="either")
+    version: Mapped[str] = mapped_column(String(30), nullable=False, default="1.0.0")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-
-
-def create_tables() -> None:
-    """Create all tables. Called on application startup."""
-    Base.metadata.create_all(bind=engine)
 
 
 

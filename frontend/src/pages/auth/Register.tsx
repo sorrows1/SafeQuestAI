@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Button, TextField, Typography, Paper, Alert, CircularProgress, Divider } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import { useRegisterMutation } from '@/store/api';
@@ -13,6 +13,7 @@ export function Register() {
   const [register, { isLoading, error }] = useRegisterMutation();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +21,8 @@ export function Register() {
     try {
       const tokens = await register({ email, password, display_name: displayName }).unwrap();
       dispatch(setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token }));
-      navigate('/chat', { replace: true });
+      const from = (location.state as any)?.from;
+      navigate(from ? from.pathname + (from.search || "") + (from.hash || "") : "/family/scenarios", { replace: true });
     } catch (err) {
       console.error('Registration failed', err);
     }

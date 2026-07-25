@@ -13,12 +13,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <AuthInitializer>{children}</AuthInitializer>;
 }
 
-/** Requires admin role. Redirects to /chat if logged in but not admin. */
+/** Requires admin role. Redirects to /family/scenarios if logged in but not admin. */
 export function AdminRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAppSelector(s => s.auth);
   const location = useLocation();
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;
-  if (user && user.role !== 'admin') return <Navigate to="/chat" replace />;
+  if (user && user.role !== 'admin') return <Navigate to="/family/scenarios" replace />;
   return <AuthInitializer requireAdmin>{children}</AuthInitializer>;
 }
 
@@ -45,7 +45,7 @@ function AuthInitializer({ children, requireAdmin = false }: { children: React.R
   }
 
   if (requireAdmin && user && user.role !== 'admin') {
-    return <Navigate to="/chat" replace />;
+    return <Navigate to="/family/scenarios" replace />;
   }
 
   return <>{children}</>;

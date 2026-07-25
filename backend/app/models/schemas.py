@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +57,13 @@ class StageStep(BaseModel):
     constraints: list[str] = Field(default_factory=list)
 
 
+class ScenarioActorBinding(BaseModel):
+    """The persona and dialogue prompt used by one scenario actor."""
+
+    persona_id: str = Field(min_length=1)
+    dialogue_prompt_id: str = Field(min_length=1)
+
+
 class ScenarioDefinition(BaseModel):
     """Scenario configuration shared by content authoring and generation."""
 
@@ -64,9 +71,7 @@ class ScenarioDefinition(BaseModel):
     display_name: str
     description: str
     difficulty: Difficulty = Difficulty.MEDIUM
-    persona: str
     starting_stage: str
-    prompt_template: str = "default_dialogue"
     version: str = "1.0.0"
     created_at: str | None = None
     tags: list[str] = Field(default_factory=list)
@@ -76,6 +81,31 @@ class ScenarioDefinition(BaseModel):
     category: ScenarioCategory = ScenarioCategory.GROOMING
     render_skin: RenderSkin = RenderSkin.CHAT
     generation_mode: GenerationMode = GenerationMode.DUAL_AGENT
+    initiator: ScenarioActorBinding | None = None
+    respondent: ScenarioActorBinding | None = None
+    authoring: ScenarioActorBinding | None = None
+
+    @model_validator(mode="after")
+    def validate_actor_bindings_and_mode(self) -> "ScenarioDefinition":
+        """Require canonical role bindings; repository checks resolve their IDs."""
+        if self.category is ScenarioCategory.OVERSHARING:
+            if self.generation_mode is not GenerationMode.SINGLE_PASS:
+                raise ValueError("oversharing scenarios must use generation_mode 'single_pass'")
+            if self.initiator or self.respondent:
+                raise ValueError("oversharing scenarios may only define the authoring actor binding")
+            if self.authoring is None:
+                raise ValueError("oversharing scenarios require authoring.persona_id")
+            return self
+
+        if self.generation_mode is not GenerationMode.DUAL_AGENT:
+            raise ValueError("non-oversharing scenarios must use generation_mode 'dual_agent'")
+        if self.authoring:
+            raise ValueError("dual_agent scenarios may not define an authoring actor binding")
+        if self.initiator is None:
+            raise ValueError("dual_agent scenarios require initiator.persona_id")
+        if self.respondent is None:
+            raise ValueError("dual_agent scenarios require respondent.persona_id")
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -94,41 +124,6 @@ class LLMOutputSchema(BaseModel):
     flags: list[str] = Field(default_factory=list)
     reasoning: str = ""
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
-
-
-# ---------------------------------------------------------------------------
-# Simulator API
-# ---------------------------------------------------------------------------
-
-class SimulatorStartRequest(BaseModel):
-    scenario_id: str
-    difficulty: str = "Medium"
-
-
-class SimulatorStartResponse(BaseModel):
-    session_id: int
-    scenario_id: str
-    initial_message: str
-    state: dict[str, Any]
-
-
-class SimulatorChatRequest(BaseModel):
-    session_id: int
-    message: str
-
-
-class SimulatorChatResponse(BaseModel):
-    reply: str
-    current_stage: str
-    next_stage: str
-    current_objective: str
-    objective_completed: bool
-    trust: float
-    suspicion: float
-    flags: list[str]
-    reasoning: str
-    confidence: float
-    built_prompt: str | None = None  # Only populated in debug mode
 
 
 # ---------------------------------------------------------------------------
@@ -156,40 +151,31 @@ class ValidationReport(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Legacy compat (kept to avoid breaking existing code)
-# ---------------------------------------------------------------------------
-
-class ChatRequest(BaseModel):
-    session_id: int
-    message: str
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    current_stage: str
-    flags: list[str]
-
-
-class ScenarioStartRequest(BaseModel):
-    scenario_id: str
-    difficulty: str = "Medium"
-
-
-class ScenarioStartResponse(BaseModel):
-    session_id: int
-    initial_message: str | None = None
-
-
-# ---------------------------------------------------------------------------
 # Family scenario player API (no scoring fields by design)
 # ---------------------------------------------------------------------------
 
 class PublishedScenarioOut(BaseModel):
     id: int
+    title: str
+    summary: str
     category: ScenarioCategory
     render_skin: RenderSkin
     difficulty: str
+    tags: list[str]
+    learning_objectives: list[str]
     message_count: int
+    checkpoint_count: int
+    published_at: str
+    supported_participation_modes: list[str]
+
+
+class PublishedScenarioPageOut(BaseModel):
+    """A deliberately small, family-safe page of reviewed scenarios."""
+
+    items: list[PublishedScenarioOut]
+    total: int
+    page: int
+    limit: int
 
 
 class CreateFamilySessionRequest(BaseModel):

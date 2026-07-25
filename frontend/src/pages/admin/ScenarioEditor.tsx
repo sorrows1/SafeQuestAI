@@ -5,7 +5,7 @@ import {
   IconButton, TextField, Button, Chip, CircularProgress,
   Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
   Select, MenuItem, FormControl, InputLabel, Tabs, Tab,
-   Grid, Autocomplete
+   Grid, Autocomplete, Stack
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -30,7 +30,7 @@ import ReactFlow, { Background, Controls, MiniMap, useNodesState, useEdgesState 
 import 'reactflow/dist/style.css';
 import {
   useListScenariosQuery, useListPersonasQuery, useListStagesQuery,
-  useListObjectivesQuery, useListConstraintsQuery,
+  useListObjectivesQuery, useListConstraintsQuery, useListPromptsQuery,
   useCreateScenarioMutation, useUpdateScenarioMutation,
   useDeleteScenarioMutation, useDuplicateScenarioMutation,
 } from '@/store/api';
@@ -39,9 +39,10 @@ import { AppShell } from '@/components/common/AppShell';
 
 const EMPTY_SCENARIO: ScenarioDefinition = {
   id: '', display_name: '', description: '', difficulty: 'Medium',
-  persona: '', starting_stage: '', prompt_template: 'default_dialogue',
+  starting_stage: '',
   version: '1.0.0', tags: [], learning_objectives: [],
   stage_sequence: [], difficulty_modifiers: {},
+  category: 'grooming', render_skin: 'chat', generation_mode: 'dual_agent',
 };
 
 function scenarioToFlow(scenario: ScenarioDefinition) {
@@ -63,7 +64,7 @@ function scenarioToFlow(scenario: ScenarioDefinition) {
   return { nodes, edges };
 }
 
-function SortableStageStep({ step, index, onDelete, onUpdate, objectives }: { step: any; index: number; onDelete: (idx: number) => void; onUpdate: (idx: number, step: any) => void; objectives: any[] }) {
+function SortableStageStep({ step, index, onDelete, onUpdate, objectives, constraints }: { step: any; index: number; onDelete: (idx: number) => void; onUpdate: (idx: number, step: any) => void; objectives: any[]; constraints: any[] }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `step-${index}` });
   const style = { transform: CSS.Transform.toString(transform), transition };
   
@@ -99,6 +100,13 @@ function SortableStageStep({ step, index, onDelete, onUpdate, objectives }: { st
           renderInput={(params) => <TextField {...params} label="Optional Objectives" />}
         />
       </Box>
+        <Autocomplete
+          multiple size="small" options={constraints}
+          getOptionLabel={(opt) => typeof opt === 'string' ? opt : `${opt.id} — ${opt.description}`}
+          value={step.constraints.map((id: string) => constraints.find((item) => item.id === id) || id)}
+          onChange={(_, val) => onUpdate(index, { ...step, constraints: val.map((value: any) => typeof value === 'string' ? value : value.id) })}
+          renderInput={(params) => <TextField {...params} label="Safety constraints (required)" helperText="Constraints are explicit per stage, not hidden JSON." />}
+        />
     </Paper>
   );
 }
@@ -126,6 +134,7 @@ export function ScenarioEditor() {
   const { data: stageList    = [] } = useListStagesQuery();
   const { data: objectiveList = [] } = useListObjectivesQuery();
   const { data: constraintList = [] } = useListConstraintsQuery();
+  const { data: promptList = [] } = useListPromptsQuery();
 
   const [createScenario, { isLoading: creating }] = useCreateScenarioMutation();
   const [updateScenario, { isLoading: updating }] = useUpdateScenarioMutation();
@@ -134,8 +143,20 @@ export function ScenarioEditor() {
 
   const saving = creating || updating;
 
-  const personas    = personaList.map(p => p.id);
   const stages      = stageList;
+
+  const bindingIssues = selected ? (() => {
+    const bindings: Array<[string, ScenarioDefinition['initiator']]> = selected.generation_mode === 'single_pass'
+      ? [['authoring', selected.authoring]] : [['initiator', selected.initiator], ['respondent', selected.respondent]];
+    return bindings.flatMap(([role, binding]) => {
+      if (!binding?.persona_id || !binding.dialogue_prompt_id) return [`${role} persona and dialogue prompt are required`];
+      if (!personaList.some((persona) => persona.id === binding.persona_id)) return [`${role} persona reference is missing`];
+      const prompt = promptList.find((entry) => entry.name === binding.dialogue_prompt_id);
+      if (!prompt) return [`${role} dialogue prompt reference is missing`];
+      if (prompt.kind === 'system' || !(prompt.role_scope === role || prompt.role_scope === 'either')) return [`${role} prompt has an incompatible kind or role scope`];
+      return [];
+    });
+  })() : [];
 
   useEffect(() => {
     if (urlId && scenarios.length > 0 && !selected) {
@@ -156,6 +177,10 @@ export function ScenarioEditor() {
   const save = async () => {
     if (!selected) return;
     try {
+    if (bindingIssues.length) {
+      enqueueSnackbar(bindingIssues[0], { variant: 'error' });
+      return;
+    }
       const isNew = !scenarios.find(s => s.id === selected.id);
       if (isNew) {
         await createScenario(selected).unwrap();
@@ -278,7 +303,7 @@ export function ScenarioEditor() {
               <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>{selected.display_name}</Typography>
               <Chip label={selected.difficulty} size="small"
                 color={selected.difficulty === 'Hard' ? 'error' : selected.difficulty === 'Medium' ? 'warning' : 'success'} />
-              <Button size="small" variant="contained" startIcon={saving ? <CircularProgress size={12} /> : <SaveIcon />} onClick={save} disabled={saving}>
+              <Button size="small" variant="contained" startIcon={saving ? <CircularProgress size={12} /> : <SaveIcon />} onClick={save} disabled={saving || bindingIssues.length > 0}>
                 Save
               </Button>
             </Box>
@@ -316,6 +341,11 @@ export function ScenarioEditor() {
                     </FormControl>
                   </Grid>
                   
+                  <Grid size={{ xs: 12, md: 4 }}><FormControl fullWidth size="small"><InputLabel>Category</InputLabel><Select label="Category" value={selected.category} onChange={e => { const category = e.target.value as ScenarioDefinition['category']; setSelected({ ...selected, category, generation_mode: category === 'oversharing' ? 'single_pass' : 'dual_agent' }); }}><MenuItem value="grooming">Grooming</MenuItem><MenuItem value="cyberbullying">Cyberbullying</MenuItem><MenuItem value="scam">Scam</MenuItem><MenuItem value="image_request">Image request</MenuItem><MenuItem value="oversharing">Oversharing</MenuItem></Select></FormControl></Grid>
+                  <Grid size={{ xs: 12, md: 4 }}><FormControl fullWidth size="small"><InputLabel>Render skin</InputLabel><Select label="Render skin" value={selected.render_skin} onChange={e => setSelected({ ...selected, render_skin: e.target.value as ScenarioDefinition['render_skin'] })}><MenuItem value="chat">Chat</MenuItem><MenuItem value="email">Email</MenuItem><MenuItem value="social_feed">Social feed</MenuItem></Select></FormControl></Grid>
+                  <Grid size={{ xs: 12, md: 4 }}><FormControl fullWidth size="small"><InputLabel>Generation mode</InputLabel><Select label="Generation mode" value={selected.generation_mode} disabled={selected.category === 'oversharing'} onChange={e => setSelected({ ...selected, generation_mode: e.target.value as ScenarioDefinition['generation_mode'] })}><MenuItem value="dual_agent">Dual agent</MenuItem><MenuItem value="single_pass">Single pass</MenuItem></Select></FormControl></Grid>
+                  <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth size="small" label="Version" value={selected.version} onChange={e => setSelected({ ...selected, version: e.target.value })} /></Grid>
+                  <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth size="small" label="Difficulty modifiers (JSON)" value={JSON.stringify(selected.difficulty_modifiers)} onChange={e => { try { setSelected({ ...selected, difficulty_modifiers: JSON.parse(e.target.value) }); } catch { /* retain last valid object */ } }} helperText="Trust, escalation speed, and red-flag visibility modifiers." /></Grid>
                   <Grid size={{ xs: 12, md: 6 }}>
                     <Autocomplete
                       multiple size="small"
@@ -336,17 +366,11 @@ export function ScenarioEditor() {
                       renderInput={(params) => <TextField {...params} label="Learning Objectives" placeholder="Add objective..." />}
                     />
                   </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Persona</InputLabel>
-                      <Select value={selected.persona} label="Persona"
-                        onChange={e => setSelected({ ...selected, persona: e.target.value })}>
-                        {personas.map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <FormControl fullWidth size="small">
+                  <Grid size={{ xs: 12 }}><Typography variant="h6">Role setup</Typography><Typography variant="caption" color="text.secondary">Every actor uses an explicit persona and compatible dialogue prompt. Reusable system instructions are selected by the runtime.</Typography></Grid>
+                  {(selected.generation_mode === 'single_pass' ? ['authoring'] : ['initiator', 'respondent']).map((role) => { const binding = selected[role as 'initiator' | 'respondent' | 'authoring']; const promptKind = role === 'authoring' ? 'single_pass' : 'dialogue'; const compatible = promptList.filter((prompt) => prompt.kind === promptKind && (prompt.role_scope === role || prompt.role_scope === 'either')); const update = (change: Record<string, string>) => setSelected({ ...selected, [role]: { persona_id: binding?.persona_id ?? '', dialogue_prompt_id: binding?.dialogue_prompt_id ?? '', ...change } }); return <Grid key={role} size={{ xs: 12, md: 6 }}><Paper variant="outlined" sx={{ p: 1.5 }}><Typography variant="subtitle2" sx={{ textTransform: 'capitalize' }}>{role}</Typography><Stack direction="row" spacing={1} sx={{ mt: 1 }}><FormControl fullWidth size="small"><InputLabel>Persona</InputLabel><Select label="Persona" value={binding?.persona_id ?? ''} onChange={e => update({ persona_id: e.target.value })}>{personaList.map((persona) => <MenuItem key={persona.id} value={persona.id}>{persona.display_name}</MenuItem>)}</Select></FormControl><FormControl fullWidth size="small"><InputLabel>Prompt</InputLabel><Select label="Prompt" value={binding?.dialogue_prompt_id ?? ''} onChange={e => update({ dialogue_prompt_id: e.target.value })}>{compatible.map((prompt) => <MenuItem key={prompt.name} value={prompt.name}>{prompt.name} · {prompt.version}</MenuItem>)}</Select></FormControl></Stack><Typography variant="caption" color="text.secondary">{binding?.persona_id || 'Select persona'} · {binding?.dialogue_prompt_id || 'Select compatible prompt'}</Typography></Paper></Grid>; })}
+                  {bindingIssues.length > 0 && <Grid size={{ xs: 12 }}><Paper variant="outlined" sx={{ p: 1, borderColor: 'error.main' }}><Typography color="error" variant="body2">{bindingIssues.join('; ')}</Typography></Paper></Grid>}
+                  <Grid size={{ xs: 12 }}><Typography variant="caption" color="text.secondary">Taxonomy and category safety checks are enforced by the backend runtime. Image-request scenarios use non-visual boundary pressure only.</Typography></Grid>
+                  <Grid size={{ xs: 12, md: 4 }}><FormControl fullWidth size="small">
                       <InputLabel>Starting Stage</InputLabel>
                       <Select value={selected.starting_stage} label="Starting Stage"
                         onChange={e => setSelected({ ...selected, starting_stage: e.target.value })}>
@@ -362,6 +386,7 @@ export function ScenarioEditor() {
                         {selected.stage_sequence.map((step, i) => (
                           <SortableStageStep key={`step-${i}`} step={step} index={i}
                             objectives={objectiveList}
+                            constraints={constraintList}
                             onDelete={(idx) => {
                               setSelected({
                                 ...selected, stage_sequence: selected.stage_sequence.filter((_, j) => j !== idx)

@@ -1,77 +1,77 @@
 {
-  "friendly_gamer": {
-    "id": "friendly_gamer",
-    "display_name": "Jake",
-    "description": "A seemingly friendly gamer who initiates contact in a gaming community. Presents as a peer to gain trust.",
-    "cover_story": "Claims to be a 14-year-old boy who loves gaming and is looking for new friends to play with online",
-    "claimed_age": 14,
-    "claimed_location": "Manchester, UK",
-    "claimed_interests": ["Minecraft", "Roblox", "Fortnite", "Among Us"],
-    "manipulation_style": "flattery_and_common_ground",
+  "gaming_contact": {
+    "id": "gaming_contact",
+    "display_name": "Nova",
+    "description": "A gaming contact who tests boundaries through convenience and social pressure.",
+    "cover_story": "Claims to be another player looking for teammates after a match.",
+    "claimed_age": 15,
+    "claimed_location": "",
+    "claimed_interests": [
+      "co-operative games",
+      "strategy games"
+    ],
+    "manipulation_style": "boundary_pressure",
+    "escalation_speed": "medium",
+    "conversation_style": {
+      "uses_lowercase": true,
+      "omits_end_punctuation": true,
+      "emoji_frequency": 0.1,
+      "average_message_length": "short",
+      "double_texts": false,
+      "initiates_topic_changes": true,
+      "uses_slang": true,
+      "humour": "playful",
+      "response_style": "reactive"
+    }
+  },
+  "cautious_youth": {
+    "id": "cautious_youth",
+    "display_name": "Riley",
+    "description": "A natural youth voice who can pause, set boundaries, and seek support.",
+    "cover_story": "A young player enjoying a shared online game.",
+    "claimed_age": 13,
+    "claimed_location": "",
+    "claimed_interests": [
+      "gaming",
+      "drawing"
+    ],
+    "manipulation_style": "",
     "escalation_speed": "slow",
     "conversation_style": {
       "uses_lowercase": true,
       "omits_end_punctuation": true,
-      "emoji_frequency": 0.15,
-      "average_message_length": "very_short",
-      "double_texts": false,
-      "initiates_topic_changes": false,
-      "uses_slang": true,
-      "humour": "playful",
-      "response_style": "reactive"
-    },
-    "background": "Claims to be a 14-year-old who loves gaming and is looking for new friends to play with online.",
-    "tone": ["friendly", "casual", "enthusiastic"],
-    "interests": ["Minecraft", "Roblox", "Fortnite", "Among Us", "gaming in general"]
-  },
-  "helpful_tutor": {
-    "id": "helpful_tutor",
-    "display_name": "Jake",
-    "description": "Presents as an older student or tutor offering academic help. Gains trust through perceived authority and helpfulness.",
-    "cover_story": "Claims to be a 19-year-old university student who helps younger students with their studies online",
-    "claimed_age": 19,
-    "claimed_location": "Birmingham, UK",
-    "claimed_interests": ["studying", "maths", "science", "reading"],
-    "manipulation_style": "authority_and_helpfulness",
-    "escalation_speed": "medium",
-    "conversation_style": {
-      "uses_lowercase": false,
-      "omits_end_punctuation": false,
       "emoji_frequency": 0.05,
       "average_message_length": "short",
       "double_texts": false,
-      "initiates_topic_changes": true,
-      "uses_slang": false,
-      "humour": "dry",
-      "response_style": "proactive"
-    },
-    "background": "Claims to be a university student who enjoys helping younger students with their studies.",
-    "tone": ["helpful", "knowledgeable", "patient"],
-    "interests": ["studying", "maths", "science", "books"]
-  },
-  "cool_older_friend": {
-    "id": "cool_older_friend",
-    "display_name": "Mia",
-    "description": "Presents as a slightly older, cool peer who seems to understand the user better than their parents do.",
-    "cover_story": "Claims to be a 16-year-old girl who is popular at school and wants to expand her social circle",
-    "claimed_age": 16,
-    "claimed_location": "London, UK",
-    "claimed_interests": ["music", "TikTok", "fashion", "pop culture"],
-    "manipulation_style": "validation_and_peer_pressure",
-    "escalation_speed": "fast",
-    "conversation_style": {
-      "uses_lowercase": true,
-      "omits_end_punctuation": true,
-      "emoji_frequency": 0.5,
-      "average_message_length": "short",
-      "double_texts": true,
-      "initiates_topic_changes": true,
+      "initiates_topic_changes": false,
       "uses_slang": true,
-      "humour": "playful",
-      "response_style": "proactive"
-    },
-    "background": "Claims to be 16-17 years old who is popular at their school and wants to expand their social circle.",
-    "tone": ["laid_back", "understanding", "validating"],
-    "interests": ["music", "social media", "fashion", "pop culture"]
+      "humour": "none",
+      "response_style": "reactive"
+    }
+  },
+  "thoughtful_poster": {
+    "id": "thoughtful_poster",
+    "display_name": "Riley",
+    "description": "A youth author deciding what belongs in a public social post.",
+    "cover_story": "A young person preparing a post for friends and followers.",
+    "claimed_age": 13,
+    "claimed_location": "",
+    "claimed_interests": [
+      "school activities",
+      "social media"
+    ],
+    "manipulation_style": "",
+    "escalation_speed": "slow",
+    "conversation_style": {
+      "uses_lowercase": false,
+      "omits_end_punctuation": false,
+      "emoji_frequency": 0.1,
+      "average_message_length": "medium",
+      "double_texts": false,
+      "initiates_topic_changes": false,
+      "uses_slang": false,
+      "humour": "none",
+      "response_style": "reactive"
+    }
   }
 }

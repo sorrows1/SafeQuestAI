@@ -20,8 +20,8 @@ export function Login() {
     try {
       const tokens = await login({ email, password }).unwrap();
       dispatch(setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token }));
-      const from = (location.state as any)?.from?.pathname || '/chat';
-      navigate(from, { replace: true });
+      const from = (location.state as any)?.from;
+      navigate(from ? from.pathname + (from.search || "") + (from.hash || "") : "/family/scenarios", { replace: true });
     } catch (err) {
       console.error('Login failed', err);
     }

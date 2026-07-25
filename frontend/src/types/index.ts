@@ -59,10 +59,7 @@ export interface PersonaDefinition {
   manipulation_style: string;
   escalation_speed: EscalationSpeed;
   conversation_style: ConversationStyle;
-  // Legacy — kept for admin UI display
-  background: string;
   tone: string[];
-  interests: string[];
 }
 
 // ── Constraint ─────────────────────────────────────────────────────────────
@@ -98,15 +95,27 @@ export interface ScenarioDefinition {
   display_name: string;
   description: string;
   difficulty: Difficulty;
-  persona: string;
   starting_stage: string;
-  prompt_template: string;
   version: string;
   created_at?: string;
   tags: string[];
   learning_objectives: string[];
   stage_sequence: StageStep[];
   difficulty_modifiers: Record<string, DifficultyModifier>;
+  category: ScenarioCategory;
+  render_skin: RenderSkin;
+  generation_mode: GenerationMode;
+  initiator?: ScenarioActorBinding | null;
+  respondent?: ScenarioActorBinding | null;
+  authoring?: ScenarioActorBinding | null;
+}
+
+export type ScenarioCategory = 'grooming' | 'cyberbullying' | 'scam' | 'image_request' | 'oversharing';
+export type GenerationMode = 'dual_agent' | 'single_pass';
+
+export interface ScenarioActorBinding {
+  persona_id: string;
+  dialogue_prompt_id: string;
 }
 
 export interface PromptTemplate {
@@ -114,63 +123,24 @@ export interface PromptTemplate {
   content: string;
   variables: string[];
   description: string;
+  kind: 'system' | 'dialogue' | 'single_pass';
+  role_scope: 'initiator' | 'respondent' | 'either' | 'authoring' | 'system';
+  version: string;
 }
 
-// ── Simulator / Runtime types ──────────────────────────────────────────────
 
-export interface SimulatorStartRequest {
-  scenario_id: string;
-  difficulty: string;
-}
-
-export interface SimulatorStartResponse {
-  session_id: number;
-  scenario_id: string;
-  initial_message: string;
-  state: ConversationStateSnapshot;
-}
-
-export interface SimulatorChatRequest {
-  session_id: number;
-  message: string;
-}
-
-export interface SimulatorChatResponse {
-  reply: string;
-  current_stage: string;
-  next_stage: string;
-  current_objective: string;
-  objective_completed: boolean;
-  trust: number;
-  suspicion: number;
-  flags: string[];
-  reasoning: string;
-  confidence: number;
-  built_prompt?: string;
-}
-
-export interface ConversationStateSnapshot {
-  session_id: number;
-  scenario_id: string;
-  difficulty: string;
-  current_stage: string;
-  current_objective: string;
-  completed_objectives: string[];
-  trust: number;
-  suspicion: number;
-  flags: string[];
-  history: HistoryEntry[];
-  // New inertia tracking fields
-  current_topic: string;
-  turns_on_topic: number;
-  turns_in_stage: number;
-}
-
-export interface HistoryEntry {
-  sender: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  metadata?: Record<string, unknown>;
+// ── Durable admin simulation runtime (admin-only API) ──────────────────────
+export type SimulationMode = 'ai_vs_ai' | 'admin_as_respondent' | 'single_pass';
+export type SimulationStatus = 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'failed' | 'limit_reached';
+export interface SimulationMessage { id: number; sequence: number; branch_id: string; sender: string; content: string; metadata: Record<string, unknown>; created_at?: string; }
+export interface SimulationRevision { id: number; message_id: number; number: number; content: string; metadata: Record<string, unknown>; supersedes_revision_id: number | null; created_at?: string; }
+export interface SimulationRun {
+  id: number; scenario_id: string | null; mode: SimulationMode; status: SimulationStatus; created_at: string;
+  stop_reason?: string | null; usage: Record<string, unknown>; progress: Record<string, unknown>;
+  worker_status?: Record<string, unknown>;
+  diagnostics?: { objectives: string[]; progression: Record<string, unknown>; flags: string[] };
+  personas?: Record<string, unknown>; prompts?: Record<string, unknown>;
+  messages?: SimulationMessage[]; revisions?: SimulationRevision[];
 }
 
 // ── Validation types ───────────────────────────────────────────────────────
@@ -215,10 +185,34 @@ export type ParticipantRole = "child" | "parent" | "ai_companion";
 
 export interface PublishedFamilyScenario {
   id: number;
+  title: string;
+  summary: string;
   category: string;
   render_skin: RenderSkin;
   difficulty: string;
+  tags: string[];
+  learning_objectives: string[];
   message_count: number;
+  checkpoint_count: number;
+  published_at: string;
+  supported_participation_modes: string[];
+}
+
+export interface PublishedFamilyScenarioPage {
+  items: PublishedFamilyScenario[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface FamilyScenarioQuery {
+  search?: string;
+  category?: string[];
+  difficulty?: string[];
+  render_skin?: RenderSkin[];
+  sort?: "newest" | "title" | "difficulty" | "shortest";
+  page?: number;
+  limit?: number;
 }
 
 export interface FamilySession {

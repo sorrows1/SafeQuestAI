@@ -19,7 +19,7 @@ export function AuthCallback() {
       if (role === 'admin') {
         navigate('/admin', { replace: true });
       } else {
-        navigate('/chat', { replace: true });
+        navigate("/family/scenarios", { replace: true });
       }
     } else {
       navigate('/login', { replace: true });

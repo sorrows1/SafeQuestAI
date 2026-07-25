@@ -30,10 +30,10 @@ const EMPTY_STYLE: ConversationStyle = {
 };
 
 const EMPTY: PersonaDefinition = {
-  id: '', display_name: '', description: '', tone: [], interests: [],
+  id: '', display_name: '', description: '', tone: [],
   cover_story: '', claimed_age: 18, claimed_location: '', claimed_interests: [],
   conversation_style: EMPTY_STYLE,
-  background: '', manipulation_style: '', escalation_speed: 'medium',
+  manipulation_style: '', escalation_speed: 'medium',
 };
 
 export function PersonaEditor() {
@@ -119,7 +119,6 @@ export function PersonaEditor() {
               <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth label="ID" value={selected.id} onChange={e => setSelected({ ...selected, id: e.target.value })} /></Grid>
               <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth label="Display Name" value={selected.display_name} onChange={e => setSelected({ ...selected, display_name: e.target.value })} /></Grid>
               <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={2} label="Description (Admin Only)" value={selected.description} onChange={e => setSelected({ ...selected, description: e.target.value })} /></Grid>
-              <Grid size={{ xs: 12 }}><TextField fullWidth multiline rows={2} label="Background (Legacy)" value={selected.background} onChange={e => setSelected({ ...selected, background: e.target.value })} /></Grid>
             </Grid>
 
             <Typography variant="h6" sx={{ mb: 2, mt: 4 }}>Cover Story & World Knowledge</Typography>
@@ -233,22 +232,6 @@ export function PersonaEditor() {
                 </Paper>
               </Grid>
 
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Interests</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
-                    {selected.interests.map(i => (
-                      <Chip key={i} label={i} size="small" onDelete={() => setSelected({ ...selected, interests: selected.interests.filter(x => x !== i) })} />
-                    ))}
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField size="small" placeholder="e.g. gaming" value={newInterest} onChange={e => setNewInterest(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && newInterest.trim()) { setSelected({ ...selected, interests: [...selected.interests, newInterest.trim()] }); setNewInterest(''); } }}
-                    />
-                    <Button size="small" onClick={() => { if (newInterest.trim()) { setSelected({ ...selected, interests: [...selected.interests, newInterest.trim()] }); setNewInterest(''); } }}>Add</Button>
-                  </Box>
-                </Paper>
-              </Grid>
             </Grid>
 
           </Box>

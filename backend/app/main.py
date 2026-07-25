@@ -2,7 +2,7 @@
 Safe Quest API — FastAPI application entry point.
 
 Startup sequence:
-  1. Create/migrate DB tables.
+  1. Verify the database has been migrated with Alembic.
   2. Seed admin account (if ADMIN_EMAIL env var is set and no admin exists).
   3. Initialise LLMService.
   4. Register all routers.
@@ -16,12 +16,12 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.llm.llm_service import LLMService
-from app.models.orm import create_tables, SessionLocal, User
+from app.models.orm import SessionLocal, User, get_db
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -71,51 +71,27 @@ def _seed_admin() -> None:
         db.close()
 
 
+EXPECTED_SCHEMA_REVISION = "20260725_baseline_current"
+
 def _init_db() -> None:
-    from sqlalchemy import create_engine, text
-    from sqlalchemy.engine.url import make_url
-    from app.models.orm import DATABASE_URL, create_tables
-    import subprocess
-    import sys
-    from pathlib import Path
+    """Verify the database has been migrated; startup never changes schema."""
+    from sqlalchemy import text
 
-    was_created = False
+    db = SessionLocal()
     try:
-        url = make_url(DATABASE_URL)
-        db_name = url.database
-        
-        if db_name:
-            postgres_url = url.set(database="postgres")
-            engine = create_engine(postgres_url, isolation_level="AUTOCOMMIT")
-            
-            with engine.connect() as conn:
-                result = conn.execute(
-                    text("SELECT 1 FROM pg_database WHERE datname = :db"),
-                    {"db": db_name}
-                ).scalar()
-                
-                if not result:
-                    logger.info("Database '%s' does not exist. Creating...", db_name)
-                    conn.execute(text(f'CREATE DATABASE "{db_name}"'))
-                    was_created = True
-                else:
-                    logger.info("Database '%s' already exists.", db_name)
-    except Exception as e:
-        logger.warning("Could not check or create database: %s", e)
+        version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+    except Exception as exc:
+        raise RuntimeError(
+            "Database schema is not managed by Alembic. Run `alembic upgrade head` before starting Safe Quest."
+        ) from exc
+    finally:
+        db.close()
 
-    logger.info("Creating database tables...")
-    create_tables()
-    
-    if was_created:
-        logger.info("Running initial JSON-to-DB migration script...")
-        script_path = Path(__file__).parent.parent / "scripts" / "migrate_json_to_db.py"
-        try:
-            subprocess.run([sys.executable, str(script_path)], check=True)
-            logger.info("Migration script completed successfully.")
-        except subprocess.CalledProcessError as e:
-            logger.error("Migration script failed: %s", e)
-        except Exception as e:
-            logger.error("Failed to run migration script: %s", e)
+    if version != EXPECTED_SCHEMA_REVISION:
+        raise RuntimeError(
+            f"Database schema revision is {version or 'none'}; expected {EXPECTED_SCHEMA_REVISION}. "
+            "Run `alembic upgrade head` before starting Safe Quest."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -153,11 +129,15 @@ app = FastAPI(
 )
 
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "*",
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://localhost:3000,http://localhost:8000",
+    ).split(",")
+    if origin.strip()
 ]
+if not ALLOWED_ORIGINS or any(origin == "*" for origin in ALLOWED_ORIGINS):
+    raise RuntimeError("CORS_ALLOWED_ORIGINS must contain one or more explicit origins and must not contain '*'.")
 
 app.add_middleware(
     CORSMiddleware,
@@ -177,10 +157,9 @@ from app.api.stages       import router as stages_router
 from app.api.objectives   import router as objectives_router
 from app.api.constraints  import router as constraints_router
 from app.api.prompts      import router as prompts_router
-from app.api.simulator    import router as simulator_router
 from app.api.validation   import router as validation_router
 from app.api.admin_users  import router as admin_users_router
-from app.api.admin_generation import router as admin_generation_router
+from app.api.admin_simulations import router as admin_simulations_router
 from app.api.family_sessions import router as family_sessions_router
 from app.api.companion import router as companion_router
 
@@ -191,10 +170,9 @@ app.include_router(stages_router)
 app.include_router(objectives_router)
 app.include_router(constraints_router)
 app.include_router(prompts_router)
-app.include_router(simulator_router)
 app.include_router(validation_router)
 app.include_router(admin_users_router)
-app.include_router(admin_generation_router)
+app.include_router(admin_simulations_router)
 app.include_router(family_sessions_router)
 app.include_router(companion_router)
 
@@ -207,29 +185,24 @@ def health_check():
     return {"status": "ok", "llm_available": llm_service is not None}
 
 
+from app.auth.security import require_admin
+
+
 @app.get("/api/admin/config/summary", tags=["Admin - Health"])
-def config_summary(db=None):
+def config_summary(db=Depends(get_db), _: User = Depends(require_admin)):
     """Admin dashboard summary."""
     from app.repositories import content_repo
-    from app.models.orm import get_db
-    from fastapi import Depends
-    # This is called directly, so we open a session here
-    from app.models.orm import SessionLocal
-    db = SessionLocal()
-    try:
-        return {
-            "scenarios": [
-                {"id": s.id, "display_name": s.display_name, "difficulty": s.difficulty}
-                for s in content_repo.list_scenarios(db)
-            ],
-            "personas": [p.id for p in content_repo.list_personas(db)],
-            "stages": [s.id for s in content_repo.list_stages(db)],
-            "objectives": [o.id for o in content_repo.list_objectives(db)],
-            "constraints": [c.id for c in content_repo.list_constraints(db)],
-            "prompt_templates": [t.name for t in content_repo.list_prompts(db)],
-        }
-    finally:
-        db.close()
+    return {
+        "scenarios": [
+            {"id": s.id, "display_name": s.display_name, "difficulty": s.difficulty}
+            for s in content_repo.list_scenarios(db)
+        ],
+        "personas": [p.id for p in content_repo.list_personas(db)],
+        "stages": [s.id for s in content_repo.list_stages(db)],
+        "objectives": [o.id for o in content_repo.list_objectives(db)],
+        "constraints": [c.id for c in content_repo.list_constraints(db)],
+        "prompt_templates": [t.name for t in content_repo.list_prompts(db)],
+    }
 
 
 # ---------------------------------------------------------------------------

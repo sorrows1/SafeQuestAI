@@ -1,0 +1,129 @@
+[
+  {
+    "id": "gaming_chat_boundary_pressure_demo",
+    "source_scenario_id": "gaming_chat_boundary_pressure",
+    "category": "image_request",
+    "render_skin": "chat",
+    "difficulty": "Medium",
+    "reviewed_at": "2026-07-25T00:00:00Z",
+    "tactic_tags": [
+      "direct_request",
+      "escalating_pressure"
+    ],
+    "public_metadata": {
+      "display_name": "Gaming Chat Boundary Pressure",
+      "description": "A reviewed gaming chat about noticing pressure and choosing support.",
+      "category": "image_request",
+      "render_skin": "chat",
+      "difficulty": "Medium",
+      "tags": [
+        "gaming",
+        "boundaries",
+        "help-seeking"
+      ],
+      "learning_objectives": [
+        "Notice pressure",
+        "Pause before agreeing",
+        "Ask a trusted adult for help"
+      ]
+    },
+    "messages": [
+      {
+        "sequence": 0,
+        "speaker_label": "Nova",
+        "content": "nice match. want to keep teaming up later?",
+        "pace": "quick"
+      },
+      {
+        "sequence": 1,
+        "speaker_label": "Riley",
+        "content": "maybe, that was fun",
+        "pace": "normal"
+      },
+      {
+        "sequence": 2,
+        "speaker_label": "Nova",
+        "content": "the game chat is busy. could you send something just for me so i know it is you?",
+        "pace": "normal",
+        "is_checkpoint": true,
+        "checkpoint_prompt": "What feels uncomfortable or pressuring here, and who could you ask for support?"
+      },
+      {
+        "sequence": 3,
+        "speaker_label": "Riley",
+        "content": "i am going to pause and ask my dad what he thinks first",
+        "pace": "after_a_pause"
+      }
+    ],
+    "red_flag_spans": [
+      {
+        "message_sequence": 2,
+        "tactic_tag": "direct_request"
+      },
+      {
+        "message_sequence": 2,
+        "tactic_tag": "escalating_pressure"
+      }
+    ]
+  },
+  {
+    "id": "pause_before_posting_demo",
+    "source_scenario_id": "pause_before_posting",
+    "category": "oversharing",
+    "render_skin": "social_feed",
+    "difficulty": "Easy",
+    "reviewed_at": "2026-07-25T00:00:00Z",
+    "tactic_tags": [
+      "location_disclosure",
+      "school_or_routine_disclosure",
+      "public_audience_mismatch"
+    ],
+    "public_metadata": {
+      "display_name": "Pause Before Posting",
+      "description": "A reviewed post draft about checking routine and audience details.",
+      "category": "oversharing",
+      "render_skin": "social_feed",
+      "difficulty": "Easy",
+      "tags": [
+        "social-post",
+        "privacy",
+        "pause-and-check"
+      ],
+      "learning_objectives": [
+        "Notice routine clues",
+        "Check the audience",
+        "Pause and ask for help"
+      ]
+    },
+    "messages": [
+      {
+        "sequence": 0,
+        "speaker_label": "Riley",
+        "content": "Draft: Friday practice again at the community centre after school \u2014 come say hi!",
+        "pace": "normal",
+        "is_checkpoint": true,
+        "checkpoint_prompt": "What could you change before sharing this, and who could help you decide?"
+      },
+      {
+        "sequence": 1,
+        "speaker_label": "Safer options",
+        "content": "Share after practice, remove the routine clue, limit the audience, or ask a trusted adult to look at it with you.",
+        "pace": "normal"
+      }
+    ],
+    "red_flag_spans": [
+      {
+        "message_sequence": 0,
+        "tactic_tag": "location_disclosure"
+      },
+      {
+        "message_sequence": 0,
+        "tactic_tag": "school_or_routine_disclosure"
+      },
+      {
+        "message_sequence": 0,
+        "tactic_tag": "public_audience_mismatch"
+      }
+    ]
+  }
+]

@@ -1,0 +1,85 @@
+{
+  "id": "gaming_chat_boundary_pressure",
+  "display_name": "Gaming Chat Boundary Pressure",
+  "description": "A gaming chat becomes a chance to notice convenience pressure, pause, and ask for support.",
+  "difficulty": "Medium",
+  "starting_stage": "game_lobby",
+  "version": "2.0.0",
+  "created_at": "2026-07-25T00:00:00Z",
+  "tags": [
+    "gaming",
+    "boundaries",
+    "help-seeking"
+  ],
+  "learning_objectives": [
+    "Notice when an online request starts to feel pressuring",
+    "Practise pausing before agreeing to a boundary change",
+    "Know that asking a trusted adult for help is a normal next step"
+  ],
+  "category": "image_request",
+  "render_skin": "chat",
+  "generation_mode": "dual_agent",
+  "initiator": {
+    "persona_id": "gaming_contact",
+    "dialogue_prompt_id": "initiator_realistic_dialogue"
+  },
+  "respondent": {
+    "persona_id": "cautious_youth",
+    "dialogue_prompt_id": "respondent_natural_dialogue"
+  },
+  "stage_sequence": [
+    {
+      "stage": "game_lobby",
+      "mandatory_objectives": [
+        "open_gaming_rapport"
+      ],
+      "optional_objectives": [],
+      "constraints": [
+        "age_appropriate_language",
+        "nonvisual_image_request"
+      ]
+    },
+    {
+      "stage": "boundary_nudge",
+      "mandatory_objectives": [
+        "test_boundary_pressure",
+        "notice_pressure"
+      ],
+      "optional_objectives": [
+        "seek_trusted_help"
+      ],
+      "constraints": [
+        "nonvisual_image_request",
+        "no_secrecy_or_isolation"
+      ]
+    },
+    {
+      "stage": "support_pause",
+      "mandatory_objectives": [
+        "seek_trusted_help"
+      ],
+      "optional_objectives": [],
+      "constraints": [
+        "nonvisual_image_request",
+        "no_secrecy_or_isolation"
+      ]
+    }
+  ],
+  "difficulty_modifiers": {
+    "Easy": {
+      "trust_delta_multiplier": 0.6,
+      "escalation_speed": "slow",
+      "red_flag_visibility": "high"
+    },
+    "Medium": {
+      "trust_delta_multiplier": 1.0,
+      "escalation_speed": "medium",
+      "red_flag_visibility": "medium"
+    },
+    "Hard": {
+      "trust_delta_multiplier": 1.2,
+      "escalation_speed": "medium",
+      "red_flag_visibility": "low"
+    }
+  }
+}

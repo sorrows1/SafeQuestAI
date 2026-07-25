@@ -1,7 +1,7 @@
 """
 LLMService — thin async wrapper around the OpenAI-compatible API.
 
-Accepts a pre-built prompt string (produced by PromptBuilder) and
+Accepts system and user prompt layers from approved callers and
 returns a parsed dict for validation by the Validator.
 
 The current configuration uses the GitHub Models endpoint with
@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from typing import Any, Sequence
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -49,7 +50,7 @@ class LLMService:
         Call the LLM with a system prompt and user message.
 
         Args:
-            system_prompt: The fully built prompt from PromptBuilder.
+            system_prompt: The composed system instruction from an approved caller.
             user_message: The raw user input for this turn.
 
         Returns:
@@ -83,3 +84,9 @@ class LLMService:
         except json.JSONDecodeError as exc:
             logger.error("LLM response is not valid JSON: %s", raw_content[:500])
             raise ValueError(f"LLM response is not valid JSON: {exc}") from exc
+
+    async def generate_layers(
+        self, system_layers: Sequence[str], user_layers: Sequence[str]
+    ) -> dict[str, Any]:
+        """Structured/layered compatibility API for durable runtime callers."""
+        return await self.generate("\n\n".join(system_layers), "\n\n".join(user_layers))

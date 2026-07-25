@@ -1,5 +1,6 @@
 import { createEntityAdapter, createSelector, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { RootState } from '@/store';
+import type { SimulationRun } from '@/types';
 
 export interface GenerationMessage {
   id: number;
@@ -10,7 +11,7 @@ export interface GenerationMessage {
   metadata?: Record<string, unknown>;
 }
 
-export type ViewerRunStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed';
+export type ViewerRunStatus = 'idle' | 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'limit_reached' | 'completed' | 'failed';
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 const messagesAdapter = createEntityAdapter<GenerationMessage>({
@@ -21,11 +22,13 @@ const initialState = messagesAdapter.getInitialState({
   runId: null as number | null,
   runStatus: 'idle' as ViewerRunStatus,
   connectionStatus: 'disconnected' as ConnectionStatus,
+  lastEventId: 0,
+  activeBranch: 'main',
   typing: false,
 });
 
 function normalizeStatus(status: string): ViewerRunStatus {
-  if (status === 'paused') return 'paused';
+  if (['paused', 'awaiting_admin', 'ready_for_review', 'approved', 'rejected', 'limit_reached'].includes(status)) return status as ViewerRunStatus;
   if (status === 'failed') return 'failed';
   if (['pending', 'approved', 'rejected', 'completed'].includes(status)) return 'completed';
   return 'running';
@@ -64,10 +67,18 @@ const simulationViewerSlice = createSlice({
       messagesAdapter.setAll(state, action.payload);
       state.typing = false;
     },
+    runHydrated(state, action: PayloadAction<SimulationRun>) {
+      state.runId = action.payload.id;
+      state.runStatus = normalizeStatus(action.payload.status);
+      state.activeBranch = String(action.payload.progress?.active_branch ?? 'main');
+      messagesAdapter.setAll(state, (action.payload.messages ?? []).map((message) => ({ id: message.id, sequence: message.sequence, sender: message.sender, content: message.content, pace: String(message.metadata.pace ?? 'normal'), metadata: message.metadata })));
+      state.typing = action.payload.status === 'running';
+    },
+    eventCursorUpdated(state, action: PayloadAction<number>) { state.lastEventId = Math.max(state.lastEventId, action.payload); },
   },
 });
 
-export const { connectionStatusChanged, messageReceived, messagesLoaded, runSelected, runStarted, runStatusChanged, typingStarted, typingStopped } = simulationViewerSlice.actions;
+export const { connectionStatusChanged, eventCursorUpdated, messageReceived, messagesLoaded, runHydrated, runSelected, runStarted, runStatusChanged, typingStarted, typingStopped } = simulationViewerSlice.actions;
 
 const messageSelectors = messagesAdapter.getSelectors<RootState>((state) => state.simulationViewer);
 export const selectSimulationMessages = messageSelectors.selectAll;
@@ -75,6 +86,8 @@ export const selectSimulationRunId = (state: RootState) => state.simulationViewe
 export const selectSimulationRunStatus = (state: RootState) => state.simulationViewer.runStatus;
 export const selectSimulationTyping = (state: RootState) => state.simulationViewer.typing;
 export const selectSimulationConnectionStatus = (state: RootState) => state.simulationViewer.connectionStatus;
+export const selectSimulationLastEventId = (state: RootState) => state.simulationViewer.lastEventId;
+export const selectSimulationActiveBranch = (state: RootState) => state.simulationViewer.activeBranch;
 export const selectSimulationHasMessages = createSelector(selectSimulationMessages, (messages) => messages.length > 0);
 
 export default simulationViewerSlice.reducer;

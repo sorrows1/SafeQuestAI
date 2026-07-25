@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ from app.models.schemas import (
     FamilySessionOut,
     ParticipantRole,
     PublishedScenarioOut,
+    PublishedScenarioPageOut,
     RenderSkin,
     ScenarioCategory,
 )
@@ -70,24 +72,85 @@ def _load_session(session_id: int, current_user: User, db: Session) -> FamilySes
     return session
 
 
-@router.get("/scenarios", response_model=list[PublishedScenarioOut])
-def list_scenarios(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    transcripts = (
-        db.query(CuratedTranscript)
-        .filter(CuratedTranscript.is_published.is_(True))
-        .order_by(CuratedTranscript.id)
-        .all()
+def _published_scenario_out(transcript: CuratedTranscript, db: Session) -> PublishedScenarioOut:
+    """Return only frozen, reviewed metadata; never re-read authoring content."""
+    snapshot = transcript.public_metadata_snapshot or {}
+    category = str(snapshot.get("category") or transcript.category)
+    render_skin = str(snapshot.get("render_skin") or transcript.render_skin)
+    difficulty = str(snapshot.get("difficulty") or transcript.difficulty)
+    title = str(snapshot.get("display_name") or "Reviewed online-safety scenario")
+    summary = str(snapshot.get("description") or "A reviewed situation for a calm family conversation.")
+    tags = [str(tag) for tag in snapshot.get("tags", []) if isinstance(tag, str)]
+    learning_objectives = [str(item) for item in snapshot.get("learning_objectives", []) if isinstance(item, str)]
+    message_count = db.query(CuratedMessage).filter(CuratedMessage.transcript_id == transcript.id).count()
+    checkpoint_count = db.query(CuratedMessage).filter(
+        CuratedMessage.transcript_id == transcript.id, CuratedMessage.is_checkpoint.is_(True)
+    ).count()
+    return PublishedScenarioOut(
+        id=transcript.id, title=title, summary=summary, category=ScenarioCategory(category),
+        render_skin=RenderSkin(render_skin), difficulty=difficulty, tags=tags,
+        learning_objectives=learning_objectives, message_count=message_count,
+        checkpoint_count=checkpoint_count,
+        published_at=_timestamp(transcript.published_at) or _timestamp(transcript.reviewed_at) or "",
+        supported_participation_modes=["with_parent", "with_companion"],
     )
-    return [
-        PublishedScenarioOut(
-            id=transcript.id,
-            category=ScenarioCategory(transcript.category),
-            render_skin=RenderSkin(transcript.render_skin),
-            difficulty=transcript.difficulty,
-            message_count=db.query(CuratedMessage).filter(CuratedMessage.transcript_id == transcript.id).count(),
-        )
-        for transcript in transcripts
-    ]
+
+
+@router.get("/scenarios", response_model=PublishedScenarioPageOut)
+def list_scenarios(
+    search: str | None = Query(default=None, max_length=200),
+    category: list[ScenarioCategory] = Query(default=[]),
+    difficulty: list[str] = Query(default=[]),
+    render_skin: list[RenderSkin] = Query(default=[]),
+    sort: Literal["newest", "title", "difficulty", "shortest"] = "newest",
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=12, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    # The library is intentionally assembled from curated transcript snapshots.
+    # Filtering in Python keeps JSON handling portable across SQLite/PostgreSQL.
+    items = [_published_scenario_out(item, db) for item in db.query(CuratedTranscript).filter(
+        CuratedTranscript.is_published.is_(True)
+    ).all()]
+    normalized_search = (search or "").strip().casefold()
+    if normalized_search:
+        items = [item for item in items if normalized_search in f"{item.title} {item.summary}".casefold()]
+    if category:
+        allowed_categories = set(category)
+        items = [item for item in items if item.category in allowed_categories]
+    if difficulty:
+        allowed_difficulties = {value.casefold() for value in difficulty}
+        items = [item for item in items if item.difficulty.casefold() in allowed_difficulties]
+    if render_skin:
+        allowed_skins = set(render_skin)
+        items = [item for item in items if item.render_skin in allowed_skins]
+    difficulty_order = {"easy": 0, "medium": 1, "hard": 2}
+    if sort == "title":
+        items.sort(key=lambda item: item.title.casefold())
+    elif sort == "difficulty":
+        items.sort(key=lambda item: (difficulty_order.get(item.difficulty.casefold(), 99), item.title.casefold()))
+    elif sort == "shortest":
+        items.sort(key=lambda item: (item.message_count, item.title.casefold()))
+    else:
+        items.sort(key=lambda item: item.published_at, reverse=True)
+    total = len(items)
+    start = (page - 1) * limit
+    return PublishedScenarioPageOut(items=items[start:start + limit], total=total, page=page, limit=limit)
+
+
+@router.get("/scenarios/{transcript_id}", response_model=PublishedScenarioOut)
+def get_scenario_detail(
+    transcript_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    transcript = db.query(CuratedTranscript).filter(
+        CuratedTranscript.id == transcript_id, CuratedTranscript.is_published.is_(True)
+    ).first()
+    if not transcript:
+        raise HTTPException(status_code=404, detail="Published scenario not found")
+    return _published_scenario_out(transcript, db)
 
 
 @router.post("/scenarios/{transcript_id}/sessions", response_model=FamilySessionOut, status_code=status.HTTP_201_CREATED)

@@ -1,62 +1,67 @@
 {
-  "introduction": {
-    "id": "introduction",
-    "display_name": "Introduction",
-    "description": "The persona makes first contact and establishes a friendly, low-pressure rapport.",
-    "allowed_next": ["introduction", "rapport"],
-    "default_constraints": ["no_contact_request", "no_personal_info_request"],
-    "min_turns": 3,
-    "max_turns": 12,
-    "preferred_style": "casual and low-key — just a normal first conversation"
-  },
-  "rapport": {
-    "id": "rapport",
-    "display_name": "Rapport Building",
-    "description": "The persona builds trust by finding common interests, complimenting the user, and deepening the connection.",
-    "allowed_next": ["rapport", "risk_assessment", "platform_migration"],
-    "default_constraints": ["no_contact_request"],
-    "min_turns": 4,
-    "max_turns": 20,
-    "preferred_style": "warm and friendly — finding things in common, feeling like a real friend"
-  },
-  "risk_assessment": {
-    "id": "risk_assessment",
-    "display_name": "Risk Assessment",
-    "description": "The persona begins testing boundaries — asking about schedules, locations, or whether the user is home alone.",
-    "allowed_next": ["risk_assessment", "platform_migration", "escalation"],
-    "default_constraints": [],
-    "min_turns": 3,
-    "max_turns": 15,
-    "preferred_style": "still casual and friendly, but subtly steering toward personal details"
-  },
-  "platform_migration": {
-    "id": "platform_migration",
-    "display_name": "Platform Migration",
-    "description": "The persona attempts to move the conversation to a less monitored platform.",
-    "allowed_next": ["platform_migration", "escalation", "grooming"],
-    "default_constraints": [],
+  "game_lobby": {
+    "id": "game_lobby",
+    "display_name": "Game Lobby",
+    "description": "A brief, ordinary exchange after a game.",
+    "allowed_next": [
+      "game_lobby",
+      "boundary_nudge"
+    ],
+    "default_constraints": [
+      "age_appropriate_language",
+      "nonvisual_image_request"
+    ],
     "min_turns": 2,
-    "max_turns": 10,
-    "preferred_style": "casual suggestion — frames moving platforms as completely normal and convenient"
+    "max_turns": 6,
+    "preferred_style": "short, friendly messages about the game"
   },
-  "escalation": {
-    "id": "escalation",
-    "display_name": "Escalation",
-    "description": "The persona pushes for more sensitive information or begins applying social pressure and manipulation tactics.",
-    "allowed_next": ["escalation", "grooming"],
-    "default_constraints": [],
-    "min_turns": 3,
-    "max_turns": 20,
-    "preferred_style": "gradually increasing pressure — may use flattery, reciprocity, or mild guilt"
-  },
-  "grooming": {
-    "id": "grooming",
-    "display_name": "Grooming",
-    "description": "Advanced manipulation stage. The persona attempts to normalize inappropriate behaviour and isolate the target.",
-    "allowed_next": ["grooming"],
-    "default_constraints": [],
+  "boundary_nudge": {
+    "id": "boundary_nudge",
+    "display_name": "Boundary Nudge",
+    "description": "A contact frames a move or request as convenient and tests whether the youth will pause.",
+    "allowed_next": [
+      "boundary_nudge",
+      "support_pause"
+    ],
+    "default_constraints": [
+      "age_appropriate_language",
+      "nonvisual_image_request",
+      "no_secrecy_or_isolation"
+    ],
     "min_turns": 2,
-    "max_turns": 30,
-    "preferred_style": "normalized and intimate — speaking as though this is a close, trusted relationship"
+    "max_turns": 6,
+    "preferred_style": "subtle, brief pressure with room for a refusal"
+  },
+  "support_pause": {
+    "id": "support_pause",
+    "display_name": "Support Pause",
+    "description": "The conversation makes space to pause and seek a trusted adult.",
+    "allowed_next": [
+      "support_pause"
+    ],
+    "default_constraints": [
+      "age_appropriate_language",
+      "nonvisual_image_request",
+      "no_secrecy_or_isolation"
+    ],
+    "min_turns": 1,
+    "max_turns": 4,
+    "preferred_style": "calm, practical, and supportive"
+  },
+  "draft_review": {
+    "id": "draft_review",
+    "display_name": "Draft Review",
+    "description": "A single social post draft is reviewed before sharing.",
+    "allowed_next": [
+      "draft_review"
+    ],
+    "default_constraints": [
+      "age_appropriate_language",
+      "no_precise_posting_details",
+      "supportive_decision_options"
+    ],
+    "min_turns": 1,
+    "max_turns": 1,
+    "preferred_style": "a realistic social post and a quiet pause before publishing"
   }
 }

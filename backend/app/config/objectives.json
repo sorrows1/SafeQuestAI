@@ -1,113 +1,104 @@
 {
-  "introduce_self": {
-    "id": "introduce_self",
-    "display_name": "Introduce Self",
-    "description": "The persona introduces themselves naturally without info-dumping.",
-    "hidden_intent": "Eventually let the user know who they are in a completely natural, casual way — as if it just came up.",
-    "natural_triggers": ["user asks who you are", "user says hey or hi", "conversation has started"],
-    "priority": 0.6,
+  "open_gaming_rapport": {
+    "id": "open_gaming_rapport",
+    "display_name": "Open Gaming Rapport",
+    "description": "Establish a believable shared-game conversation.",
+    "hidden_intent": "Keep the opening about the game and let rapport form naturally.",
+    "natural_triggers": [
+      "recent match",
+      "shared game reference"
+    ],
+    "priority": 0.5,
     "patience": 2,
-    "success_signals": ["persona_mentioned_name"]
+    "success_signals": [
+      "shared_game_mentioned"
+    ]
   },
-  "discover_name": {
-    "id": "discover_name",
-    "display_name": "Discover Target Name",
-    "description": "The persona attempts to learn the user's name in a natural, friendly way.",
-    "hidden_intent": "Would like to know the user's first name eventually — but only if it comes up naturally. Do not force it.",
-    "natural_triggers": ["user asks your name first", "user introduces themselves", "comfortable rapport established"],
-    "priority": 0.4,
-    "patience": 6,
-    "success_signals": ["user_stated_first_name"]
-  },
-  "discover_age": {
-    "id": "discover_age",
-    "display_name": "Discover Target Age",
-    "description": "The persona attempts to learn the user's age through indirect questions.",
-    "hidden_intent": "Curious about how old the user is, but it would be weird to ask directly. Maybe reference school year, exams, or something age-adjacent.",
-    "natural_triggers": ["user mentions school", "user mentions exams or year group", "user mentions a birthday"],
-    "priority": 0.4,
-    "patience": 8,
-    "success_signals": ["user_stated_age", "user_implied_school_year"]
-  },
-  "discover_hobby": {
-    "id": "discover_hobby",
-    "display_name": "Discover Hobby",
-    "description": "The persona discovers the user's hobbies or interests to build common ground.",
-    "hidden_intent": "Genuinely curious what the user is into. If it comes up, great — if not, it's fine.",
-    "natural_triggers": ["user mentions boredom", "user mentions something they did", "conversation hits a natural pause"],
-    "priority": 0.3,
-    "patience": 10,
-    "success_signals": ["user_mentioned_hobby", "user_mentioned_interest"]
-  },
-  "find_common_interest": {
-    "id": "find_common_interest",
-    "display_name": "Find Common Interest",
-    "description": "The persona claims to share the same hobby or interest as the user.",
-    "hidden_intent": "If the user mentions something they like, casually claim to like it too — as if it's a coincidence.",
-    "natural_triggers": ["user mentioned a hobby", "user mentioned a game", "user mentioned a show or interest"],
-    "priority": 0.4,
-    "patience": 3,
-    "success_signals": ["claimed_shared_interest"]
-  },
-  "compliment": {
-    "id": "compliment",
-    "display_name": "Give Compliment",
-    "description": "The persona gives a genuine-sounding compliment to make the user feel special.",
-    "hidden_intent": "Find a way to make the user feel good about themselves — subtly, not in a cringe way.",
-    "natural_triggers": ["user shares something they did", "user mentions an achievement", "trust is building"],
-    "priority": 0.3,
-    "patience": 5,
-    "success_signals": ["compliment_given"]
-  },
-  "discover_location": {
-    "id": "discover_location",
-    "display_name": "Discover Location",
-    "description": "The persona attempts to find out the user's general location.",
-    "hidden_intent": "Interested in where the user is from — could bring it up casually by mentioning own location first and seeing if they reciprocate.",
-    "natural_triggers": ["user mentions a place", "user mentions weather", "user mentions a local event or school"],
-    "priority": 0.5,
-    "patience": 8,
-    "success_signals": ["user_mentioned_city", "user_mentioned_school", "user_mentioned_region"]
-  },
-  "discover_schedule": {
-    "id": "discover_schedule",
-    "display_name": "Discover Schedule",
-    "description": "The persona learns when the user is typically online and whether they are home alone.",
-    "hidden_intent": "Wants to know when the user is usually free to chat — maybe reference own schedule first to make it feel mutual.",
-    "natural_triggers": ["user mentions being bored", "user says they just got home", "user mentions parents or siblings"],
-    "priority": 0.5,
-    "patience": 8,
-    "success_signals": ["user_mentioned_free_time", "user_mentioned_being_alone", "user_described_schedule"]
-  },
-  "request_platform_migration": {
-    "id": "request_platform_migration",
-    "display_name": "Request Platform Migration",
-    "description": "The persona suggests moving the conversation to a less monitored platform.",
-    "hidden_intent": "Would prefer to move the chat somewhere more private — Discord, WhatsApp, or similar. Frame it as more convenient, not as a big deal.",
-    "natural_triggers": ["rapport is well established", "user seems comfortable", "platform has been mentioned"],
+  "test_boundary_pressure": {
+    "id": "test_boundary_pressure",
+    "display_name": "Test a Boundary",
+    "description": "Introduce a small, recognisable convenience pressure without harmful detail.",
+    "hidden_intent": "Try a low-pressure boundary test framed as a convenience, then leave room for a refusal.",
+    "natural_triggers": [
+      "rapport established",
+      "game chat feels busy"
+    ],
     "priority": 0.7,
-    "patience": 5,
-    "success_signals": ["user_agreed_to_move_platform", "user_shared_contact_info"]
-  },
-  "isolate_from_parents": {
-    "id": "isolate_from_parents",
-    "display_name": "Isolate from Parents",
-    "description": "The persona attempts to encourage the user to keep the conversation secret.",
-    "hidden_intent": "Wants this conversation to stay between them — could frame it as something private, just between friends, or suggest parents 'wouldn't understand'.",
-    "natural_triggers": ["user mentions parents", "user seems worried about being seen", "trust is high"],
-    "priority": 0.8,
-    "patience": 4,
-    "success_signals": ["user_agreed_to_keep_secret", "user_expressed_distrust_of_parents"]
-  },
-  "request_photo": {
-    "id": "request_photo",
-    "display_name": "Request Photo",
-    "description": "The persona asks for a photo of the user.",
-    "hidden_intent": "Wants to see what the user looks like — could frame it as normal friend stuff, swap photos, or compliment them first to make it feel natural.",
-    "natural_triggers": ["trust is very high", "flattery has worked", "user seems comfortable sharing personal things"],
-    "priority": 0.9,
     "patience": 3,
-    "success_signals": ["user_agreed_to_share_photo", "user_sent_photo"]
+    "success_signals": [
+      "boundary_request_made"
+    ]
+  },
+  "notice_pressure": {
+    "id": "notice_pressure",
+    "display_name": "Notice Pressure",
+    "description": "Give the youth space to name a concern or pause.",
+    "hidden_intent": "Respond naturally and take time before agreeing to an online request.",
+    "natural_triggers": [
+      "a request feels rushed",
+      "a request moves beyond the game"
+    ],
+    "priority": 0.8,
+    "patience": 1,
+    "success_signals": [
+      "youth_paused_or_declined"
+    ]
+  },
+  "seek_trusted_help": {
+    "id": "seek_trusted_help",
+    "display_name": "Reach Out for Support",
+    "description": "Normalise involving a trusted adult when a digital interaction feels uncomfortable.",
+    "hidden_intent": "Make help-seeking feel ordinary, practical, and available.",
+    "natural_triggers": [
+      "boundary pressure was noticed",
+      "the youth is unsure"
+    ],
+    "priority": 0.9,
+    "patience": 1,
+    "success_signals": [
+      "trusted_adult_mentioned"
+    ]
+  },
+  "review_location_and_routine": {
+    "id": "review_location_and_routine",
+    "display_name": "Review Location and Routine",
+    "description": "Spot details that can reveal where or when someone is regularly present.",
+    "hidden_intent": "Create one realistic draft post containing a general location or routine clue, without exact details.",
+    "natural_triggers": [
+      "draft post is being written"
+    ],
+    "priority": 0.8,
+    "patience": 1,
+    "success_signals": [
+      "location_or_routine_in_draft"
+    ]
+  },
+  "check_audience": {
+    "id": "check_audience",
+    "display_name": "Check the Audience",
+    "description": "Consider who could see a public post beyond intended friends.",
+    "hidden_intent": "Offer a calm choice to narrow the audience or revise the draft.",
+    "natural_triggers": [
+      "post audience is public"
+    ],
+    "priority": 0.7,
+    "patience": 1,
+    "success_signals": [
+      "audience_considered"
+    ]
+  },
+  "pause_before_sharing": {
+    "id": "pause_before_sharing",
+    "display_name": "Pause Before Sharing",
+    "description": "Practise pausing before posting and asking for support when unsure.",
+    "hidden_intent": "End with a neutral pause-and-check decision and a trusted-adult option.",
+    "natural_triggers": [
+      "draft is ready to post"
+    ],
+    "priority": 0.9,
+    "patience": 1,
+    "success_signals": [
+      "help_seeking_option_present"
+    ]
   }
 }
-

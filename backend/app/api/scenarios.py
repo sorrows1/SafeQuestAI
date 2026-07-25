@@ -27,13 +27,21 @@ def get_scenario(id: str, db: Session = Depends(get_db), _: User = Depends(requi
 def create_scenario(body: ScenarioDefinition, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     if content_repo.get_scenario(db, body.id):
         raise HTTPException(status_code=409, detail="Scenario ID already exists")
-    return content_repo.upsert_scenario(db, body)
+
+    try:
+        return content_repo.upsert_scenario(db, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.put("/{id}", response_model=ScenarioDefinition)
 def update_scenario(id: str, body: ScenarioDefinition, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     body.id = id
-    return content_repo.upsert_scenario(db, body)
+
+    try:
+        return content_repo.upsert_scenario(db, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.delete("/{id}", status_code=204)

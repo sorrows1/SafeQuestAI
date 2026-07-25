@@ -3,11 +3,9 @@ import type { RootState } from '@/store';
 import type {
   ScenarioDefinition, PersonaDefinition, StageDefinition,
   ObjectiveDefinition, ConstraintDefinition, PromptTemplate,
-  SimulatorStartRequest, SimulatorStartResponse,
-  SimulatorChatRequest, SimulatorChatResponse,
   ValidationReport, ConfigSummary,
-  PublishedFamilyScenario, FamilySession, FamilyMessage, CheckpointResponse,
-  ConversationGuide, ParticipantRole, CompanionCheckpointResult, SupportResource,
+  PublishedFamilyScenario, PublishedFamilyScenarioPage, FamilyScenarioQuery, FamilySession, FamilyMessage, CheckpointResponse,
+  ConversationGuide, ParticipantRole, CompanionCheckpointResult, SupportResource, SimulationRun, SimulationMode,
 } from '@/types';
 
 // ── Public/auth types ────────────────────────────────────────────────────────
@@ -25,7 +23,7 @@ export const safeQuestApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Scenario', 'Persona', 'Stage', 'Objective', 'Constraint', 'Prompt', 'User', 'GenerationReview', 'FamilySession'],
+  tagTypes: ['Scenario', 'Persona', 'Stage', 'Objective', 'Constraint', 'Prompt', 'User', 'Simulation', 'FamilySession'],
 
   endpoints: (build) => ({
 
@@ -41,8 +39,21 @@ export const safeQuestApi = createApi({
     }),
 
     // ── Family scenario player (curated content only; no generator access) ──
-    getFamilyScenarios: build.query<PublishedFamilyScenario[], void>({
-      query: () => "/family/scenarios",
+    getFamilyScenarios: build.query<PublishedFamilyScenarioPage, FamilyScenarioQuery>({
+      query: (filters) => {
+        const params = new URLSearchParams();
+        if (filters.search) params.set("search", filters.search);
+        filters.category?.forEach((value) => params.append("category", value));
+        filters.difficulty?.forEach((value) => params.append("difficulty", value));
+        filters.render_skin?.forEach((value) => params.append("render_skin", value));
+        if (filters.sort) params.set("sort", filters.sort);
+        if (filters.page) params.set("page", String(filters.page));
+        if (filters.limit) params.set("limit", String(filters.limit));
+        return "/family/scenarios?" + params.toString();
+      },
+    }),
+    getFamilyScenario: build.query<PublishedFamilyScenario, number>({
+      query: (transcriptId) => "/family/scenarios/" + transcriptId,
     }),
     createFamilySession: build.mutation<FamilySession, { transcriptId: number; parent_user_id?: number; detective_mode: boolean }>({
       query: ({ transcriptId, ...body }) => ({ url: "/family/scenarios/" + transcriptId + "/sessions", method: "POST", body }),
@@ -82,14 +93,20 @@ export const safeQuestApi = createApi({
       query: () => '/admin/config/summary',
     }),
 
-    // ── Admin generation / review ─────────────────────────────────────────
-    startGenerationRun: build.mutation<GenerationRunOut, GenerationRunConfig>({ query: (body) => ({ url: '/admin/generation/runs', method: 'POST', body }) }),
-    pauseGenerationRun: build.mutation<GenerationRunOut, number>({ query: (runId) => ({ url: '/admin/generation/runs/' + runId + '/pause', method: 'POST' }) }),
-    resumeGenerationRun: build.mutation<GenerationRunOut, number>({ query: (runId) => ({ url: '/admin/generation/runs/' + runId + '/resume', method: 'POST' }) }),
-    regenerateGenerationRun: build.mutation<GenerationRunOut, number>({ query: (runId) => ({ url: '/admin/generation/runs/' + runId + '/regenerate-last-turn', method: 'POST' }) }),
-    getGenerationReviewQueue: build.query<GenerationReviewItem[], void>({ query: () => '/admin/generation/review-queue', providesTags: ['GenerationReview'] }),
-    getGenerationReviewItem: build.query<GenerationReviewDetail, number>({ query: (runId) => `/admin/generation/review-queue/${runId}`, providesTags: (_r, _e, runId) => [{ type: "GenerationReview", id: runId }] }),
-    decideGenerationRun: build.mutation<GenerationRunOut, { runId: number; decision: ReviewDecision }>({ query: ({ runId, decision }) => ({ url: '/admin/generation/runs/' + runId + '/decision', method: 'POST', body: decision }), invalidatesTags: ['GenerationReview'] }),
+    // ── Durable admin simulations ───────────────────────────────────────────
+    createSimulation: build.mutation<Pick<SimulationRun, 'id' | 'status' | 'mode'>, { scenario_id: string; mode: SimulationMode; is_negative_example?: boolean }>({ query: (body) => ({ url: '/admin/simulations', method: 'POST', body }), invalidatesTags: ['Simulation'] }),
+    listSimulations: build.query<SimulationRun[], void>({ query: () => '/admin/simulations', providesTags: ['Simulation'] }),
+    getSimulation: build.query<SimulationRun, { runId: number; debug?: boolean }>({ query: ({ runId, debug = true }) => `/admin/simulations/${runId}?debug_detail=${debug}`, providesTags: (_result, _error, { runId }) => [{ type: 'Simulation', id: runId }] }),
+    pauseSimulation: build.mutation<Pick<SimulationRun, 'id' | 'status'>, number>({ query: (runId) => ({ url: `/admin/simulations/${runId}/pause`, method: 'POST' }) }),
+    resumeSimulation: build.mutation<Pick<SimulationRun, 'id' | 'status'>, { runId: number; extend_limits?: boolean }>({ query: ({ runId, extend_limits = false }) => ({ url: `/admin/simulations/${runId}/resume`, method: 'POST', body: { extend_limits } }) }),
+    stopSimulation: build.mutation<Pick<SimulationRun, 'id' | 'status'>, number>({ query: (runId) => ({ url: `/admin/simulations/${runId}/stop`, method: 'POST' }) }),
+    respondToSimulation: build.mutation<Pick<SimulationRun, 'id' | 'status'>, { runId: number; content: string }>({ query: ({ runId, content }) => ({ url: `/admin/simulations/${runId}/respond`, method: 'POST', body: { content } }) }),
+    editSimulationMessage: build.mutation<SimulationRun, { runId: number; messageId: number; content: string; reason?: string }>({ query: ({ runId, messageId, ...body }) => ({ url: `/admin/simulations/${runId}/messages/${messageId}`, method: 'PATCH', body }) }),
+    regenerateSimulationLastTurn: build.mutation<Pick<SimulationRun, 'id' | 'status'>, number>({ query: (runId) => ({ url: `/admin/simulations/${runId}/regenerate-last-turn`, method: 'POST' }) }),
+    decideSimulation: build.mutation<{ id: number; status: SimulationRun['status']; curated_transcript_id: number | null }, { runId: number; status: 'approved' | 'rejected'; reviewer_notes?: string }>({ query: ({ runId, ...body }) => ({ url: `/admin/simulations/${runId}/decision`, method: 'POST', body }), invalidatesTags: ['Simulation'] }),
+    getSimulationReviewQueue: build.query<SimulationRun[], void>({ query: () => '/admin/review-queue', providesTags: ['Simulation'] }),
+    publishCuratedTranscript: build.mutation<{ id: number; is_published: boolean }, number>({ query: (id) => ({ url: `/admin/curated-transcripts/${id}/publish`, method: 'POST' }) }),
+
 
     // ── Admin Scenarios ─────────────────────────────────────────────────────
     listScenarios: build.query<ScenarioDefinition[], void>({
@@ -223,14 +240,6 @@ export const safeQuestApi = createApi({
       query: ({ name, vars }) => ({ url: `/admin/prompts/${name}/preview`, method: 'POST', body: vars }),
     }),
 
-    // ── Admin Simulator ─────────────────────────────────────────────────────
-    startSession: build.mutation<SimulatorStartResponse, SimulatorStartRequest>({
-      query: (body) => ({ url: '/admin/simulator/start', method: 'POST', body }),
-    }),
-    chatMessage: build.mutation<SimulatorChatResponse, { req: SimulatorChatRequest; debug?: boolean }>({
-      query: ({ req, debug = false }) => ({ url: `/admin/simulator/chat?debug=${debug}`, method: 'POST', body: req }),
-    }),
-
     // ── Admin Validation ────────────────────────────────────────────────────
     validateAll: build.query<ValidationReport, void>({
       query: () => '/admin/validation/',
@@ -253,12 +262,14 @@ export const safeQuestApi = createApi({
 
 export const {
   useRegisterMutation, useLoginMutation, useGetMeQuery,
-  useGetFamilyScenariosQuery, useCreateFamilySessionMutation, useGetFamilyMessagesQuery,
+  useGetFamilyScenariosQuery, useGetFamilyScenarioQuery, useCreateFamilySessionMutation, useGetFamilyMessagesQuery,
   useSubmitCheckpointResponseMutation, useSubmitCompanionCheckpointMutation, useExplainWithCompanionMutation, useCompleteFamilySessionMutation, useGetConversationGuideQuery,
   useGetSummaryQuery,
-  useStartGenerationRunMutation, usePauseGenerationRunMutation, useResumeGenerationRunMutation,
-  useRegenerateGenerationRunMutation, useGetGenerationReviewQueueQuery,
-  useGetGenerationReviewItemQuery, useDecideGenerationRunMutation,
+  useCreateSimulationMutation, useListSimulationsQuery, useGetSimulationQuery,
+  usePauseSimulationMutation, useResumeSimulationMutation, useStopSimulationMutation,
+  useRespondToSimulationMutation, useEditSimulationMessageMutation,
+  useRegenerateSimulationLastTurnMutation, useDecideSimulationMutation,
+  useGetSimulationReviewQueueQuery, usePublishCuratedTranscriptMutation,
   useListScenariosQuery, useGetScenarioQuery,
   useCreateScenarioMutation, useUpdateScenarioMutation, useDeleteScenarioMutation, useDuplicateScenarioMutation,
   useListPersonasQuery, useCreatePersonaMutation, useUpdatePersonaMutation, useDeletePersonaMutation,
@@ -266,14 +277,6 @@ export const {
   useListObjectivesQuery, useCreateObjectiveMutation, useUpdateObjectiveMutation, useDeleteObjectiveMutation,
   useListConstraintsQuery, useCreateConstraintMutation, useUpdateConstraintMutation, useDeleteConstraintMutation,
   useListPromptsQuery, useCreatePromptMutation, useUpdatePromptMutation, useDeletePromptMutation, usePreviewPromptMutation,
-  useStartSessionMutation, useChatMessageMutation,
   useLazyValidateAllQuery, useLazyValidateScenarioQuery,
   useListUsersQuery, usePatchUserMutation,
 } = safeQuestApi;
-
-export interface GenerationRunConfig { scenario_id: string; difficulty?: string; is_positive_example?: boolean; max_rounds?: number; }
-export interface GenerationRunOut { run_id: number; status: string; }
-export interface GenerationTranscriptMessage { id: number; sender: string; content: string; metadata: Record<string, unknown>; }
-export interface GenerationReviewItem { id: number; scenario_id: string; difficulty: string; status: string; category: string | null; is_positive_example: boolean; created_at: string; }
-export interface GenerationReviewDetail extends GenerationReviewItem { transcript: GenerationTranscriptMessage[]; auto_scores: { tactic_tags: string[]; coverage: number; is_negative_example: boolean }; }
-export interface ReviewDecision { status: "approved" | "rejected"; reviewer_notes?: string; }

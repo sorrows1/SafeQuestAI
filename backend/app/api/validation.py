@@ -47,14 +47,13 @@ def validate_all(
     for scenario_id, scenario in scenarios.items():
         location_prefix = f"scenarios/{scenario_id}.json"
 
-        # Check persona reference
-        if scenario.persona not in personas:
+        try:
+            content_repo.validate_scenario_references(db, scenario)
+        except ValueError as exc:
             errors.append(ValidationError(
-                severity="error",
-                code="BROKEN_PERSONA_REF",
-                message=f"Persona '{scenario.persona}' not found.",
-                location=f"{location_prefix} > persona",
-                suggestion=f"Available personas: {list(personas.keys())}",
+                severity="error", code="CANONICAL_REFERENCE_INVALID",
+                message=str(exc), location=f"{location_prefix} > actor_bindings",
+                suggestion="Select existing personas and prompts with role-compatible metadata.",
             ))
 
         # Check starting stage
@@ -65,15 +64,6 @@ def validate_all(
                 message=f"starting_stage '{scenario.starting_stage}' not found.",
                 location=f"{location_prefix} > starting_stage",
                 suggestion=f"Available stages: {list(stages.keys())}",
-            ))
-
-        # Check prompt template
-        if scenario.prompt_template not in templates:
-            warnings.append(ValidationError(
-                severity="warning",
-                code="MISSING_TEMPLATE",
-                message=f"prompt_template '{scenario.prompt_template}' not found. Will fall back to 'default_dialogue'.",
-                location=f"{location_prefix} > prompt_template",
             ))
 
         # Check stage sequence

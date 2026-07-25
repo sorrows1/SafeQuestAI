@@ -1,0 +1,44 @@
+{
+  "simulation_initiator_system": {
+    "file": "simulation_initiator_system.txt",
+    "kind": "system",
+    "role_scope": "initiator",
+    "version": "2.0.0",
+    "description": "Stable safety and realism rules for the initiator."
+  },
+  "simulation_respondent_system": {
+    "file": "simulation_respondent_system.txt",
+    "kind": "system",
+    "role_scope": "respondent",
+    "version": "2.0.0",
+    "description": "Stable role-isolated safety rules for the youth respondent."
+  },
+  "single_pass_authoring_system": {
+    "file": "single_pass_authoring_system.txt",
+    "kind": "system",
+    "role_scope": "authoring",
+    "version": "2.0.0",
+    "description": "Stable safety rules for authored oversharing moments."
+  },
+  "initiator_realistic_dialogue": {
+    "file": "initiator_realistic_dialogue.txt",
+    "kind": "dialogue",
+    "role_scope": "initiator",
+    "version": "2.0.0",
+    "description": "Scenario-selected initiator dialogue guidance."
+  },
+  "respondent_natural_dialogue": {
+    "file": "respondent_natural_dialogue.txt",
+    "kind": "dialogue",
+    "role_scope": "respondent",
+    "version": "2.0.0",
+    "description": "Scenario-selected youth respondent guidance."
+  },
+  "oversharing_decision_authoring": {
+    "file": "oversharing_decision_authoring.txt",
+    "kind": "single_pass",
+    "role_scope": "authoring",
+    "version": "2.0.0",
+    "description": "Scenario-selected single-pass authoring guidance."
+  }
+}

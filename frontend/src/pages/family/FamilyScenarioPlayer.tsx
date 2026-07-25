@@ -27,7 +27,7 @@ import { useAppDispatch, useAppSelector } from '@/store';
 import {
   useCompleteFamilySessionMutation,
   useGetFamilyMessagesQuery,
-  useGetFamilyScenariosQuery,
+  useGetFamilyScenarioQuery,
   useSubmitCheckpointResponseMutation,
   useSubmitCompanionCheckpointMutation,
   useExplainWithCompanionMutation,
@@ -53,8 +53,7 @@ export function FamilyScenarioPlayer() {
     started_at: '',
     completed_at: null,
   };
-  const { data: scenarios = [], isLoading: scenariosLoading } = useGetFamilyScenariosQuery();
-  const scenario = scenarios.find((item) => item.id === transcriptId);
+  const { data: scenario, isLoading: scenariosLoading } = useGetFamilyScenarioQuery(transcriptId, { skip: !transcriptId });
   const {
     data: replay = [],
     isLoading: messagesLoading,

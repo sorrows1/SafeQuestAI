@@ -20,7 +20,10 @@ import { AppShell } from '@/components/common/AppShell';
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
 
-const EMPTY: PromptTemplate = { name: '', content: '', variables: [], description: '' };
+const EMPTY: PromptTemplate = {
+  name: '', content: '', variables: [], description: '',
+  kind: 'dialogue', role_scope: 'either', version: '1.0.0',
+};
 
 export function PromptEditor() {
   const { enqueueSnackbar } = useSnackbar();

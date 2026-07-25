@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { ThemeProvider, CssBaseline } from '@mui/material';
@@ -21,14 +21,16 @@ import { StageEditor } from '@/pages/admin/StageEditor';
 import { ObjectiveEditor } from '@/pages/admin/ObjectiveEditor';
 import { ConstraintEditor } from '@/pages/admin/ConstraintEditor';
 import { PromptEditor } from '@/pages/admin/PromptEditor';
-import { Simulator } from '@/pages/admin/Simulator';
 import { ValidationConsole } from '@/pages/admin/ValidationConsole';
 import { Settings } from '@/pages/admin/Settings';
 import { Users } from '@/pages/admin/Users';
-import { SimulationViewer } from '@/pages/admin/SimulationViewer';
-import { ReviewQueue } from '@/pages/admin/ReviewQueue';
+const SimulationWorkbench = lazy(() => import('@/pages/admin/SimulationWorkbench').then((module) => ({ default: module.SimulationWorkbench })));
+const ReviewQueue = lazy(() => import('@/pages/admin/ReviewQueue').then((module) => ({ default: module.ReviewQueue })));
+const AdminFallback = () => <div style={{ padding: 24 }}>Loading admin workspace…</div>;
+
 
 import { FamilyScenarioLobby } from "@/pages/family/FamilyScenarioLobby";
+import { Landing } from "@/pages/Landing";
 import { FamilyScenarioPlayer } from "@/pages/family/FamilyScenarioPlayer";
 
 function ThemedApp() {
@@ -46,7 +48,8 @@ function ThemedApp() {
             <Route path="/register" element={<Register />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
 
-            <Route path="/" element={<Navigate to="/family/scenarios" replace />} />
+            <Route path="/" element={<Landing />} />
+            <Route path="/chat/*" element={<Navigate to="/family/scenarios" replace />} />
 
             <Route path="/family/scenarios" element={<ProtectedRoute><FamilyScenarioLobby /></ProtectedRoute>} />
             <Route path="/family/scenarios/:transcriptId/sessions/:sessionId" element={<ProtectedRoute><FamilyScenarioPlayer /></ProtectedRoute>} />
@@ -60,12 +63,12 @@ function ThemedApp() {
             <Route path="/admin/objectives" element={<AdminRoute><ObjectiveEditor /></AdminRoute>} />
             <Route path="/admin/constraints" element={<AdminRoute><ConstraintEditor /></AdminRoute>} />
             <Route path="/admin/prompts" element={<AdminRoute><PromptEditor /></AdminRoute>} />
-            <Route path="/admin/simulator" element={<AdminRoute><Simulator /></AdminRoute>} />
+            <Route path="/admin/simulator" element={<AdminRoute><Suspense fallback={<AdminFallback />}><SimulationWorkbench /></Suspense></AdminRoute>} />
+            <Route path="/admin/simulator/:runId" element={<AdminRoute><Suspense fallback={<AdminFallback />}><SimulationWorkbench /></Suspense></AdminRoute>} />
             <Route path="/admin/validation" element={<AdminRoute><ValidationConsole /></AdminRoute>} />
             <Route path="/admin/settings" element={<AdminRoute><Settings /></AdminRoute>} />
             <Route path="/admin/users" element={<AdminRoute><Users /></AdminRoute>} />
-            <Route path="/admin/generation" element={<AdminRoute><SimulationViewer /></AdminRoute>} />
-            <Route path="/admin/generation/review-queue" element={<AdminRoute><ReviewQueue /></AdminRoute>} />
+            <Route path="/admin/review-queue" element={<AdminRoute><Suspense fallback={<AdminFallback />}><ReviewQueue /></Suspense></AdminRoute>} />
 
           </Routes>
         </BrowserRouter>

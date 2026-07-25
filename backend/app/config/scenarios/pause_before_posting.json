@@ -1,0 +1,60 @@
+{
+  "id": "pause_before_posting",
+  "display_name": "Pause Before Posting",
+  "description": "Review a social post for routine and audience clues before it is shared.",
+  "difficulty": "Easy",
+  "starting_stage": "draft_review",
+  "version": "2.0.0",
+  "created_at": "2026-07-25T00:00:00Z",
+  "tags": [
+    "social-post",
+    "privacy",
+    "pause-and-check"
+  ],
+  "learning_objectives": [
+    "Recognise broad location and routine clues in a post",
+    "Consider whether the audience matches the post",
+    "Pause and ask for help before sharing when unsure"
+  ],
+  "category": "oversharing",
+  "render_skin": "social_feed",
+  "generation_mode": "single_pass",
+  "authoring": {
+    "persona_id": "thoughtful_poster",
+    "dialogue_prompt_id": "oversharing_decision_authoring"
+  },
+  "stage_sequence": [
+    {
+      "stage": "draft_review",
+      "mandatory_objectives": [
+        "review_location_and_routine",
+        "pause_before_sharing"
+      ],
+      "optional_objectives": [
+        "check_audience",
+        "seek_trusted_help"
+      ],
+      "constraints": [
+        "no_precise_posting_details",
+        "supportive_decision_options"
+      ]
+    }
+  ],
+  "difficulty_modifiers": {
+    "Easy": {
+      "trust_delta_multiplier": 0.5,
+      "escalation_speed": "slow",
+      "red_flag_visibility": "high"
+    },
+    "Medium": {
+      "trust_delta_multiplier": 1.0,
+      "escalation_speed": "medium",
+      "red_flag_visibility": "medium"
+    },
+    "Hard": {
+      "trust_delta_multiplier": 1.25,
+      "escalation_speed": "fast",
+      "red_flag_visibility": "low"
+    }
+  }
+}

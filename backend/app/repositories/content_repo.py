@@ -5,6 +5,7 @@ Falls back gracefully if tables are empty (migration not yet run).
 from __future__ import annotations
 
 from typing import Any
+
 from sqlalchemy.orm import Session
 
 from app.models.orm import (
@@ -38,7 +39,47 @@ def _to_prompt(row: ContentPrompt) -> PromptTemplate:
     return PromptTemplate(
         name=row.name, content=row.content,
         variables=row.variables, description=row.description,
+        kind=row.kind, role_scope=row.role_scope, version=row.version,
     )
+
+
+# ── Scenario reference validation ─────────────────────────────────────────────
+
+def validate_scenario_references(db: Session, scenario: ScenarioDefinition) -> None:
+    """Raise an actionable error when a canonical scenario points at missing content."""
+    errors: list[str] = []
+    if db.get(ContentStage, scenario.starting_stage) is None:
+        errors.append(f"starting_stage '{scenario.starting_stage}' does not exist")
+    for index, step in enumerate(scenario.stage_sequence):
+        if db.get(ContentStage, step.stage) is None:
+            errors.append(f"stage_sequence[{index}].stage '{step.stage}' does not exist")
+        for objective_id in step.mandatory_objectives + step.optional_objectives:
+            if db.get(ContentObjective, objective_id) is None:
+                errors.append(f"stage_sequence[{index}] objective '{objective_id}' does not exist")
+        for constraint_id in step.constraints:
+            if db.get(ContentConstraint, constraint_id) is None:
+                errors.append(f"stage_sequence[{index}] constraint '{constraint_id}' does not exist")
+
+    bindings = (("authoring", scenario.authoring),) if scenario.authoring else (
+        ("initiator", scenario.initiator), ("respondent", scenario.respondent)
+    )
+    for role, binding in bindings:
+        if binding is None:
+            errors.append(f"{role} binding is required")
+            continue
+        if db.get(ContentPersona, binding.persona_id) is None:
+            errors.append(f"{role}.persona_id '{binding.persona_id}' does not exist")
+        prompt = db.get(ContentPrompt, binding.dialogue_prompt_id)
+        if prompt is None:
+            errors.append(f"{role}.dialogue_prompt_id '{binding.dialogue_prompt_id}' does not exist")
+            continue
+        expected_kind = "single_pass" if role == "authoring" else "dialogue"
+        if prompt.kind != expected_kind:
+            errors.append(f"{role}.dialogue_prompt_id '{prompt.name}' must have kind '{expected_kind}'")
+        if prompt.role_scope not in {role, "either"}:
+            errors.append(f"{role}.dialogue_prompt_id '{prompt.name}' has role_scope '{prompt.role_scope}', not '{role}' or 'either'")
+    if errors:
+        raise ValueError("; ".join(errors))
 
 
 # ── Scenarios ────────────────────────────────────────────────────────────────
@@ -51,6 +92,7 @@ def get_scenario(db: Session, id: str) -> ScenarioDefinition | None:
     return _to_scenario(row) if row else None
 
 def upsert_scenario(db: Session, s: ScenarioDefinition) -> ScenarioDefinition:
+    validate_scenario_references(db, s)
     data = s.model_dump()
     row = db.query(ContentScenario).filter(ContentScenario.id == s.id).first()
     if row:
@@ -194,9 +236,13 @@ def upsert_prompt(db: Session, t: PromptTemplate) -> PromptTemplate:
         row.content     = t.content
         row.variables   = t.variables
         row.description = t.description
+        row.kind = t.kind
+        row.role_scope = t.role_scope
+        row.version = t.version
     else:
-        row = ContentPrompt(name=t.name, content=t.content,
-                            variables=t.variables, description=t.description)
+        row = ContentPrompt(name=t.name, content=t.content, variables=t.variables,
+                            description=t.description, kind=t.kind,
+                            role_scope=t.role_scope, version=t.version)
         db.add(row)
     db.commit(); db.refresh(row); return _to_prompt(row)
 

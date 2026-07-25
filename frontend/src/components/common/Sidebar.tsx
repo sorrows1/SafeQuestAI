@@ -30,13 +30,12 @@ const navItems = [
 ] as const;
 
 const bottomItems = [
+  { label: "Family Scenarios", path: "/family/scenarios", icon: <ChatIcon fontSize="small" /> },
   { label: 'Users',       path: '/admin/users',      icon: <GroupIcon fontSize="small" /> },
-  { label: 'Simulator',   path: '/admin/simulator',  icon: <PlayCircleIcon fontSize="small" /> },
-  { label: 'Generation Viewer', path: '/admin/generation', icon: <PlayCircleIcon fontSize="small" /> },
-  { label: 'Review Queue', path: '/admin/generation/review-queue', icon: <FactCheckIcon fontSize="small" /> },
+  { label: 'Simulation Workbench', path: '/admin/simulator', icon: <PlayCircleIcon fontSize="small" /> },
+  { label: 'Review Queue', path: '/admin/review-queue', icon: <FactCheckIcon fontSize="small" /> },
   { label: 'Validation',  path: '/admin/validation', icon: <FactCheckIcon fontSize="small" /> },
   { label: 'Settings',    path: '/admin/settings',   icon: <SettingsIcon fontSize="small" /> },
-  { label: 'Return to Chat', path: '/chat',          icon: <ChatIcon fontSize="small" /> },
 ] as const;
 
 export function Sidebar() {

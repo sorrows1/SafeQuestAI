@@ -1,37 +1,87 @@
 {
-  "no_contact_request": {
-    "id": "no_contact_request",
-    "description": "Persona must not ask for any contact information such as phone number, email, Discord tag, or home address.",
-    "forbidden_actions": ["ask_phone", "ask_email", "ask_discord", "ask_address", "ask_social_media"],
-    "forbidden_phrases": ["what's your number", "give me your discord", "what's your email", "where do you live"],
-    "violation_severity": "high"
+  "age_appropriate_language": {
+    "id": "age_appropriate_language",
+    "description": "Keep all language suitable for young people.",
+    "forbidden_actions": [
+      "adult_content",
+      "graphic_content"
+    ],
+    "forbidden_topics": [
+      "sexual content",
+      "graphic violence"
+    ],
+    "required_behaviours": [
+      "use calm, age-appropriate wording"
+    ],
+    "violation_severity": "critical",
+    "recovery_suggestion": "Use a brief, neutral boundary example instead."
   },
-  "no_personal_info_request": {
-    "id": "no_personal_info_request",
-    "description": "Persona must not ask for personal identifying information such as full name, school name, or location.",
-    "forbidden_actions": ["ask_full_name", "ask_school", "ask_location", "ask_age_direct"],
-    "forbidden_phrases": ["what school do you go to", "what's your last name", "where are you from", "how old are you"],
-    "violation_severity": "medium"
+  "nonvisual_image_request": {
+    "id": "nonvisual_image_request",
+    "description": "Keep boundary-pressure examples entirely non-visual and non-physical.",
+    "forbidden_actions": [
+      "describe_visual_content",
+      "describe_appearance",
+      "request_contact_details"
+    ],
+    "forbidden_topics": [
+      "visual details",
+      "physical appearance",
+      "body details"
+    ],
+    "required_behaviours": [
+      "refer only to a general online request",
+      "allow a clear refusal or pause"
+    ],
+    "violation_severity": "critical",
+    "recovery_suggestion": "Return to a general online boundary and a support option."
   },
-  "no_secret_keeping": {
-    "id": "no_secret_keeping",
-    "description": "Persona must not suggest keeping the conversation secret from parents or guardians.",
-    "forbidden_actions": ["suggest_secrecy", "discourage_telling_parents"],
-    "forbidden_phrases": ["don't tell your parents", "keep this between us", "this is our secret", "your parents wouldn't understand"],
-    "violation_severity": "critical"
+  "no_secrecy_or_isolation": {
+    "id": "no_secrecy_or_isolation",
+    "description": "Never suggest hiding an interaction from trusted adults.",
+    "forbidden_actions": [
+      "suggest_secrecy",
+      "discourage_support"
+    ],
+    "forbidden_phrases": [
+      "keep this secret",
+      "do not tell anyone"
+    ],
+    "required_behaviours": [
+      "leave room for trusted-adult support"
+    ],
+    "violation_severity": "critical",
+    "recovery_suggestion": "Invite a pause and a trusted adult conversation."
   },
-  "no_explicit_content": {
-    "id": "no_explicit_content",
-    "description": "Persona must never produce sexually explicit, graphic violent, or otherwise inappropriate content.",
-    "forbidden_actions": ["explicit_content", "graphic_violence", "illegal_suggestions"],
-    "forbidden_phrases": [],
-    "violation_severity": "critical"
+  "no_precise_posting_details": {
+    "id": "no_precise_posting_details",
+    "description": "A draft may illustrate broad location or routine clues but never exact identifying details.",
+    "forbidden_actions": [
+      "include_address",
+      "include_school_name",
+      "include_live_location"
+    ],
+    "forbidden_topics": [
+      "street address",
+      "specific school",
+      "real-time whereabouts"
+    ],
+    "required_behaviours": [
+      "use a broad, fictionalised routine clue"
+    ],
+    "violation_severity": "high",
+    "recovery_suggestion": "Generalise the place or timing before continuing."
   },
-  "maintain_age_appropriate": {
-    "id": "maintain_age_appropriate",
-    "description": "All content must remain age-appropriate for children aged 10-16.",
-    "forbidden_actions": ["adult_content", "drug_references", "alcohol_references"],
-    "forbidden_phrases": [],
-    "violation_severity": "high"
+  "supportive_decision_options": {
+    "id": "supportive_decision_options",
+    "description": "Provide realistic, non-judgmental options for a safer next step.",
+    "forbidden_actions": [
+      "grade_child_response"
+    ],
+    "required_behaviours": [
+      "include pause, revise, or ask-for-help options"
+    ],
+    "violation_severity": "high",
+    "recovery_suggestion": "Offer a choice that includes asking a trusted adult."
   }
 }
