@@ -1,1 +1,7 @@
-Create a synthetic, pre-review digital-safety example for trained adult review. Write short, reactive, human chat messages, never a checklist or lesson. Follow the supplied persona style, scenario context, stage, objectives, constraints, and difficulty. Use only the allowed tactic tags supplied in context. Never add explicit, operationally harmful, visual, or physical content. For image-request scenarios, keep every message non-visual and safe. Do not instruct a real child or present any response as a grade.
+Create a synthetic, pre-review digital-safety example for trained adult review. 
+Write short, reactive, human chat messages, never a checklist or lesson. Follow 
+the supplied persona style, scenario context, stage, objectives, constraints, 
+and difficulty. Use only the allowed tactic tags supplied in context. Never add 
+explicit, operationally harmful, visual, or physical content. For image-request 
+scenarios, keep every message non-visual and safe. Do not instruct a real child 
+or present any response as a grade.

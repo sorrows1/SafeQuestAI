@@ -44,8 +44,8 @@ export function FamilyScenarioPlayer() {
   const location = useLocation();
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
-  const locationSession = (location.state as { session?: FamilySession } | null)?.session;
-  const session = locationSession ?? {
+  const locationSession = (location.state as { session?: FamilySession; } | null)?.session;
+  const session = locationSession?.id === sessionId && locationSession.transcript_id === transcriptId ? locationSession : {
     id: sessionId,
     transcript_id: transcriptId,
     parent_user_id: null,
@@ -77,7 +77,7 @@ export function FamilyScenarioPlayer() {
   const [companionNotice, setCompanionNotice] = useState<{
     text: string;
     disclosure: boolean;
-    resources: Array<{ label: string; href: string }>;
+    resources: Array<{ label: string; href: string; }>;
   } | null>(null);
   const responderRole: ParticipantRole = session.companion_mode ? 'child' : currentUser?.id === session.parent_user_id ? 'parent' : 'child';
   useEffect(() => {
@@ -87,8 +87,8 @@ export function FamilyScenarioPlayer() {
     setCompanionNotice(null);
   }, [dispatch, session.id]);
   useEffect(() => {
-    if (replay.length) dispatch(familyMessagesLoaded(replay));
-  }, [dispatch, replay]);
+    if (replay.length) dispatch(familyMessagesLoaded({ sessionId, messages: replay }));
+  }, [dispatch, replay, sessionId]);
   useEffect(() => {
     dispatch(participantTurnSet(responderRole));
   }, [dispatch, responderRole]);
@@ -97,7 +97,8 @@ export function FamilyScenarioPlayer() {
     // messages still present. Do not let those messages complete the new
     // session before familySessionStarted has cleared the old state.
     if (activeSession?.id !== session.id || phase !== 'play' || activeCheckpoint || !allMessages.length) return;
-    const next = allMessages.find((message) => message.sequence > (visibleMessages[visibleMessages.length - 1]?.sequence ?? 0));
+    const lastSequence = visibleMessages.length ? visibleMessages[visibleMessages.length - 1].sequence : -1;
+    const next = allMessages.find((message) => message.sequence > lastSequence);
     if (!next) {
       setPhase('help');
       return;

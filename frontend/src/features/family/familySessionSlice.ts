@@ -14,7 +14,7 @@ const initialState = messagesAdapter.getInitialState({
   activeCheckpoint: null as ActiveCheckpoint | null,
   checkpointResponses: [] as CheckpointResponse[],
   participantTurn: 'child' as ParticipantRole,
-  revealedThrough: 0,
+  revealedThrough: -1,
 });
 const familySessionSlice = createSlice({
   name: 'familySession',
@@ -29,10 +29,18 @@ const familySessionSlice = createSlice({
       state.activeCheckpoint = null;
       state.checkpointResponses = [];
       state.participantTurn = 'child';
-      state.revealedThrough = 0;
+      state.revealedThrough = -1;
     },
-    familyMessagesLoaded(state, action: PayloadAction<FamilyMessage[]>) {
-      messagesAdapter.setAll(state, action.payload);
+    familyMessagesLoaded(
+      state,
+      action: PayloadAction<FamilyMessage[] | { sessionId: number; messages: FamilyMessage[] }>
+    ) {
+      if (Array.isArray(action.payload)) {
+        messagesAdapter.setAll(state, action.payload);
+      } else {
+        if (state.session?.id !== action.payload.sessionId) return;
+        messagesAdapter.setAll(state, action.payload.messages);
+      }
     },
     revealThrough(state, action: PayloadAction<number>) {
       state.revealedThrough = Math.max(state.revealedThrough, action.payload);
