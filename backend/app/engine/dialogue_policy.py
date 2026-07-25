@@ -305,6 +305,9 @@ class DialoguePolicyEngine:
                 "id": scenario.id,
                 "display_name": scenario.display_name,
                 "difficulty": scenario.difficulty,
+                "category": scenario.category.value,
+                "render_skin": scenario.render_skin.value,
+                "generation_mode": scenario.generation_mode.value,
             }
         }
         return json.dumps(data, indent=2)

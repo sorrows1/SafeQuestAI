@@ -1,0 +1,27 @@
+{
+  "grooming": [
+    "Has anyone ever asked you to keep a chat between just the two of you?",
+    "What could make it easier to tell a trusted adult if a conversation starts to feel private or uncomfortable?",
+    "Who are the adults you could contact if an online conversation feels confusing?"
+  ],
+  "cyberbullying": [
+    "Has a group chat ever left someone out on purpose?",
+    "What could help someone feel supported after an unkind message or post?",
+    "Who could you talk with if an online interaction starts to feel hurtful?"
+  ],
+  "scam": [
+    "What is something online that seemed too good to be true?",
+    "What could you do before sharing information or following an unexpected link?",
+    "Who could you ask for a second opinion about an unusual message?"
+  ],
+  "image_request": [
+    "What could you say if someone online asks for an image that you do not want to share?",
+    "How could you save evidence and reach out for support if an image request feels pressuring?",
+    "Who could help you with an online request that feels uncomfortable?"
+  ],
+  "oversharing": [
+    "What details are useful to keep private before sharing a post?",
+    "How could you pause and check a post before it reaches a wider audience?",
+    "Who could you ask to look at a post with you if you are unsure what to share?"
+  ]
+}

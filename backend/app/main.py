@@ -171,7 +171,6 @@ app.add_middleware(
 # Routers
 # ---------------------------------------------------------------------------
 from app.api.auth         import router as auth_router
-from app.api.conversations import router as conversations_router
 from app.api.scenarios    import router as scenarios_router
 from app.api.personas     import router as personas_router
 from app.api.stages       import router as stages_router
@@ -181,9 +180,11 @@ from app.api.prompts      import router as prompts_router
 from app.api.simulator    import router as simulator_router
 from app.api.validation   import router as validation_router
 from app.api.admin_users  import router as admin_users_router
+from app.api.admin_generation import router as admin_generation_router
+from app.api.family_sessions import router as family_sessions_router
+from app.api.companion import router as companion_router
 
 app.include_router(auth_router)
-app.include_router(conversations_router)
 app.include_router(scenarios_router)
 app.include_router(personas_router)
 app.include_router(stages_router)
@@ -193,6 +194,9 @@ app.include_router(prompts_router)
 app.include_router(simulator_router)
 app.include_router(validation_router)
 app.include_router(admin_users_router)
+app.include_router(admin_generation_router)
+app.include_router(family_sessions_router)
+app.include_router(companion_router)
 
 
 # ---------------------------------------------------------------------------

@@ -1,54 +1,43 @@
-import { Box, Typography, Paper, Avatar } from '@mui/material';
+import { memo } from 'react';
+import { Box, Fade, Grow, Paper, Typography } from '@mui/material';
+import { Avatar } from './Avatar';
 
-interface MessageBubbleProps {
-  sender: 'user' | 'contact';
+export type MessageSide = 'left' | 'right';
+
+export interface MessageBubbleProps {
   content: string;
-  timestamp: string;
-  avatarUrl?: string | null;
-  contactName?: string;
+  speakerLabel: string;
+  side: MessageSide;
+  pace: string;
+  selectable?: boolean;
 }
 
-export function MessageBubble({ sender, content, timestamp, avatarUrl, contactName }: MessageBubbleProps) {
-  const isUser = sender === 'user';
-  const timeStr = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+/** A presentation-only message bubble shared by admin and player experiences. */
+export const MessageBubble = memo(function MessageBubble({
+  content,
+  speakerLabel,
+  side,
+  pace: _pace,
+  selectable = false,
+}: MessageBubbleProps) {
+  const isRight = side === 'right';
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', mb: 2, alignItems: 'flex-end' }}>
-      {!isUser && (
-        <Avatar
-          src={avatarUrl?.startsWith('color:') ? undefined : (avatarUrl || undefined)}
-          sx={{ width: 32, height: 32, mr: 1, bgcolor: avatarUrl?.startsWith('color:') ? avatarUrl.split(':')[1] : 'primary.main' }}
-        >
-          {contactName?.[0]?.toUpperCase()}
-        </Avatar>
-      )}
-
-      <Box sx={{ maxWidth: '70%' }}>
-        {!isUser && contactName && (
-          <Typography variant="caption" sx={{ ml: 1, mb: 0.5, display: 'block', color: 'text.secondary' }}>
-            {contactName}
+    <Fade in timeout={180} appear>
+      <Box sx={{ display: 'flex', justifyContent: isRight ? 'flex-end' : 'flex-start', mb: 2, alignItems: 'flex-end', gap: 1 }}>
+        {!isRight && <Avatar speakerLabel={speakerLabel} />}
+        <Box sx={{ maxWidth: '72%' }}>
+          <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary', textAlign: isRight ? 'right' : 'left' }}>
+            {speakerLabel}
           </Typography>
-        )}
-        <Paper
-          elevation={0}
-          sx={{
-            p: 1.5,
-            px: 2,
-            borderRadius: isUser ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-            bgcolor: isUser ? 'primary.main' : 'background.paper',
-            color: isUser ? 'primary.contrastText' : 'text.primary',
-            border: isUser ? 'none' : '1px solid',
-            borderColor: 'divider',
-          }}
-        >
-          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {content}
-          </Typography>
-        </Paper>
-        <Typography variant="caption" sx={{ mt: 0.5, display: 'block', color: 'text.secondary', textAlign: isUser ? 'right' : 'left', ml: isUser ? 0 : 1, mr: isUser ? 1 : 0 }}>
-          {timeStr}
-        </Typography>
+          <Grow in timeout={220} appear style={{ transformOrigin: isRight ? '100% 100%' : '0 100%' }}>
+            <Paper elevation={0} sx={{ p: 1.5, px: 2, borderRadius: isRight ? '20px 20px 4px 20px' : '20px 20px 20px 4px', bgcolor: isRight ? 'primary.main' : 'background.paper', color: isRight ? 'primary.contrastText' : 'text.primary', border: isRight ? 'none' : '1px solid', borderColor: 'divider', userSelect: selectable ? 'text' : 'none' }}>
+              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</Typography>
+            </Paper>
+          </Grow>
+        </Box>
+        {isRight && <Avatar speakerLabel={speakerLabel} />}
       </Box>
-    </Box>
+    </Fade>
   );
-}
+});

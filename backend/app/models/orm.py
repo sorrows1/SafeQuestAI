@@ -3,7 +3,9 @@ SQLAlchemy ORM models for Safe Quest.
 
 Tables:
   Runtime:
-    users, conversations, user_messages, conversation_sessions, conversation_messages
+    users, conversation_sessions, conversation_messages
+    curated_transcripts, curated_messages, family_sessions, checkpoint_responses,
+    conversation_guides
   Content (replaces JSON files after migration):
     content_scenarios, content_personas, content_stages,
     content_objectives, content_constraints, content_prompts
@@ -78,72 +80,6 @@ class User(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    conversations: Mapped[list[Conversation]] = relationship(
-        "Conversation", back_populates="user", cascade="all, delete-orphan"
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Public Conversations (messaging layer)
-# ─────────────────────────────────────────────────────────────────────────────
-
-class Conversation(Base):
-    """A user's conversation thread — maps to a hidden scenario internally."""
-    __tablename__ = "conversations"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id"), index=True)
-    scenario_id: Mapped[str] = mapped_column(
-        String(255), index=True)  # hidden from public API
-    contact_name: Mapped[str] = mapped_column(
-        String(100), nullable=False)    # e.g. "Alex"
-    contact_avatar: Mapped[Optional[str]] = mapped_column(
-        String(512), nullable=True)
-    difficulty: Mapped[str] = mapped_column(String(50), default="Medium")
-    status: Mapped[str] = mapped_column(
-        String(20), default="active")  # active|archived|deleted
-    engine_state: Mapped[dict[str, Any]] = mapped_column(
-        JSON, default=dict)  # dialogue engine state
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-    last_message_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    user: Mapped[User] = relationship("User", back_populates="conversations")
-    messages: Mapped[list[UserMessage]] = relationship(
-        "UserMessage", back_populates="conversation", cascade="all, delete-orphan"
-    )
-
-
-class UserMessage(Base):
-    """A single message in a user conversation."""
-    __tablename__ = "user_messages"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    conversation_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("conversations.id"), index=True
-    )
-    sender: Mapped[str] = mapped_column(
-        String(20), nullable=False)  # "user" | "contact"
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata_json: Mapped[Optional[dict[str, Any]]
-                          ] = mapped_column(JSON, nullable=True)
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    conversation: Mapped[Conversation] = relationship(
-        "Conversation", back_populates="messages")
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Admin simulator sessions (kept for admin use)
@@ -188,6 +124,156 @@ class ConversationMessage(Base):
 
     session: Mapped[ConversationSession] = relationship(
         "ConversationSession", back_populates="messages"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Curated scenarios and cooperative family sessions
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CuratedTranscript(Base):
+    """A reviewed example; ``is_grooming`` means concerning across categories."""
+    __tablename__ = "curated_transcripts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_session_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("conversation_sessions.id"), nullable=False
+    )
+    is_grooming: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    difficulty: Mapped[str] = mapped_column(String(20), default="Medium")
+    tactic_tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    reviewed_by: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
+    )
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    category: Mapped[str] = mapped_column(String(50), default="grooming")
+    render_skin: Mapped[str] = mapped_column(String(50), default="chat")
+
+    messages: Mapped[list[CuratedMessage]] = relationship(
+        "CuratedMessage", back_populates="transcript", cascade="all, delete-orphan"
+    )
+    red_flag_spans: Mapped[list[RedFlagSpan]] = relationship(
+        "RedFlagSpan", back_populates="transcript", cascade="all, delete-orphan"
+    )
+
+
+class CuratedMessage(Base):
+    __tablename__ = "curated_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    transcript_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("curated_transcripts.id"), index=True, nullable=False
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    speaker_label: Mapped[str] = mapped_column(String(50), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    pace: Mapped[str] = mapped_column(String(20), default="normal")
+    is_checkpoint: Mapped[bool] = mapped_column(Boolean, default=False)
+    checkpoint_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    transcript: Mapped[CuratedTranscript] = relationship(
+        "CuratedTranscript", back_populates="messages"
+    )
+
+
+class RedFlagSpan(Base):
+    """Reviewer-confirmed or automatic red-flag annotations for curated content."""
+    __tablename__ = "red_flag_spans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    transcript_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("curated_transcripts.id"), index=True, nullable=False
+    )
+    message_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    start_offset: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    end_offset: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tactic_tag: Mapped[str] = mapped_column(String(100), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), default="auto", nullable=False)
+
+    transcript: Mapped[CuratedTranscript] = relationship(
+        "CuratedTranscript", back_populates="red_flag_spans"
+    )
+
+
+class FamilySession(Base):
+    """A cooperative session. It intentionally stores no child-performance score."""
+    __tablename__ = "family_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    transcript_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("curated_transcripts.id"), nullable=False
+    )
+    child_user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), index=True, nullable=False
+    )
+    parent_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
+    companion_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    detective_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Internal safety signal only. Never expose this through player or parent schemas.
+    disclosure_flagged: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    revealed_up_to: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class CheckpointResponse(Base):
+    """A discussion response, not a graded answer."""
+    __tablename__ = "checkpoint_responses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    family_session_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("family_sessions.id"), index=True, nullable=False
+    )
+    checkpoint_message_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("curated_messages.id"), nullable=False
+    )
+    responder_role: Mapped[str] = mapped_column(String(20), nullable=False)
+    response_text: Mapped[str] = mapped_column(Text, nullable=False)
+    flagged_message_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    tactic_tag_guess: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class ConversationGuide(Base):
+    """Parent discussion aid. Do not add child scoring or grading fields here."""
+    __tablename__ = "conversation_guides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    family_session_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("family_sessions.id"), index=True, nullable=False
+    )
+    scenario_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    child_reasoning_excerpt: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    discussion_prompts: Mapped[list[str]] = mapped_column(JSON, default=list)
+    completed_together: Mapped[bool] = mapped_column(Boolean, default=False)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class CompanionExchange(Base):
+    """Private, sanitised companion reasoning exchange for guide-building only."""
+    __tablename__ = "companion_exchanges"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    family_session_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("family_sessions.id"), index=True, nullable=False
+    )
+    exchange_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    child_text: Mapped[str] = mapped_column(Text, nullable=False)
+    companion_text: Mapped[str] = mapped_column(Text, nullable=False)
+    disclosure_triggered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
 
@@ -274,7 +360,6 @@ class ContentPrompt(Base):
 def create_tables() -> None:
     """Create all tables. Called on application startup."""
     Base.metadata.create_all(bind=engine)
-
 
 
 

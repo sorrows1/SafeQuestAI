@@ -9,6 +9,13 @@ from enum import Enum
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
+from app.models.schemas import (
+    Difficulty,
+    DifficultyModifier,
+    ScenarioDefinition,
+    StageStep,
+)
+
 
 # ---------------------------------------------------------------------------
 # Enumerations
@@ -20,12 +27,6 @@ class ViolationSeverity(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
-
-
-class Difficulty(str, Enum):
-    EASY = "Easy"
-    MEDIUM = "Medium"
-    HARD = "Hard"
 
 
 # ---------------------------------------------------------------------------
@@ -133,39 +134,6 @@ class ConstraintDefinition(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Scenario
-# ---------------------------------------------------------------------------
-
-class DifficultyModifier(BaseModel):
-    trust_delta_multiplier: float = 1.0
-    escalation_speed: str = "slow"
-    red_flag_visibility: str = "medium"
-
-
-class StageStep(BaseModel):
-    stage: str
-    mandatory_objectives: list[str] = Field(default_factory=list)
-    optional_objectives: list[str] = Field(default_factory=list)
-    constraints: list[str] = Field(default_factory=list)
-
-
-class ScenarioDefinition(BaseModel):
-    id: str
-    display_name: str
-    description: str
-    difficulty: Difficulty = Difficulty.MEDIUM
-    persona: str
-    starting_stage: str
-    prompt_template: str = "default_dialogue"
-    version: str = "1.0.0"
-    created_at: str | None = None
-    tags: list[str] = Field(default_factory=list)
-    learning_objectives: list[str] = Field(default_factory=list)
-    stage_sequence: list[StageStep] = Field(default_factory=list)
-    difficulty_modifiers: dict[str, DifficultyModifier] = Field(default_factory=dict)
-
-
-# ---------------------------------------------------------------------------
 # Prompt Template
 # ---------------------------------------------------------------------------
 
@@ -174,4 +142,3 @@ class PromptTemplate(BaseModel):
     content: str
     variables: list[str] = Field(default_factory=list)
     description: str = ""
-

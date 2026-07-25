@@ -6,6 +6,8 @@ import uiReducer from './uiSlice';
 import authReducer from './authSlice';
 import scenariosUiReducer from './scenariosUiSlice';
 import simulatorReducer from './simulatorSlice';
+import simulationViewerReducer from "@/features/simulation/simulationViewerSlice";
+import familySessionReducer from "@/features/family/familySessionSlice";
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +16,8 @@ export const store = configureStore({
     auth: authReducer,
     scenariosUi: scenariosUiReducer,
     simulator: simulatorReducer,
+    simulationViewer: simulationViewerReducer,
+    familySession: familySessionReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(safeQuestApi.middleware),

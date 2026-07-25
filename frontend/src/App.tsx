@@ -13,8 +13,6 @@ import { Login } from '@/pages/auth/Login';
 import { Register } from '@/pages/auth/Register';
 import { AuthCallback } from '@/pages/auth/AuthCallback';
 
-import { ChatLayout } from '@/pages/chat/ChatLayout';
-import { ChatView } from '@/pages/chat/ChatView';
 
 import { Dashboard } from '@/pages/admin/Dashboard';
 import { ScenarioEditor } from '@/pages/admin/ScenarioEditor';
@@ -27,6 +25,11 @@ import { Simulator } from '@/pages/admin/Simulator';
 import { ValidationConsole } from '@/pages/admin/ValidationConsole';
 import { Settings } from '@/pages/admin/Settings';
 import { Users } from '@/pages/admin/Users';
+import { SimulationViewer } from '@/pages/admin/SimulationViewer';
+import { ReviewQueue } from '@/pages/admin/ReviewQueue';
+
+import { FamilyScenarioLobby } from "@/pages/family/FamilyScenarioLobby";
+import { FamilyScenarioPlayer } from "@/pages/family/FamilyScenarioPlayer";
 
 function ThemedApp() {
   const themeMode = useAppSelector(s => s.ui.themeMode);
@@ -43,13 +46,10 @@ function ThemedApp() {
             <Route path="/register" element={<Register />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
 
-            {/* Public App (Chat) */}
-            <Route path="/chat" element={<ProtectedRoute><ChatLayout /></ProtectedRoute>}>
-              <Route path=":id" element={<ChatView />} />
-            </Route>
-            
-            {/* Redirect root based on auth/role would be nice, but for now we just send to chat */}
-            <Route path="/" element={<Navigate to="/chat" replace />} />
+            <Route path="/" element={<Navigate to="/family/scenarios" replace />} />
+
+            <Route path="/family/scenarios" element={<ProtectedRoute><FamilyScenarioLobby /></ProtectedRoute>} />
+            <Route path="/family/scenarios/:transcriptId/sessions/:sessionId" element={<ProtectedRoute><FamilyScenarioPlayer /></ProtectedRoute>} />
 
             {/* Admin CMS */}
             <Route path="/admin" element={<AdminRoute><Dashboard /></AdminRoute>} />
@@ -64,6 +64,8 @@ function ThemedApp() {
             <Route path="/admin/validation" element={<AdminRoute><ValidationConsole /></AdminRoute>} />
             <Route path="/admin/settings" element={<AdminRoute><Settings /></AdminRoute>} />
             <Route path="/admin/users" element={<AdminRoute><Users /></AdminRoute>} />
+            <Route path="/admin/generation" element={<AdminRoute><SimulationViewer /></AdminRoute>} />
+            <Route path="/admin/generation/review-queue" element={<AdminRoute><ReviewQueue /></AdminRoute>} />
 
           </Routes>
         </BrowserRouter>

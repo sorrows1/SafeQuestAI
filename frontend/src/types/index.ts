@@ -206,3 +206,67 @@ export interface ConfigSummary {
   prompt_templates: string[];
 }
 
+
+
+// ── Family scenario player ────────────────────────────────────────────────
+
+export type RenderSkin = "chat" | "email" | "social_feed";
+export type ParticipantRole = "child" | "parent" | "ai_companion";
+
+export interface PublishedFamilyScenario {
+  id: number;
+  category: string;
+  render_skin: RenderSkin;
+  difficulty: string;
+  message_count: number;
+}
+
+export interface FamilySession {
+  id: number;
+  transcript_id: number;
+  parent_user_id: number | null;
+  companion_mode: boolean;
+  detective_mode: boolean;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface FamilyMessage {
+  id: number;
+  sequence: number;
+  speaker_label: string;
+  content: string;
+  pace: string;
+  is_checkpoint: boolean;
+  checkpoint_prompt: string | null;
+}
+
+export interface CheckpointResponse {
+  id: number;
+  checkpoint_message_id: number;
+  responder_role: ParticipantRole;
+  response_text: string;
+  flagged_message_ids: number[];
+  tactic_tag_guess: string | null;
+  created_at: string;
+}
+
+export interface ConversationGuide {
+  id: number;
+  family_session_id: number;
+  scenario_summary: string;
+  child_reasoning_excerpt: Record<string, unknown>;
+  discussion_prompts: string[];
+  completed_together: boolean;
+  generated_at: string;
+}
+
+
+export interface SupportResource { label: string; href: string; }
+export interface CompanionCheckpointResult {
+  response_text: string;
+  child_response: CheckpointResponse;
+  checkpoint_response: CheckpointResponse;
+  disclosure_triggered: boolean;
+  support_resources: SupportResource[];
+}

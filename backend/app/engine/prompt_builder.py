@@ -1,124 +1,155 @@
-"""
-PromptBuilder — assembles the layered LLM prompt from structured JSON blocks.
-
-Architecture (cache-optimized):
-  Layer 1: Static system prompt  — loaded from system_prompt.txt, NEVER changes.
-  Layer 2: Persona block         — JSON, changes per conversation.
-  Layer 3: Stage block           — JSON, changes per stage transition.
-  Layer 4: Turn state block      — JSON, changes every turn (kept minimal).
-  Layer 5: Recent history        — last N messages, changes every turn.
-
-Design: stateless, pure function — no side effects.
-"""
+"""Prompt construction for the legacy simulator and offline generation."""
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
+from typing import Iterable
 
 from app.engine.scenario_loader import ScenarioLoader
+from app.generation.taxonomy import TACTIC_TAGS_BY_CATEGORY
+from app.models.content_schemas import ConstraintDefinition
+from app.models.schemas import ScenarioCategory, ScenarioDefinition
 
 logger = logging.getLogger(__name__)
-
-# Separator used between prompt layers — helps the LLM distinguish sections
 _SEP = "\n" + "─" * 60 + "\n"
 
 
 class PromptBuilder:
-    """
-    Assembles the final layered prompt string for the LLM.
-
-    Expects the PolicyDecision to carry a `prompt_blocks` dict with keys:
-        "persona", "stage", "turn_state", "history"
-
-    Falls back gracefully if any block is missing.
-    """
+    """Assemble layered legacy prompts and role-isolated generation prompts."""
 
     def __init__(self, loader: ScenarioLoader) -> None:
         self._loader = loader
         self._system_prompt: str | None = None
 
-    def build(self, template_name: str, prompt_blocks: dict[str, str]) -> str:
-        """
-        Assemble the full prompt from structured blocks.
-
-        Args:
-            template_name: Name of the prompt template (used to load the JSON schema section).
-            prompt_blocks:  Dict produced by DialoguePolicyEngine._build_prompt_blocks().
-
-        Returns:
-            Fully assembled prompt string ready for the LLM.
-        """
-        system = self._get_system_prompt()
-
-        persona_block    = prompt_blocks.get("persona", "")
-        stage_block      = prompt_blocks.get("stage", "")
-        turn_state_block = prompt_blocks.get("turn_state", "")
-        history_block    = prompt_blocks.get("history", "(conversation just started)")
-
-        parts: list[str] = [
-            system,
-            _SEP + "## PERSONA & SCENARIO\n" + persona_block,
-            _SEP + "## CURRENT STAGE\n" + stage_block,
-            _SEP + "## TURN STATE\n" + turn_state_block,
-            _SEP + "## RECENT CONVERSATION\n" + history_block,
-            _SEP + self._get_output_schema(),
+    def build(
+        self,
+        template_name: str,
+        prompt_blocks: dict[str, str],
+        *,
+        category: ScenarioCategory | None = None,
+        role: str = "initiator",
+    ) -> str:
+        """Build the existing simulator prompt, optionally with category guidance."""
+        del template_name  # Kept for the established public API.
+        parts = [
+            self._get_system_prompt(),
+            _SEP + "## PERSONA & SCENARIO\n" + prompt_blocks.get("persona", ""),
+            _SEP + "## CURRENT STAGE\n" + prompt_blocks.get("stage", ""),
+            _SEP + "## TURN STATE\n" + prompt_blocks.get("turn_state", ""),
+            _SEP + "## RECENT CONVERSATION\n" + prompt_blocks.get("history", "(conversation just started)"),
         ]
-
+        if category is not None:
+            parts.append(_SEP + "## CATEGORY & ROLE GUIDANCE\n" + self.category_guidance(category, role))
+        parts.append(_SEP + self._get_output_schema())
         return "\n".join(parts)
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
+    @staticmethod
+    def category_guidance(category: ScenarioCategory, role: str) -> str:
+        """Build category-specific, taxonomy-backed instructions for one role."""
+        if role not in {"initiator", "respondent"}:
+            raise ValueError("role must be 'initiator' or 'respondent'")
+        role_instruction = (
+            "You write the initiator side. Use tactics only as pattern-level, "
+            "age-appropriate signals; do not produce explicit or operationally harmful content."
+            if role == "initiator"
+            else "You write the simulated respondent side. You have no hidden intent, "
+            "manipulation style, or private persona information. Respond naturally and "
+            "do not invent adversary goals."
+        )
+        category_instruction = {
+            ScenarioCategory.GROOMING: "Keep the example age-appropriate and pattern-focused; do not use explicit content.",
+            ScenarioCategory.CYBERBULLYING: "Show exclusion, pile-on, or social-pressure structure without composing ready-to-reuse insults or targeted harassment scripts.",
+            ScenarioCategory.SCAM: "Realistic urgency and fake-brand/domain details are allowed where useful for recognition, but never request real credentials or money.",
+            ScenarioCategory.IMAGE_REQUEST: "Do not describe images, photos, bodies, appearance, or physical features. Keep any concerning pattern abstract and non-visual.",
+            ScenarioCategory.OVERSHARING: "Focus on a safe-to-display draft post and the audience/context mismatch, not an antagonist conversation.",
+        }[category]
+        return json.dumps(
+            {
+                "category": category.value,
+                "allowed_tactic_tags": TACTIC_TAGS_BY_CATEGORY[category],
+                "role": role,
+                "role_instruction": role_instruction,
+                "category_instruction": category_instruction,
+                "message_chunking": "Return one or two short messages when a double-text feels natural; otherwise return one.",
+            },
+            indent=2,
+        )
+
+    @classmethod
+    def build_generation_prompt(
+        cls,
+        scenario: ScenarioDefinition,
+        *,
+        role: str,
+        history: Iterable[dict[str, str]],
+        constraints: Iterable[ConstraintDefinition] = (),
+        negative_example: bool = False,
+    ) -> str:
+        """Build an offline prompt without leaking initiator-only information.
+
+        The respondent prompt is made from public scenario fields and transcript
+        history only. It never receives the persona's manipulation style or a
+        hidden objective.
+        """
+        public_scenario = {
+            "id": scenario.id,
+            "display_name": scenario.display_name,
+            "description": scenario.description,
+            "category": scenario.category.value,
+            "difficulty": scenario.difficulty.value,
+            "negative_example": negative_example,
+        }
+        if role == "initiator":
+            public_scenario["persona_id"] = scenario.persona
+        constraint_block = [
+            {
+                "id": item.id,
+                "description": item.description,
+                "forbidden_actions": item.forbidden_actions,
+                "forbidden_topics": item.forbidden_topics,
+                "forbidden_phrases": item.forbidden_phrases,
+            }
+            for item in constraints
+        ]
+        return "\n\n".join(
+            [
+                "You are authoring an offline, pre-review digital-safety example. Never address a real child.",
+                "SCENARIO\n" + json.dumps(public_scenario, indent=2),
+                "CATEGORY GUIDANCE\n" + cls.category_guidance(scenario.category, role),
+                "ACTIVE CONSTRAINTS\n" + json.dumps(constraint_block, indent=2),
+                "TRANSCRIPT SO FAR\n" + json.dumps(list(history), indent=2),
+                "Return only JSON: {\"messages\": [\"one short message\"], \"tactic_tags\": [\"a tag from allowed_tactic_tags\"]}. Messages must contain one or two short chunks.",
+            ]
+        )
 
     def _get_system_prompt(self) -> str:
-        """Load the static system prompt (cached after first load)."""
         if self._system_prompt is not None:
             return self._system_prompt
-
-        # Try loading from file (preferred — never changes, ideal for prompt caching)
         try:
-            template = self._loader.get_prompt_template("system_prompt")
-            self._system_prompt = template.content
+            self._system_prompt = self._loader.get_prompt_template("system_prompt").content
             return self._system_prompt
         except KeyError:
             pass
-
-        # Fallback: load from filesystem directly
-        config_dir = self._loader._config_dir
-        system_file = config_dir / "prompts" / "system_prompt.txt"
+        system_file = self._loader._config_dir / "prompts" / "system_prompt.txt"
         if system_file.exists():
             self._system_prompt = system_file.read_text(encoding="utf-8")
             return self._system_prompt
-
         logger.warning("system_prompt.txt not found — using minimal fallback")
-        self._system_prompt = (
-            "You are a realistic person chatting on a messaging app. "
-            "Respond naturally. Never sound like an AI assistant."
-        )
+        self._system_prompt = "You are a realistic person chatting on a messaging app. Respond naturally. Never sound like an AI assistant."
         return self._system_prompt
 
-    def _get_output_schema(self) -> str:
-        """Return the required JSON output schema instruction."""
+    @staticmethod
+    def _get_output_schema() -> str:
         return (
-            "## YOUR RESPONSE\n"
-            "You MUST respond ONLY with a valid JSON object. No prose before or after.\n\n"
-            "{\n"
-            '  "reply": "Your message as the character — plain string, no formatting",\n'
-            '  "current_stage": "current stage id unchanged unless transitioning",\n'
-            '  "next_stage": "one of valid_next_stages, or current stage if staying",\n'
-            '  "current_objective": "current objective id",\n'
-            '  "objective_completed": true or false,\n'
-            '  "trust_delta": 0.0,\n'
-            '  "suspicion_delta": 0.0,\n'
-            '  "flags": [],\n'
-            '  "reasoning": "one sentence — why did you write this reply",\n'
-            '  "confidence": 0.8\n'
-            "}"
+            "## YOUR RESPONSE\nYou MUST respond ONLY with a valid JSON object. No prose before or after.\n\n"
+            '{"reply":"Your message as the character","current_stage":"stage id","next_stage":"stage id",'
+            '"current_objective":"objective id","objective_completed":false,"trust_delta":0.0,'
+            '"suspicion_delta":0.0,"flags":[],"reasoning":"brief reason","confidence":0.8}'
         )
 
     @staticmethod
     def extract_variables(template_content: str) -> list[str]:
-        """Legacy utility kept for backward compat — returns empty list for new templates."""
+        del template_content
         return []
-
