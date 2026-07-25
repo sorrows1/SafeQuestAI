@@ -1,8 +1,19 @@
 import { useState, useCallback } from 'react';
 import {
-  Box, Paper, Typography, Button, CircularProgress, Alert,
-  Chip, Grid, List, ListItem, Accordion,
-  AccordionSummary, AccordionDetails, LinearProgress,
+  Box,
+  Paper,
+  Typography,
+  Button,
+  CircularProgress,
+  Alert,
+  Chip,
+  Grid,
+  List,
+  ListItem,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  LinearProgress,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -15,9 +26,9 @@ import type { ValidationError } from '@/types';
 import { AppShell } from '@/components/common/AppShell';
 
 const SEVERITY_CONFIG = {
-  error:   { icon: <ErrorIcon fontSize="small" />,   color: 'error',   label: 'Error' },
+  error: { icon: <ErrorIcon fontSize="small" />, color: 'error', label: 'Error' },
   warning: { icon: <WarningIcon fontSize="small" />, color: 'warning', label: 'Warning' },
-  info:    { icon: <InfoIcon fontSize="small" />,    color: 'info',    label: 'Info' },
+  info: { icon: <InfoIcon fontSize="small" />, color: 'info', label: 'Info' },
 } as const;
 
 function ValidationItem({ item }: { item: ValidationError }) {
@@ -29,11 +40,15 @@ function ValidationItem({ item }: { item: ValidationError }) {
         <Box sx={{ flex: 1 }}>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.25 }}>
             <Chip label={item.code} size="small" sx={{ height: 18, fontSize: '0.65rem', fontFamily: 'monospace' }} />
-            <Typography variant="caption" color="text.secondary">{item.location}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {item.location}
+            </Typography>
           </Box>
           <Typography variant="body2">{item.message}</Typography>
           {item.suggestion && (
-            <Typography variant="caption" color="text.secondary">💡 {item.suggestion}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              💡 {item.suggestion}
+            </Typography>
           )}
         </Box>
       </Box>
@@ -48,9 +63,15 @@ export function ValidationConsole() {
     <AppShell>
       <Box sx={{ p: 3, maxWidth: 1000, mx: 'auto' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, gap: 2 }}>
-          <Typography variant="h2" sx={{ flex: 1 }}>Validation Console</Typography>
-          <Button variant="contained" startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
-            onClick={() => triggerValidation()} disabled={loading}>
+          <Typography variant="h2" sx={{ flex: 1 }}>
+            Validation Console
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
+            onClick={() => triggerValidation()}
+            disabled={loading}
+          >
             Run Validation
           </Button>
         </Box>
@@ -65,29 +86,28 @@ export function ValidationConsole() {
 
         {report && (
           <>
-            <Alert
-              severity={report.valid ? 'success' : 'error'}
-              icon={report.valid ? <CheckCircleIcon /> : <ErrorIcon />}
-              sx={{ mb: 3 }}
-            >
+            <Alert severity={report.valid ? 'success' : 'error'} icon={report.valid ? <CheckCircleIcon /> : <ErrorIcon />} sx={{ mb: 3 }}>
               {report.valid
                 ? `All content is valid. ${report.total_scenarios} scenarios, ${report.total_stages} stages, ${report.total_objectives} objectives.`
-                : `Found ${report.errors.length} error(s) and ${report.warnings.length} warning(s).`
-              }
+                : `Found ${report.errors.length} error(s) and ${report.warnings.length} warning(s).`}
             </Alert>
 
             <Grid container spacing={1} sx={{ mb: 3 }}>
               {[
                 { label: 'Scenarios', value: report.total_scenarios },
-                { label: 'Personas',  value: report.total_personas },
-                { label: 'Stages',    value: report.total_stages },
-                { label: 'Objectives',value: report.total_objectives },
-                { label: 'Constraints',value: report.total_constraints },
-              ].map(s => (
+                { label: 'Personas', value: report.total_personas },
+                { label: 'Stages', value: report.total_stages },
+                { label: 'Objectives', value: report.total_objectives },
+                { label: 'Constraints', value: report.total_constraints },
+              ].map((s) => (
                 <Grid key={s.label} size={{ xs: 6, sm: 4, md: 2 }}>
                   <Paper variant="outlined" sx={{ p: 1.5, textAlign: 'center' }}>
-                    <Typography variant="h5" sx={{ fontWeight: 700 }}>{s.value}</Typography>
-                    <Typography variant="caption" color="text.secondary">{s.label}</Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                      {s.value}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {s.label}
+                    </Typography>
                   </Paper>
                 </Grid>
               ))}
@@ -103,7 +123,9 @@ export function ValidationConsole() {
                 </AccordionSummary>
                 <AccordionDetails>
                   <List disablePadding>
-                    {report.errors.map((e, i) => <ValidationItem key={i} item={e} />)}
+                    {report.errors.map((e, i) => (
+                      <ValidationItem key={i} item={e} />
+                    ))}
                   </List>
                 </AccordionDetails>
               </Accordion>
@@ -119,7 +141,9 @@ export function ValidationConsole() {
                 </AccordionSummary>
                 <AccordionDetails>
                   <List disablePadding>
-                    {report.warnings.map((w, i) => <ValidationItem key={i} item={w} />)}
+                    {report.warnings.map((w, i) => (
+                      <ValidationItem key={i} item={w} />
+                    ))}
                   </List>
                 </AccordionDetails>
               </Accordion>
@@ -135,7 +159,9 @@ export function ValidationConsole() {
                 </AccordionSummary>
                 <AccordionDetails>
                   <List disablePadding>
-                    {report.info.map((inf, i) => <ValidationItem key={i} item={inf} />)}
+                    {report.info.map((inf, i) => (
+                      <ValidationItem key={i} item={inf} />
+                    ))}
                   </List>
                 </AccordionDetails>
               </Accordion>

@@ -26,8 +26,8 @@ export interface StageDefinition {
 export interface ObjectiveDefinition {
   id: string;
   display_name: string;
-  description: string;       // admin display only
-  hidden_intent: string;     // what the LLM sees — background desire, not task
+  description: string; // admin display only
+  hidden_intent: string; // what the LLM sees — background desire, not task
   natural_triggers: string[];
   priority: number;
   patience: number;
@@ -39,7 +39,7 @@ export interface ObjectiveDefinition {
 export interface ConversationStyle {
   uses_lowercase: boolean;
   omits_end_punctuation: boolean;
-  emoji_frequency: number;              // 0.0–1.0
+  emoji_frequency: number; // 0.0–1.0
   average_message_length: MessageLength;
   double_texts: boolean;
   initiates_topic_changes: boolean;
@@ -51,7 +51,7 @@ export interface ConversationStyle {
 export interface PersonaDefinition {
   id: string;
   display_name: string;
-  description: string;           // admin display only
+  description: string; // admin display only
   cover_story: string;
   claimed_age: number;
   claimed_location: string;
@@ -128,19 +128,42 @@ export interface PromptTemplate {
   version: string;
 }
 
-
 // ── Durable admin simulation runtime (admin-only API) ──────────────────────
 export type SimulationMode = 'ai_vs_ai' | 'admin_as_respondent' | 'single_pass';
 export type SimulationStatus = 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'failed' | 'limit_reached';
-export interface SimulationMessage { id: number; sequence: number; branch_id: string; sender: string; content: string; metadata: Record<string, unknown>; created_at?: string; }
-export interface SimulationRevision { id: number; message_id: number; number: number; content: string; metadata: Record<string, unknown>; supersedes_revision_id: number | null; created_at?: string; }
+export interface SimulationMessage {
+  id: number;
+  sequence: number;
+  branch_id: string;
+  sender: string;
+  content: string;
+  metadata: Record<string, unknown>;
+  created_at?: string;
+}
+export interface SimulationRevision {
+  id: number;
+  message_id: number;
+  number: number;
+  content: string;
+  metadata: Record<string, unknown>;
+  supersedes_revision_id: number | null;
+  created_at?: string;
+}
 export interface SimulationRun {
-  id: number; scenario_id: string | null; mode: SimulationMode; status: SimulationStatus; created_at: string;
-  stop_reason?: string | null; usage: Record<string, unknown>; progress: Record<string, unknown>;
+  id: number;
+  scenario_id: string | null;
+  mode: SimulationMode;
+  status: SimulationStatus;
+  created_at: string;
+  stop_reason?: string | null;
+  usage: Record<string, unknown>;
+  progress: Record<string, unknown>;
   worker_status?: Record<string, unknown>;
   diagnostics?: { objectives: string[]; progression: Record<string, unknown>; flags: string[] };
-  personas?: Record<string, unknown>; prompts?: Record<string, unknown>;
-  messages?: SimulationMessage[]; revisions?: SimulationRevision[];
+  personas?: Record<string, unknown>;
+  prompts?: Record<string, unknown>;
+  messages?: SimulationMessage[];
+  revisions?: SimulationRevision[];
 }
 
 // ── Validation types ───────────────────────────────────────────────────────
@@ -176,12 +199,10 @@ export interface ConfigSummary {
   prompt_templates: string[];
 }
 
-
-
 // ── Family scenario player ────────────────────────────────────────────────
 
-export type RenderSkin = "chat" | "email" | "social_feed";
-export type ParticipantRole = "child" | "parent" | "ai_companion";
+export type RenderSkin = 'chat' | 'email' | 'social_feed';
+export type ParticipantRole = 'child' | 'parent' | 'ai_companion';
 
 export interface PublishedFamilyScenario {
   id: number;
@@ -210,7 +231,7 @@ export interface FamilyScenarioQuery {
   category?: string[];
   difficulty?: string[];
   render_skin?: RenderSkin[];
-  sort?: "newest" | "title" | "difficulty" | "shortest";
+  sort?: 'newest' | 'title' | 'difficulty' | 'shortest';
   page?: number;
   limit?: number;
 }
@@ -255,8 +276,10 @@ export interface ConversationGuide {
   generated_at: string;
 }
 
-
-export interface SupportResource { label: string; href: string; }
+export interface SupportResource {
+  label: string;
+  href: string;
+}
 export interface CompanionCheckpointResult {
   response_text: string;
   child_response: CheckpointResponse;

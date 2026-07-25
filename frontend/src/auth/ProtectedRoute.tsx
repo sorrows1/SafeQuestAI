@@ -7,7 +7,7 @@ import { useGetMeQuery } from '@/store/api';
 
 /** Requires any authenticated user. Redirects to /login if not. */
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAppSelector(s => s.auth);
+  const { isAuthenticated } = useAppSelector((s) => s.auth);
   const location = useLocation();
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;
   return <AuthInitializer>{children}</AuthInitializer>;
@@ -15,7 +15,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 /** Requires admin role. Redirects to /family/scenarios if logged in but not admin. */
 export function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user } = useAppSelector(s => s.auth);
+  const { isAuthenticated, user } = useAppSelector((s) => s.auth);
   const location = useLocation();
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;
   if (user && user.role !== 'admin') return <Navigate to="/family/scenarios" replace />;
@@ -25,7 +25,7 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
 /** Loads /auth/me on mount to populate the user object from the stored token. */
 function AuthInitializer({ children, requireAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean }) {
   const dispatch = useAppDispatch();
-  const { user } = useAppSelector(s => s.auth);
+  const { user } = useAppSelector((s) => s.auth);
   const { data, isLoading, isError } = useGetMeQuery(undefined, { skip: !!user });
 
   useEffect(() => {

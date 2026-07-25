@@ -17,6 +17,7 @@ import {
   selectActiveCheckpoint,
   selectFamilyDetectiveMode,
   selectFamilyMessages,
+  selectFamilySession,
   selectHighlightedMessageIds,
   selectParticipantTurn,
   selectTagAssignments,
@@ -64,6 +65,7 @@ export function FamilyScenarioPlayer() {
   const [explainWithCompanion, { isLoading: explaining }] = useExplainWithCompanionMutation();
   const [completeSession] = useCompleteFamilySessionMutation();
   const allMessages = useAppSelector(selectFamilyMessages);
+  const activeSession = useAppSelector(selectFamilySession);
   const visibleMessages = useAppSelector(selectVisibleFamilyMessages);
   const detectiveMode = useAppSelector(selectFamilyDetectiveMode);
   const highlightedMessageIds = useAppSelector(selectHighlightedMessageIds);
@@ -72,10 +74,17 @@ export function FamilyScenarioPlayer() {
   const participantTurn = useAppSelector(selectParticipantTurn);
   const [phase, setPhase] = useState<'play' | 'help' | 'guide' | 'support'>('play');
   const [explanation, setExplanation] = useState('');
-  const [companionNotice, setCompanionNotice] = useState<{ text: string; disclosure: boolean; resources: Array<{ label: string; href: string }> } | null>(null);
+  const [companionNotice, setCompanionNotice] = useState<{
+    text: string;
+    disclosure: boolean;
+    resources: Array<{ label: string; href: string }>;
+  } | null>(null);
   const responderRole: ParticipantRole = session.companion_mode ? 'child' : currentUser?.id === session.parent_user_id ? 'parent' : 'child';
   useEffect(() => {
     dispatch(familySessionStarted(session));
+    setPhase('play');
+    setExplanation('');
+    setCompanionNotice(null);
   }, [dispatch, session.id]);
   useEffect(() => {
     if (replay.length) dispatch(familyMessagesLoaded(replay));
@@ -84,7 +93,10 @@ export function FamilyScenarioPlayer() {
     dispatch(participantTurnSet(responderRole));
   }, [dispatch, responderRole]);
   useEffect(() => {
-    if (phase !== 'play' || activeCheckpoint || !allMessages.length) return;
+    // A route transition can render once with the previous session's Redux
+    // messages still present. Do not let those messages complete the new
+    // session before familySessionStarted has cleared the old state.
+    if (activeSession?.id !== session.id || phase !== 'play' || activeCheckpoint || !allMessages.length) return;
     const next = allMessages.find((message) => message.sequence > (visibleMessages[visibleMessages.length - 1]?.sequence ?? 0));
     if (!next) {
       setPhase('help');
@@ -96,23 +108,31 @@ export function FamilyScenarioPlayer() {
         dispatch(checkpointActivated({ messageId: next.id, prompt: next.checkpoint_prompt ?? 'What would you like to talk about?' }));
     }, paceDelay(next.pace));
     return () => window.clearTimeout(timer);
-  }, [activeCheckpoint, allMessages, dispatch, phase, visibleMessages]);
+  }, [activeCheckpoint, activeSession?.id, allMessages, dispatch, phase, session.id, visibleMessages]);
   const submit = async (responseText: string, tacticTagGuess: string) => {
     if (!activeCheckpoint) return;
     if (session.companion_mode) {
-      const result = await submitCompanionCheckpoint({ sessionId, checkpoint_message_id: activeCheckpoint.messageId,
-        child_response_text: responseText, flagged_message_ids: detectiveMode ? highlightedMessageIds : [],
-        tactic_tag_guess: detectiveMode ? tacticTagGuess || null : null }).unwrap();
+      const result = await submitCompanionCheckpoint({
+        sessionId,
+        checkpoint_message_id: activeCheckpoint.messageId,
+        child_response_text: responseText,
+        flagged_message_ids: detectiveMode ? highlightedMessageIds : [],
+        tactic_tag_guess: detectiveMode ? tacticTagGuess || null : null,
+      }).unwrap();
       dispatch(checkpointResponseRecorded(result.child_response));
       dispatch(checkpointResponseRecorded(result.checkpoint_response));
       setCompanionNotice({ text: result.response_text, disclosure: result.disclosure_triggered, resources: result.support_resources });
       dispatch(checkpointCleared());
-      if (result.disclosure_triggered) setPhase("support");
+      if (result.disclosure_triggered) setPhase('support');
       return;
     }
     const response = await submitCheckpoint({
-      sessionId, checkpoint_message_id: activeCheckpoint.messageId, responder_role: participantTurn, response_text: responseText,
-      flagged_message_ids: detectiveMode ? highlightedMessageIds : [], tactic_tag_guess: detectiveMode ? tacticTagGuess || null : null,
+      sessionId,
+      checkpoint_message_id: activeCheckpoint.messageId,
+      responder_role: participantTurn,
+      response_text: responseText,
+      flagged_message_ids: detectiveMode ? highlightedMessageIds : [],
+      tactic_tag_guess: detectiveMode ? tacticTagGuess || null : null,
     }).unwrap();
     dispatch(checkpointResponseRecorded(response));
     dispatch(checkpointCleared());
@@ -123,7 +143,7 @@ export function FamilyScenarioPlayer() {
     const result = await explainWithCompanion({ sessionId, message: explanation.trim() }).unwrap();
     setExplanation('');
     setCompanionNotice({ text: result.response_text, disclosure: result.disclosure_triggered, resources: result.support_resources });
-    if (result.disclosure_triggered) setPhase("support");
+    if (result.disclosure_triggered) setPhase('support');
   };
   const finishHelpBeat = async () => {
     await completeSession(sessionId).unwrap();
@@ -139,15 +159,20 @@ export function FamilyScenarioPlayer() {
     );
   if (!scenario || messagesError)
     return <Alert severity="error">This family session could not be loaded. Return to the scenario list and try again.</Alert>;
-  if (phase === "support" && companionNotice) return (
-    <Box sx={{ maxWidth: 720, mx: "auto", mt: 4, p: { xs: 2, sm: 4 } }} aria-live="assertive">
-      <Alert severity="warning">
-        {companionNotice.text}
-        {companionNotice.resources.map((resource) => <Link key={resource.href} href={resource.href} target="_blank" rel="noreferrer" sx={{ display: "block", mt: 1 }}>{resource.label}</Link>)}
-      </Alert>
-      <Typography sx={{ mt: 2 }}>This activity is paused. Take the time and support you need; it will not continue automatically.</Typography>
-    </Box>
-  );
+  if (phase === 'support' && companionNotice)
+    return (
+      <Box sx={{ maxWidth: 720, mx: 'auto', mt: 4, p: { xs: 2, sm: 4 } }} aria-live="assertive">
+        <Alert severity="warning">
+          {companionNotice.text}
+          {companionNotice.resources.map((resource) => (
+            <Link key={resource.href} href={resource.href} target="_blank" rel="noreferrer" sx={{ display: 'block', mt: 1 }}>
+              {resource.label}
+            </Link>
+          ))}
+        </Alert>
+        <Typography sx={{ mt: 2 }}>This activity is paused. Take the time and support you need; it will not continue automatically.</Typography>
+      </Box>
+    );
   if (phase === 'guide') return <ConversationGuideView sessionId={sessionId} />;
   if (phase === 'help') return <HelpSeekingBeat category={scenario.category} onContinue={finishHelpBeat} />;
   return (
@@ -182,14 +207,30 @@ export function FamilyScenarioPlayer() {
       {currentUser?.id !== session.parent_user_id && (
         <Box component="section" aria-label="Explain your reasoning" sx={{ mt: 3 }}>
           <Typography variant="h6">Want to explain your thinking?</Typography>
-          <TextField label="What did you notice or what would you do?" value={explanation} onChange={(event) => setExplanation(event.target.value)} fullWidth multiline minRows={2} sx={{ mt: 1 }} />
-          <Button onClick={askCompanion} disabled={!explanation.trim() || explaining} sx={{ mt: 1 }}>Talk it through with the guide</Button>
+          <TextField
+            label="What did you notice or what would you do?"
+            value={explanation}
+            onChange={(event) => setExplanation(event.target.value)}
+            fullWidth
+            multiline
+            minRows={2}
+            sx={{ mt: 1 }}
+          />
+          <Button onClick={askCompanion} disabled={!explanation.trim() || explaining} sx={{ mt: 1 }}>
+            Talk it through with the guide
+          </Button>
         </Box>
       )}
-      {companionNotice && <Alert severity={companionNotice.disclosure ? 'warning' : 'info'} sx={{ mt: 2 }}>
-        {companionNotice.text}
-        {companionNotice.resources.map((resource) => <Link key={resource.href} href={resource.href} target="_blank" rel="noreferrer" sx={{ display: 'block', mt: 1 }}>{resource.label}</Link>)}
-      </Alert>}
+      {companionNotice && (
+        <Alert severity={companionNotice.disclosure ? 'warning' : 'info'} sx={{ mt: 2 }}>
+          {companionNotice.text}
+          {companionNotice.resources.map((resource) => (
+            <Link key={resource.href} href={resource.href} target="_blank" rel="noreferrer" sx={{ display: 'block', mt: 1 }}>
+              {resource.label}
+            </Link>
+          ))}
+        </Alert>
+      )}
       {detectiveMode && selectedTag && (
         <Typography variant="caption" color="text.secondary">
           Current discussion tag: {selectedTag}

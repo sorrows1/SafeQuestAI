@@ -6,15 +6,13 @@ import { useAppDispatch, useAppSelector } from '@/store';
 import { toggleTheme } from '@/store/uiSlice';
 import { useLocation } from 'react-router-dom';
 
-
-
 interface Props {
   onReload?: () => void;
 }
 
 export function TopBar({ onReload }: Props) {
   const dispatch = useAppDispatch();
-  const themeMode = useAppSelector(s => s.ui.themeMode);
+  const themeMode = useAppSelector((s) => s.ui.themeMode);
 
   const title = 'Safe Quest';
 

@@ -22,7 +22,7 @@ export function Register() {
       const tokens = await register({ email, password, display_name: displayName }).unwrap();
       dispatch(setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token }));
       const from = (location.state as any)?.from;
-      navigate(from ? from.pathname + (from.search || "") + (from.hash || "") : "/family/scenarios", { replace: true });
+      navigate(from ? from.pathname + (from.search || '') + (from.hash || '') : '/family/scenarios', { replace: true });
     } catch (err) {
       console.error('Registration failed', err);
     }
@@ -50,24 +50,41 @@ export function Register() {
 
         <form onSubmit={handleSubmit}>
           <TextField
-            fullWidth label="Display Name" variant="outlined" margin="normal"
-            value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-            disabled={isLoading} autoFocus
+            fullWidth
+            label="Display Name"
+            variant="outlined"
+            margin="normal"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            disabled={isLoading}
+            autoFocus
           />
           <TextField
-            fullWidth label="Email" variant="outlined" margin="normal"
-            value={email} onChange={(e) => setEmail(e.target.value)}
-            disabled={isLoading} type="email"
+            fullWidth
+            label="Email"
+            variant="outlined"
+            margin="normal"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isLoading}
+            type="email"
           />
           <TextField
-            fullWidth label="Password" variant="outlined" margin="normal"
+            fullWidth
+            label="Password"
+            variant="outlined"
+            margin="normal"
             type="password"
-            value={password} onChange={(e) => setPassword(e.target.value)}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             disabled={isLoading}
           />
-          
+
           <Button
-            type="submit" fullWidth variant="contained" size="large"
+            type="submit"
+            fullWidth
+            variant="contained"
+            size="large"
             disabled={isLoading || !email || !password || !displayName}
             sx={{ mt: 3, mb: 2, height: 48 }}
           >
@@ -77,16 +94,13 @@ export function Register() {
 
         <Box sx={{ display: 'flex', alignItems: 'center', my: 2 }}>
           <Divider sx={{ flex: 1 }} />
-          <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>OR</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>
+            OR
+          </Typography>
           <Divider sx={{ flex: 1 }} />
         </Box>
 
-        <Button
-          fullWidth variant="outlined" size="large"
-          startIcon={<GoogleIcon />}
-          onClick={handleGoogleLogin}
-          sx={{ height: 48, mb: 2 }}
-        >
+        <Button fullWidth variant="outlined" size="large" startIcon={<GoogleIcon />} onClick={handleGoogleLogin} sx={{ height: 48, mb: 2 }}>
           Sign up with Google
         </Button>
 

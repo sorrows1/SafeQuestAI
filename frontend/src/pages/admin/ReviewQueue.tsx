@@ -3,4 +3,37 @@ import { Box, Button, CircularProgress, List, ListItemButton, ListItemText, Pape
 import { AppShell } from '@/components/common/AppShell';
 import { useGetSimulationReviewQueueQuery } from '@/store/api';
 
-export function ReviewQueue() { const navigate = useNavigate(); const { data: items = [], isLoading } = useGetSimulationReviewQueueQuery(); return <AppShell><Box sx={{ p: 3 }}><Typography variant="h5">Review Queue</Typography><Typography color="text.secondary" sx={{ mb: 2 }}>Review-ready runs open in the same workbench used for live controls and publication.</Typography><Paper variant="outlined">{isLoading ? <Box sx={{ p: 3, textAlign: 'center' }}><CircularProgress size={24} /></Box> : items.length === 0 ? <Typography sx={{ p: 3 }} color="text.secondary">Nothing is waiting for review.</Typography> : <List disablePadding>{items.map((item) => <ListItemButton key={item.id} onClick={() => navigate(`/admin/simulator/${item.id}`)}><ListItemText primary={`#${item.id} · ${item.scenario_id}`} secondary={`${item.mode} · ${item.status}`} /><Button size="small">Open workbench</Button></ListItemButton>)}</List>}</Paper></Box></AppShell>; }
+export function ReviewQueue() {
+  const navigate = useNavigate();
+  const { data: items = [], isLoading } = useGetSimulationReviewQueueQuery();
+  return (
+    <AppShell>
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h5">Review Queue</Typography>
+        <Typography color="text.secondary" sx={{ mb: 2 }}>
+          Review-ready runs open in the same workbench used for live controls and publication.
+        </Typography>
+        <Paper variant="outlined">
+          {isLoading ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : items.length === 0 ? (
+            <Typography sx={{ p: 3 }} color="text.secondary">
+              Nothing is waiting for review.
+            </Typography>
+          ) : (
+            <List disablePadding>
+              {items.map((item) => (
+                <ListItemButton key={item.id} onClick={() => navigate(`/admin/simulator/${item.id}`)}>
+                  <ListItemText primary={`#${item.id} · ${item.scenario_id}`} secondary={`${item.mode} · ${item.status}`} />
+                  <Button size="small">Open workbench</Button>
+                </ListItemButton>
+              ))}
+            </List>
+          )}
+        </Paper>
+      </Box>
+    </AppShell>
+  );
+}

@@ -1,40 +1,40 @@
 import { createTheme, alpha } from '@mui/material/styles';
 
 // ── Palette constants ──────────────────────────────────────────────────────
-const DARK_BG_DEFAULT   = '#0d1117';
-const DARK_BG_PAPER     = '#161b22';
-const DARK_BG_ELEVATED  = '#21262d';
-const ACCENT_BLUE       = '#58a6ff';
-const ACCENT_BLUE_DARK  = '#1f6feb';
-const ACCENT_GREEN      = '#3fb950';
-const ACCENT_AMBER      = '#d29922';
-const ACCENT_RED        = '#f85149';
-const TEXT_PRIMARY      = '#e6edf3';
-const TEXT_SECONDARY    = '#8b949e';
-const DIVIDER           = '#30363d';
+const DARK_BG_DEFAULT = '#0d1117';
+const DARK_BG_PAPER = '#161b22';
+const DARK_BG_ELEVATED = '#21262d';
+const ACCENT_BLUE = '#58a6ff';
+const ACCENT_BLUE_DARK = '#1f6feb';
+const ACCENT_GREEN = '#3fb950';
+const ACCENT_AMBER = '#d29922';
+const ACCENT_RED = '#f85149';
+const TEXT_PRIMARY = '#e6edf3';
+const TEXT_SECONDARY = '#8b949e';
+const DIVIDER = '#30363d';
 
 // ── Dark Theme ─────────────────────────────────────────────────────────────
 export const darkTheme = createTheme({
   palette: {
     mode: 'dark',
-    primary:   { main: ACCENT_BLUE,  dark: ACCENT_BLUE_DARK, contrastText: '#fff' },
+    primary: { main: ACCENT_BLUE, dark: ACCENT_BLUE_DARK, contrastText: '#fff' },
     secondary: { main: ACCENT_GREEN, contrastText: '#fff' },
-    error:     { main: ACCENT_RED },
-    warning:   { main: ACCENT_AMBER },
-    success:   { main: ACCENT_GREEN },
+    error: { main: ACCENT_RED },
+    warning: { main: ACCENT_AMBER },
+    success: { main: ACCENT_GREEN },
     background: {
       default: DARK_BG_DEFAULT,
-      paper:   DARK_BG_PAPER,
+      paper: DARK_BG_PAPER,
     },
     text: {
-      primary:   TEXT_PRIMARY,
+      primary: TEXT_PRIMARY,
       secondary: TEXT_SECONDARY,
     },
     divider: DIVIDER,
   },
   typography: {
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-    h1: { fontWeight: 700, fontSize: '2rem',   letterSpacing: '-0.02em' },
+    h1: { fontWeight: 700, fontSize: '2rem', letterSpacing: '-0.02em' },
     h2: { fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.01em' },
     h3: { fontWeight: 600, fontSize: '1.25rem' },
     h4: { fontWeight: 600, fontSize: '1.1rem' },
@@ -166,11 +166,11 @@ export const darkTheme = createTheme({
 export const lightTheme = createTheme({
   palette: {
     mode: 'light',
-    primary:   { main: '#0969da', contrastText: '#fff' },
+    primary: { main: '#0969da', contrastText: '#fff' },
     secondary: { main: '#1a7f37', contrastText: '#fff' },
-    error:     { main: '#d1242f' },
-    warning:   { main: '#9a6700' },
-    success:   { main: '#1a7f37' },
+    error: { main: '#d1242f' },
+    warning: { main: '#9a6700' },
+    success: { main: '#1a7f37' },
     background: { default: '#f6f8fa', paper: '#ffffff' },
     text: { primary: '#1f2328', secondary: '#656d76' },
     divider: '#d0d7de',

@@ -6,26 +6,15 @@
     "render_skin": "chat",
     "difficulty": "Medium",
     "reviewed_at": "2026-07-25T00:00:00Z",
-    "tactic_tags": [
-      "direct_request",
-      "escalating_pressure"
-    ],
+    "tactic_tags": ["direct_request", "escalating_pressure"],
     "public_metadata": {
       "display_name": "Gaming Chat Boundary Pressure",
       "description": "A reviewed gaming chat about noticing pressure and choosing support.",
       "category": "image_request",
       "render_skin": "chat",
       "difficulty": "Medium",
-      "tags": [
-        "gaming",
-        "boundaries",
-        "help-seeking"
-      ],
-      "learning_objectives": [
-        "Notice pressure",
-        "Pause before agreeing",
-        "Ask a trusted adult for help"
-      ]
+      "tags": ["gaming", "boundaries", "help-seeking"],
+      "learning_objectives": ["Notice pressure", "Pause before agreeing", "Ask a trusted adult for help"]
     },
     "messages": [
       {
@@ -73,27 +62,15 @@
     "render_skin": "social_feed",
     "difficulty": "Easy",
     "reviewed_at": "2026-07-25T00:00:00Z",
-    "tactic_tags": [
-      "location_disclosure",
-      "school_or_routine_disclosure",
-      "public_audience_mismatch"
-    ],
+    "tactic_tags": ["location_disclosure", "school_or_routine_disclosure", "public_audience_mismatch"],
     "public_metadata": {
       "display_name": "Pause Before Posting",
       "description": "A reviewed post draft about checking routine and audience details.",
       "category": "oversharing",
       "render_skin": "social_feed",
       "difficulty": "Easy",
-      "tags": [
-        "social-post",
-        "privacy",
-        "pause-and-check"
-      ],
-      "learning_objectives": [
-        "Notice routine clues",
-        "Check the audience",
-        "Pause and ask for help"
-      ]
+      "tags": ["social-post", "privacy", "pause-and-check"],
+      "learning_objectives": ["Notice routine clues", "Check the audience", "Pause and ask for help"]
     },
     "messages": [
       {

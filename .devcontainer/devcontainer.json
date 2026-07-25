@@ -27,9 +27,5 @@
   },
   "postCreateCommand": "cd backend && pip install --no-cache-dir -r requirements.txt && cd ../frontend && npm install && touch /tmp/.devcontainer_ready",
   "postStartCommand": "touch /tmp/.devcontainer_ready",
-  "forwardPorts": [
-    8000,
-    5173,
-    5432
-  ]
+  "forwardPorts": [8000, 5173, 5432]
 }

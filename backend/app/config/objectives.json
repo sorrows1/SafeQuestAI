@@ -4,101 +4,69 @@
     "display_name": "Open Gaming Rapport",
     "description": "Establish a believable shared-game conversation.",
     "hidden_intent": "Keep the opening about the game and let rapport form naturally.",
-    "natural_triggers": [
-      "recent match",
-      "shared game reference"
-    ],
+    "natural_triggers": ["recent match", "shared game reference"],
     "priority": 0.5,
     "patience": 2,
-    "success_signals": [
-      "shared_game_mentioned"
-    ]
+    "success_signals": ["shared_game_mentioned"]
   },
   "test_boundary_pressure": {
     "id": "test_boundary_pressure",
     "display_name": "Test a Boundary",
     "description": "Introduce a small, recognisable convenience pressure without harmful detail.",
     "hidden_intent": "Try a low-pressure boundary test framed as a convenience, then leave room for a refusal.",
-    "natural_triggers": [
-      "rapport established",
-      "game chat feels busy"
-    ],
+    "natural_triggers": ["rapport established", "game chat feels busy"],
     "priority": 0.7,
     "patience": 3,
-    "success_signals": [
-      "boundary_request_made"
-    ]
+    "success_signals": ["boundary_request_made"]
   },
   "notice_pressure": {
     "id": "notice_pressure",
     "display_name": "Notice Pressure",
     "description": "Give the youth space to name a concern or pause.",
     "hidden_intent": "Respond naturally and take time before agreeing to an online request.",
-    "natural_triggers": [
-      "a request feels rushed",
-      "a request moves beyond the game"
-    ],
+    "natural_triggers": ["a request feels rushed", "a request moves beyond the game"],
     "priority": 0.8,
     "patience": 1,
-    "success_signals": [
-      "youth_paused_or_declined"
-    ]
+    "success_signals": ["youth_paused_or_declined"]
   },
   "seek_trusted_help": {
     "id": "seek_trusted_help",
     "display_name": "Reach Out for Support",
     "description": "Normalise involving a trusted adult when a digital interaction feels uncomfortable.",
     "hidden_intent": "Make help-seeking feel ordinary, practical, and available.",
-    "natural_triggers": [
-      "boundary pressure was noticed",
-      "the youth is unsure"
-    ],
+    "natural_triggers": ["boundary pressure was noticed", "the youth is unsure"],
     "priority": 0.9,
     "patience": 1,
-    "success_signals": [
-      "trusted_adult_mentioned"
-    ]
+    "success_signals": ["trusted_adult_mentioned"]
   },
   "review_location_and_routine": {
     "id": "review_location_and_routine",
     "display_name": "Review Location and Routine",
     "description": "Spot details that can reveal where or when someone is regularly present.",
     "hidden_intent": "Create one realistic draft post containing a general location or routine clue, without exact details.",
-    "natural_triggers": [
-      "draft post is being written"
-    ],
+    "natural_triggers": ["draft post is being written"],
     "priority": 0.8,
     "patience": 1,
-    "success_signals": [
-      "location_or_routine_in_draft"
-    ]
+    "success_signals": ["location_or_routine_in_draft"]
   },
   "check_audience": {
     "id": "check_audience",
     "display_name": "Check the Audience",
     "description": "Consider who could see a public post beyond intended friends.",
     "hidden_intent": "Offer a calm choice to narrow the audience or revise the draft.",
-    "natural_triggers": [
-      "post audience is public"
-    ],
+    "natural_triggers": ["post audience is public"],
     "priority": 0.7,
     "patience": 1,
-    "success_signals": [
-      "audience_considered"
-    ]
+    "success_signals": ["audience_considered"]
   },
   "pause_before_sharing": {
     "id": "pause_before_sharing",
     "display_name": "Pause Before Sharing",
     "description": "Practise pausing before posting and asking for support when unsure.",
     "hidden_intent": "End with a neutral pause-and-check decision and a trusted-adult option.",
-    "natural_triggers": [
-      "draft is ready to post"
-    ],
+    "natural_triggers": ["draft is ready to post"],
     "priority": 0.9,
     "patience": 1,
-    "success_signals": [
-      "help_seeking_option_present"
-    ]
+    "success_signals": ["help_seeking_option_present"]
   }
 }

@@ -1,8 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
-  Typography, Divider, Tooltip, alpha,
-} from '@mui/material';
+import { Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Typography, Divider, Tooltip, alpha } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import MovieIcon from '@mui/icons-material/Movie';
 import PersonIcon from '@mui/icons-material/Person';
@@ -20,22 +17,22 @@ import ChatIcon from '@mui/icons-material/Chat';
 const SIDEBAR_WIDTH = 240;
 
 const navItems = [
-  { label: 'Dashboard',       path: '/admin',            icon: <DashboardIcon fontSize="small" /> },
-  { label: 'Scenarios',       path: '/admin/scenarios',   icon: <MovieIcon fontSize="small" /> },
-  { label: 'Personas',        path: '/admin/personas',    icon: <PersonIcon fontSize="small" /> },
-  { label: 'Stages',          path: '/admin/stages',      icon: <AccountTreeIcon fontSize="small" /> },
-  { label: 'Objectives',      path: '/admin/objectives',  icon: <TrackChangesIcon fontSize="small" /> },
-  { label: 'Constraints',     path: '/admin/constraints', icon: <SecurityIcon fontSize="small" /> },
-  { label: 'Prompt Templates',path: '/admin/prompts',     icon: <ArticleIcon fontSize="small" /> },
+  { label: 'Dashboard', path: '/admin', icon: <DashboardIcon fontSize="small" /> },
+  { label: 'Scenarios', path: '/admin/scenarios', icon: <MovieIcon fontSize="small" /> },
+  { label: 'Personas', path: '/admin/personas', icon: <PersonIcon fontSize="small" /> },
+  { label: 'Stages', path: '/admin/stages', icon: <AccountTreeIcon fontSize="small" /> },
+  { label: 'Objectives', path: '/admin/objectives', icon: <TrackChangesIcon fontSize="small" /> },
+  { label: 'Constraints', path: '/admin/constraints', icon: <SecurityIcon fontSize="small" /> },
+  { label: 'Prompt Templates', path: '/admin/prompts', icon: <ArticleIcon fontSize="small" /> },
 ] as const;
 
 const bottomItems = [
-  { label: "Family Scenarios", path: "/family/scenarios", icon: <ChatIcon fontSize="small" /> },
-  { label: 'Users',       path: '/admin/users',      icon: <GroupIcon fontSize="small" /> },
+  { label: 'Family Scenarios', path: '/family/scenarios', icon: <ChatIcon fontSize="small" /> },
+  { label: 'Users', path: '/admin/users', icon: <GroupIcon fontSize="small" /> },
   { label: 'Simulation Workbench', path: '/admin/simulator', icon: <PlayCircleIcon fontSize="small" /> },
   { label: 'Review Queue', path: '/admin/review-queue', icon: <FactCheckIcon fontSize="small" /> },
-  { label: 'Validation',  path: '/admin/validation', icon: <FactCheckIcon fontSize="small" /> },
-  { label: 'Settings',    path: '/admin/settings',   icon: <SettingsIcon fontSize="small" /> },
+  { label: 'Validation', path: '/admin/validation', icon: <FactCheckIcon fontSize="small" /> },
+  { label: 'Settings', path: '/admin/settings', icon: <SettingsIcon fontSize="small" /> },
 ] as const;
 
 export function Sidebar() {
@@ -48,11 +45,7 @@ export function Sidebar() {
   };
 
   const renderItem = (item: { label: string; path: string; icon: React.ReactNode }) => (
-    <ListItemButton
-      key={item.path}
-      selected={isActive(item.path)}
-      onClick={() => navigate(item.path)}
-    >
+    <ListItemButton key={item.path} selected={isActive(item.path)} onClick={() => navigate(item.path)}>
       <ListItemIcon>{item.icon}</ListItemIcon>
       <ListItemText primary={item.label} slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
     </ListItemButton>
@@ -68,19 +61,35 @@ export function Sidebar() {
       }}
     >
       {/* Logo */}
-      <Box sx={{
-        px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1,
-        borderBottom: '1px solid', borderColor: 'divider', minHeight: 56,
-      }}>
-        <Box sx={{
-          width: 28, height: 28, borderRadius: 1,
-          background: 'linear-gradient(135deg, #58a6ff 0%, #1f6feb 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
+      <Box
+        sx={{
+          px: 2,
+          py: 1.5,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          minHeight: 56,
+        }}
+      >
+        <Box
+          sx={{
+            width: 28,
+            height: 28,
+            borderRadius: 1,
+            background: 'linear-gradient(135deg, #58a6ff 0%, #1f6feb 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
           <ShieldIcon sx={{ fontSize: 16, color: '#fff' }} />
         </Box>
         <Box>
-          <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>Safe Quest</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+            Safe Quest
+          </Typography>
           <Typography variant="caption" sx={{ opacity: 0.5, fontSize: '0.65rem' }}>
             Authoring Platform
           </Typography>
@@ -89,7 +98,10 @@ export function Sidebar() {
 
       {/* Main nav */}
       <Box sx={{ flex: 1, overflow: 'auto', py: 1 }}>
-        <Typography variant="caption" sx={{ px: 2, py: 0.5, display: 'block', opacity: 0.4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <Typography
+          variant="caption"
+          sx={{ px: 2, py: 0.5, display: 'block', opacity: 0.4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}
+        >
           Content
         </Typography>
         <List dense disablePadding>
@@ -98,7 +110,10 @@ export function Sidebar() {
 
         <Divider sx={{ my: 1 }} />
 
-        <Typography variant="caption" sx={{ px: 2, py: 0.5, display: 'block', opacity: 0.4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <Typography
+          variant="caption"
+          sx={{ px: 2, py: 0.5, display: 'block', opacity: 0.4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}
+        >
           Tools
         </Typography>
         <List dense disablePadding>
@@ -108,7 +123,9 @@ export function Sidebar() {
 
       {/* Version */}
       <Box sx={{ px: 2, py: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-        <Typography variant="caption" sx={{ opacity: 0.3 }}>v2.0.0</Typography>
+        <Typography variant="caption" sx={{ opacity: 0.3 }}>
+          v2.0.0
+        </Typography>
       </Box>
     </Drawer>
   );

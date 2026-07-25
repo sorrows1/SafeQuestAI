@@ -1,7 +1,19 @@
 import {
-  Box, Typography, Paper, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Chip,
-  FormControl, Select, MenuItem, Switch, CircularProgress,
+  Box,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  FormControl,
+  Select,
+  MenuItem,
+  Switch,
+  CircularProgress,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useListUsersQuery, usePatchUserMutation } from '@/store/api';
@@ -33,10 +45,14 @@ export function Users() {
   return (
     <AppShell>
       <Box sx={{ p: 3, maxWidth: 1000, mx: 'auto' }}>
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>User Management</Typography>
-        
+        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
+          User Management
+        </Typography>
+
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+            <CircularProgress />
+          </Box>
         ) : (
           <TableContainer component={Paper} variant="outlined">
             <Table>
@@ -50,12 +66,16 @@ export function Users() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users.map(user => (
+                {users.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell>{user.id}</TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{user.display_name}</Typography>
-                      <Typography variant="caption" color="text.secondary">{user.email}</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {user.display_name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {user.email}
+                      </Typography>
                     </TableCell>
                     <TableCell>
                       <FormControl size="small">
@@ -83,7 +103,9 @@ export function Users() {
                       {user.google_id ? (
                         <Chip label="Google" size="small" color="primary" variant="outlined" />
                       ) : (
-                        <Typography variant="caption" color="text.secondary">Password</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Password
+                        </Typography>
                       )}
                     </TableCell>
                   </TableRow>

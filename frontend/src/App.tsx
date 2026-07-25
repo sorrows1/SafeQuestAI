@@ -13,7 +13,6 @@ import { Login } from '@/pages/auth/Login';
 import { Register } from '@/pages/auth/Register';
 import { AuthCallback } from '@/pages/auth/AuthCallback';
 
-
 import { Dashboard } from '@/pages/admin/Dashboard';
 import { ScenarioEditor } from '@/pages/admin/ScenarioEditor';
 import { PersonaEditor } from '@/pages/admin/PersonaEditor';
@@ -28,14 +27,13 @@ const SimulationWorkbench = lazy(() => import('@/pages/admin/SimulationWorkbench
 const ReviewQueue = lazy(() => import('@/pages/admin/ReviewQueue').then((module) => ({ default: module.ReviewQueue })));
 const AdminFallback = () => <div style={{ padding: 24 }}>Loading admin workspace…</div>;
 
-
-import { FamilyScenarioLobby } from "@/pages/family/FamilyScenarioLobby";
-import { Landing } from "@/pages/Landing";
-import { FamilyScenarioPlayer } from "@/pages/family/FamilyScenarioPlayer";
+import { FamilyScenarioLobby } from '@/pages/family/FamilyScenarioLobby';
+import { Landing } from '@/pages/Landing';
+import { FamilyScenarioPlayer } from '@/pages/family/FamilyScenarioPlayer';
 
 function ThemedApp() {
-  const themeMode = useAppSelector(s => s.ui.themeMode);
-  const theme = useMemo(() => themeMode === 'dark' ? darkTheme : lightTheme, [themeMode]);
+  const themeMode = useAppSelector((s) => s.ui.themeMode);
+  const theme = useMemo(() => (themeMode === 'dark' ? darkTheme : lightTheme), [themeMode]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -51,25 +49,142 @@ function ThemedApp() {
             <Route path="/" element={<Landing />} />
             <Route path="/chat/*" element={<Navigate to="/family/scenarios" replace />} />
 
-            <Route path="/family/scenarios" element={<ProtectedRoute><FamilyScenarioLobby /></ProtectedRoute>} />
-            <Route path="/family/scenarios/:transcriptId/sessions/:sessionId" element={<ProtectedRoute><FamilyScenarioPlayer /></ProtectedRoute>} />
+            <Route
+              path="/family/scenarios"
+              element={
+                <ProtectedRoute>
+                  <FamilyScenarioLobby />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/family/scenarios/:transcriptId/sessions/:sessionId"
+              element={
+                <ProtectedRoute>
+                  <FamilyScenarioPlayer />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Admin CMS */}
-            <Route path="/admin" element={<AdminRoute><Dashboard /></AdminRoute>} />
-            <Route path="/admin/scenarios" element={<AdminRoute><ScenarioEditor /></AdminRoute>} />
-            <Route path="/admin/scenarios/:id" element={<AdminRoute><ScenarioEditor /></AdminRoute>} />
-            <Route path="/admin/personas" element={<AdminRoute><PersonaEditor /></AdminRoute>} />
-            <Route path="/admin/stages" element={<AdminRoute><StageEditor /></AdminRoute>} />
-            <Route path="/admin/objectives" element={<AdminRoute><ObjectiveEditor /></AdminRoute>} />
-            <Route path="/admin/constraints" element={<AdminRoute><ConstraintEditor /></AdminRoute>} />
-            <Route path="/admin/prompts" element={<AdminRoute><PromptEditor /></AdminRoute>} />
-            <Route path="/admin/simulator" element={<AdminRoute><Suspense fallback={<AdminFallback />}><SimulationWorkbench /></Suspense></AdminRoute>} />
-            <Route path="/admin/simulator/:runId" element={<AdminRoute><Suspense fallback={<AdminFallback />}><SimulationWorkbench /></Suspense></AdminRoute>} />
-            <Route path="/admin/validation" element={<AdminRoute><ValidationConsole /></AdminRoute>} />
-            <Route path="/admin/settings" element={<AdminRoute><Settings /></AdminRoute>} />
-            <Route path="/admin/users" element={<AdminRoute><Users /></AdminRoute>} />
-            <Route path="/admin/review-queue" element={<AdminRoute><Suspense fallback={<AdminFallback />}><ReviewQueue /></Suspense></AdminRoute>} />
-
+            <Route
+              path="/admin"
+              element={
+                <AdminRoute>
+                  <Dashboard />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/scenarios"
+              element={
+                <AdminRoute>
+                  <ScenarioEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/scenarios/:id"
+              element={
+                <AdminRoute>
+                  <ScenarioEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/personas"
+              element={
+                <AdminRoute>
+                  <PersonaEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/stages"
+              element={
+                <AdminRoute>
+                  <StageEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/objectives"
+              element={
+                <AdminRoute>
+                  <ObjectiveEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/constraints"
+              element={
+                <AdminRoute>
+                  <ConstraintEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/prompts"
+              element={
+                <AdminRoute>
+                  <PromptEditor />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/simulator"
+              element={
+                <AdminRoute>
+                  <Suspense fallback={<AdminFallback />}>
+                    <SimulationWorkbench />
+                  </Suspense>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/simulator/:runId"
+              element={
+                <AdminRoute>
+                  <Suspense fallback={<AdminFallback />}>
+                    <SimulationWorkbench />
+                  </Suspense>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/validation"
+              element={
+                <AdminRoute>
+                  <ValidationConsole />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/settings"
+              element={
+                <AdminRoute>
+                  <Settings />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <AdminRoute>
+                  <Users />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/review-queue"
+              element={
+                <AdminRoute>
+                  <Suspense fallback={<AdminFallback />}>
+                    <ReviewQueue />
+                  </Suspense>
+                </AdminRoute>
+              }
+            />
           </Routes>
         </BrowserRouter>
       </SnackbarProvider>

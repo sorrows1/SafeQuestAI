@@ -11,7 +11,8 @@ export interface GenerationMessage {
   metadata?: Record<string, unknown>;
 }
 
-export type ViewerRunStatus = 'idle' | 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'limit_reached' | 'completed' | 'failed';
+export type ViewerRunStatus =
+  'idle' | 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'limit_reached' | 'completed' | 'failed';
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 const messagesAdapter = createEntityAdapter<GenerationMessage>({
@@ -56,13 +57,19 @@ const simulationViewerSlice = createSlice({
       messagesAdapter.upsertOne(state, action.payload);
       state.typing = false;
     },
-    typingStarted(state) { state.typing = true; },
-    typingStopped(state) { state.typing = false; },
+    typingStarted(state) {
+      state.typing = true;
+    },
+    typingStopped(state) {
+      state.typing = false;
+    },
     runStatusChanged(state, action: PayloadAction<string>) {
       state.runStatus = normalizeStatus(action.payload);
       if (state.runStatus !== 'running') state.typing = false;
     },
-    connectionStatusChanged(state, action: PayloadAction<ConnectionStatus>) { state.connectionStatus = action.payload; },
+    connectionStatusChanged(state, action: PayloadAction<ConnectionStatus>) {
+      state.connectionStatus = action.payload;
+    },
     messagesLoaded(state, action: PayloadAction<GenerationMessage[]>) {
       messagesAdapter.setAll(state, action.payload);
       state.typing = false;
@@ -71,14 +78,37 @@ const simulationViewerSlice = createSlice({
       state.runId = action.payload.id;
       state.runStatus = normalizeStatus(action.payload.status);
       state.activeBranch = String(action.payload.progress?.active_branch ?? 'main');
-      messagesAdapter.setAll(state, (action.payload.messages ?? []).map((message) => ({ id: message.id, sequence: message.sequence, sender: message.sender, content: message.content, pace: String(message.metadata.pace ?? 'normal'), metadata: message.metadata })));
+      messagesAdapter.setAll(
+        state,
+        (action.payload.messages ?? []).map((message) => ({
+          id: message.id,
+          sequence: message.sequence,
+          sender: message.sender,
+          content: message.content,
+          pace: String(message.metadata.pace ?? 'normal'),
+          metadata: message.metadata,
+        }))
+      );
       state.typing = action.payload.status === 'running';
     },
-    eventCursorUpdated(state, action: PayloadAction<number>) { state.lastEventId = Math.max(state.lastEventId, action.payload); },
+    eventCursorUpdated(state, action: PayloadAction<number>) {
+      state.lastEventId = Math.max(state.lastEventId, action.payload);
+    },
   },
 });
 
-export const { connectionStatusChanged, eventCursorUpdated, messageReceived, messagesLoaded, runHydrated, runSelected, runStarted, runStatusChanged, typingStarted, typingStopped } = simulationViewerSlice.actions;
+export const {
+  connectionStatusChanged,
+  eventCursorUpdated,
+  messageReceived,
+  messagesLoaded,
+  runHydrated,
+  runSelected,
+  runStarted,
+  runStatusChanged,
+  typingStarted,
+  typingStopped,
+} = simulationViewerSlice.actions;
 
 const messageSelectors = messagesAdapter.getSelectors<RootState>((state) => state.simulationViewer);
 export const selectSimulationMessages = messageSelectors.selectAll;

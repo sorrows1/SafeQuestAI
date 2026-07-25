@@ -6,11 +6,7 @@
   "starting_stage": "game_lobby",
   "version": "2.0.0",
   "created_at": "2026-07-25T00:00:00Z",
-  "tags": [
-    "gaming",
-    "boundaries",
-    "help-seeking"
-  ],
+  "tags": ["gaming", "boundaries", "help-seeking"],
   "learning_objectives": [
     "Notice when an online request starts to feel pressuring",
     "Practise pausing before agreeing to a boundary change",
@@ -30,39 +26,21 @@
   "stage_sequence": [
     {
       "stage": "game_lobby",
-      "mandatory_objectives": [
-        "open_gaming_rapport"
-      ],
+      "mandatory_objectives": ["open_gaming_rapport"],
       "optional_objectives": [],
-      "constraints": [
-        "age_appropriate_language",
-        "nonvisual_image_request"
-      ]
+      "constraints": ["age_appropriate_language", "nonvisual_image_request"]
     },
     {
       "stage": "boundary_nudge",
-      "mandatory_objectives": [
-        "test_boundary_pressure",
-        "notice_pressure"
-      ],
-      "optional_objectives": [
-        "seek_trusted_help"
-      ],
-      "constraints": [
-        "nonvisual_image_request",
-        "no_secrecy_or_isolation"
-      ]
+      "mandatory_objectives": ["test_boundary_pressure", "notice_pressure"],
+      "optional_objectives": ["seek_trusted_help"],
+      "constraints": ["nonvisual_image_request", "no_secrecy_or_isolation"]
     },
     {
       "stage": "support_pause",
-      "mandatory_objectives": [
-        "seek_trusted_help"
-      ],
+      "mandatory_objectives": ["seek_trusted_help"],
       "optional_objectives": [],
-      "constraints": [
-        "nonvisual_image_request",
-        "no_secrecy_or_isolation"
-      ]
+      "constraints": ["nonvisual_image_request", "no_secrecy_or_isolation"]
     }
   ],
   "difficulty_modifiers": {

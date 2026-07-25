@@ -2,85 +2,44 @@
   "age_appropriate_language": {
     "id": "age_appropriate_language",
     "description": "Keep all language suitable for young people.",
-    "forbidden_actions": [
-      "adult_content",
-      "graphic_content"
-    ],
-    "forbidden_topics": [
-      "sexual content",
-      "graphic violence"
-    ],
-    "required_behaviours": [
-      "use calm, age-appropriate wording"
-    ],
+    "forbidden_actions": ["adult_content", "graphic_content"],
+    "forbidden_topics": ["sexual content", "graphic violence"],
+    "required_behaviours": ["use calm, age-appropriate wording"],
     "violation_severity": "critical",
     "recovery_suggestion": "Use a brief, neutral boundary example instead."
   },
   "nonvisual_image_request": {
     "id": "nonvisual_image_request",
     "description": "Keep boundary-pressure examples entirely non-visual and non-physical.",
-    "forbidden_actions": [
-      "describe_visual_content",
-      "describe_appearance",
-      "request_contact_details"
-    ],
-    "forbidden_topics": [
-      "visual details",
-      "physical appearance",
-      "body details"
-    ],
-    "required_behaviours": [
-      "refer only to a general online request",
-      "allow a clear refusal or pause"
-    ],
+    "forbidden_actions": ["describe_visual_content", "describe_appearance", "request_contact_details"],
+    "forbidden_topics": ["visual details", "physical appearance", "body details"],
+    "required_behaviours": ["refer only to a general online request", "allow a clear refusal or pause"],
     "violation_severity": "critical",
     "recovery_suggestion": "Return to a general online boundary and a support option."
   },
   "no_secrecy_or_isolation": {
     "id": "no_secrecy_or_isolation",
     "description": "Never suggest hiding an interaction from trusted adults.",
-    "forbidden_actions": [
-      "suggest_secrecy",
-      "discourage_support"
-    ],
-    "forbidden_phrases": [
-      "keep this secret",
-      "do not tell anyone"
-    ],
-    "required_behaviours": [
-      "leave room for trusted-adult support"
-    ],
+    "forbidden_actions": ["suggest_secrecy", "discourage_support"],
+    "forbidden_phrases": ["keep this secret", "do not tell anyone"],
+    "required_behaviours": ["leave room for trusted-adult support"],
     "violation_severity": "critical",
     "recovery_suggestion": "Invite a pause and a trusted adult conversation."
   },
   "no_precise_posting_details": {
     "id": "no_precise_posting_details",
     "description": "A draft may illustrate broad location or routine clues but never exact identifying details.",
-    "forbidden_actions": [
-      "include_address",
-      "include_school_name",
-      "include_live_location"
-    ],
-    "forbidden_topics": [
-      "street address",
-      "specific school",
-      "real-time whereabouts"
-    ],
-    "required_behaviours": [
-      "use a broad, fictionalised routine clue"
-    ],
+    "forbidden_actions": ["include_address", "include_school_name", "include_live_location"],
+    "forbidden_topics": ["street address", "specific school", "real-time whereabouts"],
+    "required_behaviours": ["use a broad, fictionalised routine clue"],
     "violation_severity": "high",
     "recovery_suggestion": "Generalise the place or timing before continuing."
   },
   "supportive_decision_options": {
     "id": "supportive_decision_options",
     "description": "Provide realistic, non-judgmental options for a safer next step.",
-    "forbidden_actions": [
-      "grade_child_response"
-    ],
-    "required_behaviours": [
-      "include pause, revise, or ask-for-help options"
-    ],
+    "forbidden_actions": ["grade_child_response"],
+    "required_behaviours": ["include pause, revise, or ask-for-help options"],
     "violation_severity": "high",
     "recovery_suggestion": "Offer a choice that includes asking a trusted adult."
   }

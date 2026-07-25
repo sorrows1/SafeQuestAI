@@ -1,4 +1,36 @@
-import { Avatar, Box, Paper, Typography } from "@mui/material";
-import { SelectableMessage } from "./SelectableMessage";
-import type { ScenarioSkinProps } from "./types";
-export function SocialFeedSkin({ messages, detectiveMode, highlightedMessageIds, onToggleMessage }: ScenarioSkinProps) { return <Box aria-label="Social feed scenario" sx={{ maxWidth: 680, mx: "auto", py: 2 }}>{messages.map((message, index) => <SelectableMessage key={message.id} messageId={message.id} selectable={detectiveMode} selected={highlightedMessageIds.includes(message.id)} onToggle={onToggleMessage}><Paper variant="outlined" sx={{ p: 2, mb: 1.5, ml: index % 3 === 2 ? 5 : 0 }}><Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}><Avatar>{message.speaker_label.slice(0, 1).toUpperCase()}</Avatar><Box><Typography variant="subtitle2">{message.speaker_label}</Typography><Typography variant="caption" color="text.secondary">Shared just now</Typography></Box></Box><Typography sx={{ whiteSpace: "pre-wrap" }}>{message.content}</Typography>{index % 3 === 2 && <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>Direct message</Typography>}</Paper></SelectableMessage>)}</Box>; }
+import { Avatar, Box, Paper, Typography } from '@mui/material';
+import { SelectableMessage } from './SelectableMessage';
+import type { ScenarioSkinProps } from './types';
+export function SocialFeedSkin({ messages, detectiveMode, highlightedMessageIds, onToggleMessage }: ScenarioSkinProps) {
+  return (
+    <Box aria-label="Social feed scenario" sx={{ maxWidth: 680, mx: 'auto', py: 2 }}>
+      {messages.map((message, index) => (
+        <SelectableMessage
+          key={message.id}
+          messageId={message.id}
+          selectable={detectiveMode}
+          selected={highlightedMessageIds.includes(message.id)}
+          onToggle={onToggleMessage}
+        >
+          <Paper variant="outlined" sx={{ p: 2, mb: 1.5, ml: index % 3 === 2 ? 5 : 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Avatar>{message.speaker_label.slice(0, 1).toUpperCase()}</Avatar>
+              <Box>
+                <Typography variant="subtitle2">{message.speaker_label}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Shared just now
+                </Typography>
+              </Box>
+            </Box>
+            <Typography sx={{ whiteSpace: 'pre-wrap' }}>{message.content}</Typography>
+            {index % 3 === 2 && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Direct message
+              </Typography>
+            )}
+          </Paper>
+        </SelectableMessage>
+      ))}
+    </Box>
+  );
+}

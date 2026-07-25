@@ -3,14 +3,8 @@
     "id": "game_lobby",
     "display_name": "Game Lobby",
     "description": "A brief, ordinary exchange after a game.",
-    "allowed_next": [
-      "game_lobby",
-      "boundary_nudge"
-    ],
-    "default_constraints": [
-      "age_appropriate_language",
-      "nonvisual_image_request"
-    ],
+    "allowed_next": ["game_lobby", "boundary_nudge"],
+    "default_constraints": ["age_appropriate_language", "nonvisual_image_request"],
     "min_turns": 2,
     "max_turns": 6,
     "preferred_style": "short, friendly messages about the game"
@@ -19,15 +13,8 @@
     "id": "boundary_nudge",
     "display_name": "Boundary Nudge",
     "description": "A contact frames a move or request as convenient and tests whether the youth will pause.",
-    "allowed_next": [
-      "boundary_nudge",
-      "support_pause"
-    ],
-    "default_constraints": [
-      "age_appropriate_language",
-      "nonvisual_image_request",
-      "no_secrecy_or_isolation"
-    ],
+    "allowed_next": ["boundary_nudge", "support_pause"],
+    "default_constraints": ["age_appropriate_language", "nonvisual_image_request", "no_secrecy_or_isolation"],
     "min_turns": 2,
     "max_turns": 6,
     "preferred_style": "subtle, brief pressure with room for a refusal"
@@ -36,14 +23,8 @@
     "id": "support_pause",
     "display_name": "Support Pause",
     "description": "The conversation makes space to pause and seek a trusted adult.",
-    "allowed_next": [
-      "support_pause"
-    ],
-    "default_constraints": [
-      "age_appropriate_language",
-      "nonvisual_image_request",
-      "no_secrecy_or_isolation"
-    ],
+    "allowed_next": ["support_pause"],
+    "default_constraints": ["age_appropriate_language", "nonvisual_image_request", "no_secrecy_or_isolation"],
     "min_turns": 1,
     "max_turns": 4,
     "preferred_style": "calm, practical, and supportive"
@@ -52,14 +33,8 @@
     "id": "draft_review",
     "display_name": "Draft Review",
     "description": "A single social post draft is reviewed before sharing.",
-    "allowed_next": [
-      "draft_review"
-    ],
-    "default_constraints": [
-      "age_appropriate_language",
-      "no_precise_posting_details",
-      "supportive_decision_options"
-    ],
+    "allowed_next": ["draft_review"],
+    "default_constraints": ["age_appropriate_language", "no_precise_posting_details", "supportive_decision_options"],
     "min_turns": 1,
     "max_turns": 1,
     "preferred_style": "a realistic social post and a quiet pause before publishing"

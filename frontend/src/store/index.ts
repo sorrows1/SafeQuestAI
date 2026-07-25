@@ -4,8 +4,8 @@ import type { TypedUseSelectorHook } from 'react-redux';
 import { safeQuestApi } from './api';
 import uiReducer from './uiSlice';
 import authReducer from './authSlice';
-import simulationViewerReducer from "@/features/simulation/simulationViewerSlice";
-import familySessionReducer from "@/features/family/familySessionSlice";
+import simulationViewerReducer from '@/features/simulation/simulationViewerSlice';
+import familySessionReducer from '@/features/family/familySessionSlice';
 
 export const store = configureStore({
   reducer: {
@@ -15,11 +15,10 @@ export const store = configureStore({
     simulationViewer: simulationViewerReducer,
     familySession: familySessionReducer,
   },
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware().concat(safeQuestApi.middleware),
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(safeQuestApi.middleware),
 });
 
-export type RootState   = ReturnType<typeof store.getState>;
+export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
 
 export const useAppDispatch: () => AppDispatch = useDispatch;

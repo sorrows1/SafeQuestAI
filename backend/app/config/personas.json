@@ -6,10 +6,7 @@
     "cover_story": "Claims to be another player looking for teammates after a match.",
     "claimed_age": 15,
     "claimed_location": "",
-    "claimed_interests": [
-      "co-operative games",
-      "strategy games"
-    ],
+    "claimed_interests": ["co-operative games", "strategy games"],
     "manipulation_style": "boundary_pressure",
     "escalation_speed": "medium",
     "conversation_style": {
@@ -31,10 +28,7 @@
     "cover_story": "A young player enjoying a shared online game.",
     "claimed_age": 13,
     "claimed_location": "",
-    "claimed_interests": [
-      "gaming",
-      "drawing"
-    ],
+    "claimed_interests": ["gaming", "drawing"],
     "manipulation_style": "",
     "escalation_speed": "slow",
     "conversation_style": {
@@ -56,10 +50,7 @@
     "cover_story": "A young person preparing a post for friends and followers.",
     "claimed_age": 13,
     "claimed_location": "",
-    "claimed_interests": [
-      "school activities",
-      "social media"
-    ],
+    "claimed_interests": ["school activities", "social media"],
     "manipulation_style": "",
     "escalation_speed": "slow",
     "conversation_style": {

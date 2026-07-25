@@ -13,13 +13,7 @@ export interface MessageBubbleProps {
 }
 
 /** A presentation-only message bubble shared by admin and player experiences. */
-export const MessageBubble = memo(function MessageBubble({
-  content,
-  speakerLabel,
-  side,
-  pace: _pace,
-  selectable = false,
-}: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ content, speakerLabel, side, pace: _pace, selectable = false }: MessageBubbleProps) {
   const isRight = side === 'right';
 
   return (
@@ -31,8 +25,22 @@ export const MessageBubble = memo(function MessageBubble({
             {speakerLabel}
           </Typography>
           <Grow in timeout={220} appear style={{ transformOrigin: isRight ? '100% 100%' : '0 100%' }}>
-            <Paper elevation={0} sx={{ p: 1.5, px: 2, borderRadius: isRight ? '20px 20px 4px 20px' : '20px 20px 20px 4px', bgcolor: isRight ? 'primary.main' : 'background.paper', color: isRight ? 'primary.contrastText' : 'text.primary', border: isRight ? 'none' : '1px solid', borderColor: 'divider', userSelect: selectable ? 'text' : 'none' }}>
-              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</Typography>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 1.5,
+                px: 2,
+                borderRadius: isRight ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+                bgcolor: isRight ? 'primary.main' : 'background.paper',
+                color: isRight ? 'primary.contrastText' : 'text.primary',
+                border: isRight ? 'none' : '1px solid',
+                borderColor: 'divider',
+                userSelect: selectable ? 'text' : 'none',
+              }}
+            >
+              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {content}
+              </Typography>
             </Paper>
           </Grow>
         </Box>

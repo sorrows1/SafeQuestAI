@@ -22,7 +22,9 @@ const stored = (() => {
       accessToken: localStorage.getItem('sq_access') ?? null,
       refreshToken: localStorage.getItem('sq_refresh') ?? null,
     };
-  } catch { return { accessToken: null, refreshToken: null }; }
+  } catch {
+    return { accessToken: null, refreshToken: null };
+  }
 })();
 
 const initialState: AuthState = {
@@ -37,10 +39,10 @@ const authSlice = createSlice({
   initialState,
   reducers: {
     setTokens: (state, action: PayloadAction<{ accessToken: string; refreshToken: string }>) => {
-      state.accessToken  = action.payload.accessToken;
+      state.accessToken = action.payload.accessToken;
       state.refreshToken = action.payload.refreshToken;
       state.isAuthenticated = true;
-      localStorage.setItem('sq_access',  action.payload.accessToken);
+      localStorage.setItem('sq_access', action.payload.accessToken);
       localStorage.setItem('sq_refresh', action.payload.refreshToken);
     },
     setUser: (state, action: PayloadAction<AuthUser>) => {
@@ -48,7 +50,7 @@ const authSlice = createSlice({
     },
     logout: (state) => {
       state.user = null;
-      state.accessToken  = null;
+      state.accessToken = null;
       state.refreshToken = null;
       state.isAuthenticated = false;
       localStorage.removeItem('sq_access');

@@ -6,11 +6,7 @@
   "starting_stage": "draft_review",
   "version": "2.0.0",
   "created_at": "2026-07-25T00:00:00Z",
-  "tags": [
-    "social-post",
-    "privacy",
-    "pause-and-check"
-  ],
+  "tags": ["social-post", "privacy", "pause-and-check"],
   "learning_objectives": [
     "Recognise broad location and routine clues in a post",
     "Consider whether the audience matches the post",
@@ -26,18 +22,9 @@
   "stage_sequence": [
     {
       "stage": "draft_review",
-      "mandatory_objectives": [
-        "review_location_and_routine",
-        "pause_before_sharing"
-      ],
-      "optional_objectives": [
-        "check_audience",
-        "seek_trusted_help"
-      ],
-      "constraints": [
-        "no_precise_posting_details",
-        "supportive_decision_options"
-      ]
+      "mandatory_objectives": ["review_location_and_routine", "pause_before_sharing"],
+      "optional_objectives": ["check_audience", "seek_trusted_help"],
+      "constraints": ["no_precise_posting_details", "supportive_decision_options"]
     }
   ],
   "difficulty_modifiers": {
