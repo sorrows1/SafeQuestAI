@@ -10,7 +10,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  test: { environment: 'jsdom', globals: true },
+  test: { environment: 'jsdom', globals: true, include: ['src/**/*.{test,spec}.{ts,tsx}'] },
   server: {
     port: 5173,
     host: true,

@@ -8,7 +8,10 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:a11y": "playwright test e2e/accessibility.spec.ts",
+    "test:visual": "PLAYWRIGHT_VISUAL=1 playwright test e2e/landing.spec.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -35,6 +38,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.13.3",

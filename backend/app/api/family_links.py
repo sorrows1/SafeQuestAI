@@ -7,10 +7,16 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.auth.security import get_current_user
-from app.models.orm import FamilyRelationship,FamilyRelationshipAuditEvent,FamilyRelationshipInvitation,FamilySession,FamilySessionParticipant,User,get_db
+from app.config.rollout import FeatureFlag, require_feature
+from app.telemetry import record as telemetry_record
+from app.models.orm import FamilyRelationship,FamilyRelationshipAuditEvent,FamilyRelationshipInvitation,FamilySession,FamilySessionEvent,FamilySessionParticipant,User,get_db
 from app.models.schemas import FamilyAuthorizedSessionOut,FamilyRelationshipInvitationAcceptRequest,FamilyRelationshipInvitationCreateRequest,FamilyRelationshipInvitationOut,FamilyRelationshipOut,FamilyRelationshipPreviewOut,FamilyRelationshipUpdateRequest,FamilyRole
 
-router=APIRouter(prefix="/api/family",tags=["Family Linking"])
+def require_relationships_rollout() -> None:
+    require_feature(FeatureFlag.RELATIONSHIPS)
+
+
+router=APIRouter(prefix="/api/family",tags=["Family Linking"], dependencies=[Depends(require_relationships_rollout)])
 TTL=timedelta(days=7); WINDOW=timedelta(minutes=10); MAX=12
 attempts: dict[str,deque[datetime]]=defaultdict(deque)
 def now(): return datetime.now(timezone.utc)
@@ -18,7 +24,9 @@ def stamp(v): return v.isoformat() if v else None
 def ref(prefix): return f"{prefix}_{secrets.token_urlsafe(18)}"
 def digest(v): return hashlib.sha256(v.strip().encode()).hexdigest()
 def member_ref(user_id): return "member_"+hashlib.sha256(f"safequest-member:{user_id}".encode()).hexdigest()[:20]
-def invalid(): return HTTPException(404,"This invitation is unavailable or has expired")
+def invalid():
+    telemetry_record("invitation.failure", reason="unavailable")
+    return HTTPException(404,"This invitation is unavailable or has expired")
 def limit(action,user_id):
     key=f"{action}:{user_id}"; q=attempts[key]; point=now()
     while q and point-q[0]>WINDOW:q.popleft()
@@ -49,7 +57,7 @@ def create_invitation(body:FamilyRelationshipInvitationCreateRequest,db:Session=
     if email==current_user.email.casefold(): raise HTTPException(422,"You cannot create a family link to your own account")
     token,code=secrets.token_urlsafe(32),"".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
     row=FamilyRelationshipInvitation(public_id=ref("fi"),caregiver_user_id=current_user.id,learner_email=email,token_hash=digest(token),short_code_hash=digest(code),expires_at=now()+TTL,status="pending",delivery_label=body.delivery_label)
-    db.add(row);audit(db,"invitation_created",current_user,row);db.commit();db.refresh(row);return invite_out(row,token,code)
+    db.add(row);audit(db,"invitation_created",current_user,row);db.commit();db.refresh(row);telemetry_record("invitation.success", status="created");return invite_out(row,token,code)
 
 @router.get("/invitations",response_model=list[FamilyRelationshipInvitationOut])
 def list_invitations(db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):
@@ -75,7 +83,11 @@ def accept(body:FamilyRelationshipInvitationAcceptRequest,db:Session=Depends(get
     if not caregiver or not caregiver.is_active or caregiver.id==current_user.id: row.failed_lookup_count+=1;db.commit();raise invalid()
     low,high=sorted((caregiver.id,current_user.id)); existing=db.query(FamilyRelationship).filter(FamilyRelationship.user_low_id==low,FamilyRelationship.user_high_id==high).first()
     if existing and existing.status=="active": row.status="accepted";row.accepted_at=now();row.accepted_by_user_id=current_user.id;audit(db,"invitation_replayed",current_user,row,existing);db.commit();return relation_out(existing,current_user,db)
+    if existing and existing.status=="blocked": row.failed_lookup_count+=1;db.commit();raise invalid()
     row.status="accepted";row.accepted_at=now();row.accepted_by_user_id=current_user.id
+    if existing:
+        existing.caregiver_user_id=caregiver.id;existing.learner_user_id=current_user.id;existing.invitation_id=row.id;existing.accepted_at=now();existing.revoked_at=None;existing.status="active";existing.blocked_by_user_id=None
+        audit(db,"relationship_relinked",current_user,row,existing);db.commit();return relation_out(existing,current_user,db)
     relationship=FamilyRelationship(public_id=ref("fr"),caregiver_user_id=caregiver.id,learner_user_id=current_user.id,user_low_id=low,user_high_id=high,invitation_id=row.id,source="invitation",accepted_at=now(),status="active")
     db.add(relationship);audit(db,"invitation_accepted",current_user,row,relationship)
     try: db.commit()
@@ -83,7 +95,7 @@ def accept(body:FamilyRelationshipInvitationAcceptRequest,db:Session=Depends(get
         db.rollback(); existing=db.query(FamilyRelationship).filter(FamilyRelationship.user_low_id==low,FamilyRelationship.user_high_id==high,FamilyRelationship.status=="active").first()
         if not existing: raise
         return relation_out(existing,current_user,db)
-    db.refresh(relationship);return relation_out(relationship,current_user,db)
+    db.refresh(relationship);telemetry_record("invitation.success", status="accepted");return relation_out(relationship,current_user,db)
 
 @router.post("/invitations/decline",status_code=status.HTTP_204_NO_CONTENT)
 def decline(body:FamilyRelationshipInvitationAcceptRequest,db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):
@@ -104,7 +116,16 @@ def relationships(db:Session=Depends(get_db),current_user:User=Depends(get_curre
 def update_relationship(relationship_ref:str,body:FamilyRelationshipUpdateRequest,db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):
     row=db.query(FamilyRelationship).filter(FamilyRelationship.public_id==relationship_ref,or_(FamilyRelationship.caregiver_user_id==current_user.id,FamilyRelationship.learner_user_id==current_user.id),FamilyRelationship.status=="active").first()
     if not row: raise HTTPException(404,"Family relationship not found")
-    row.status="blocked" if body.action=="block" else "revoked";row.revoked_at=now();row.blocked_by_user_id=current_user.id if body.action=="block" else None;audit(db,"relationship_"+body.action,current_user,relationship=row);db.commit();return relation_out(row,current_user,db)
+    point=now();row.status="blocked" if body.action=="block" else "revoked";row.revoked_at=point;row.blocked_by_user_id=current_user.id if body.action=="block" else None
+    # Default Phase 8 policy: revoke future/live caregiver access, retain completed guides.
+    live=db.query(FamilySession).filter(FamilySession.child_user_id==row.learner_user_id,FamilySession.parent_user_id==row.caregiver_user_id,FamilySession.state.notin_(["completed","abandoned","expired"])).all()
+    for session in live:
+        member=db.query(FamilySessionParticipant).filter(FamilySessionParticipant.family_session_id==session.id,FamilySessionParticipant.user_id==row.caregiver_user_id,FamilySessionParticipant.left_at.is_(None)).first()
+        if not member: continue
+        member.left_at=point;member.presence_status="left";member.presence_expires_at=None
+        session.event_sequence=(session.event_sequence or 0)+1
+        db.add(FamilySessionEvent(family_session_id=session.id,sequence=session.event_sequence,event_type="participant_left",actor_participant_id=member.id,payload={"member_ref":member_ref(member.user_id),"reason":"relationship_revoked"},is_ephemeral=False))
+    audit(db,"relationship_"+body.action,current_user,relationship=row);db.commit();return relation_out(row,current_user,db)
 
 @router.get("/sessions",response_model=list[FamilyAuthorizedSessionOut])
 def authorized_sessions(db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):

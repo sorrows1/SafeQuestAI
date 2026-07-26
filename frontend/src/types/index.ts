@@ -79,8 +79,8 @@ export interface ConstraintDefinition {
 
 export interface DifficultyModifier {
   trust_delta_multiplier: number;
-  escalation_speed: string;
-  red_flag_visibility: string;
+  escalation_speed: 'slow' | 'medium' | 'fast';
+  red_flag_visibility: 'low' | 'medium' | 'high';
 }
 
 export interface StageStep {
@@ -101,7 +101,7 @@ export interface ScenarioDefinition {
   tags: string[];
   learning_objectives: string[];
   stage_sequence: StageStep[];
-  difficulty_modifiers: Record<string, DifficultyModifier>;
+  difficulty_modifiers: Record<Difficulty, DifficultyModifier>;
   category: ScenarioCategory;
   render_skin: RenderSkin;
   generation_mode: GenerationMode;
@@ -156,24 +156,37 @@ export interface SimulationRun {
   status: SimulationStatus;
   created_at: string;
   stop_reason?: string | null;
-  usage: Record<string, unknown>;
-  progress: Record<string, unknown>;
+  overview?: SimulationOverview;
+  diagnostics?: SimulationDiagnostics;
+  resource_usage?: ResourceUsage;
+  worker_lease?: WorkerLease;
+  branch_summary?: SimulationBranchSummary;
+  events?: SimulationEvent[];
+  raw_diagnostics?: Record<string, unknown>;
+  // Legacy compact fields retained while the workbench moves to typed diagnostics.
+  usage?: Record<string, unknown>;
+  progress?: Record<string, unknown>;
   worker_status?: Record<string, unknown>;
-  diagnostics?: { objectives: string[]; progression: Record<string, unknown>; flags: string[] };
   personas?: Record<string, unknown>;
   prompts?: Record<string, unknown>;
   messages?: SimulationMessage[];
   revisions?: SimulationRevision[];
 }
 
-export interface DiagnosticWarning { code: string; message: string; severity: "info" | "warning" | "error"; }
-export interface SimulationProgression { current_stage: string | null; next_stage: string | null; completed_objectives: string[]; }
-export interface SimulationObjectiveState { completed: string[]; pending: string[]; }
-export interface SimulationSafetyFinding { code: string; message: string; severity: "info" | "warning" | "error"; }
-export interface PromptProvenance { name: string; version: string | null; role_scope: string | null; }
-export interface ResourceUsage { llm_calls: number; prompt_tokens: number; completion_tokens: number; }
-export interface WorkerLease { worker_id: string | null; leased_until: string | null; state: string | null; }
-export interface SimulationDiagnostics { progression: SimulationProgression; objectives: SimulationObjectiveState; warnings: DiagnosticWarning[]; safety_findings: SimulationSafetyFinding[]; prompt_provenance: PromptProvenance[]; }
+export interface SimulationOverview { id: number; scenario_id: string | null; mode: SimulationMode; status: SimulationStatus; created_at: string; stop_reason: string | null; }
+export interface DiagnosticWarning { code: string; message: string; severity: "info" | "warning" | "error"; source: string; }
+export interface SimulationProgression { current_stage: string | null; next_stage: string | null; current_objective: string | null; completed_objectives: string[]; }
+export interface SimulationObjectiveState { current: string | null; completed: string[]; pending: string[]; }
+export interface SimulationSafetyFinding { code: string; message: string; severity: "info" | "warning" | "error"; source: string; }
+export interface PromptProvenance { id: string; name: string; role: string; version: string | null; hash: string | null; role_scope: string | null; }
+export interface ResourceUsage { messages: number; message_limit: number; message_percent: number; running_seconds: number; minute_limit: number; time_percent: number; llm_calls: number; prompt_tokens: number; completion_tokens: number; }
+export interface WorkerLease { worker_id: string | null; leased_until: string | null; state: string | null; healthy: boolean; }
+export interface SimulationBranchSummary { active_branch: string; branch_count: number; revision_count: number; latest_revision_id: number | null; }
+export interface SimulationEvent { id: number; sequence: number; event_type: string; category: "lifecycle" | "transcript" | "revision" | "resources" | "safety" | "system"; severity: "info" | "warning" | "error"; label: string; created_at: string; payload: Record<string, unknown>; raw_payload?: Record<string, unknown>; }
+export interface SimulationDiagnostics { progression: SimulationProgression; objectives: SimulationObjectiveState; warnings: DiagnosticWarning[]; safety_findings: SimulationSafetyFinding[]; tactic_tags: string[]; prompt_provenance: PromptProvenance[]; flags?: string[]; }
+export interface SimulationHistoryPage { items: SimulationRun[]; page: number; page_size: number; total: number; }
+export interface SimulationEventHistoryPage { items: SimulationEvent[]; page: number; page_size: number; total: number; }
+
 
 // ── Validation types ───────────────────────────────────────────────────────
 
@@ -206,6 +219,16 @@ export interface ConfigSummary {
   objectives: string[];
   constraints: string[];
   prompt_templates: string[];
+  observability: {
+    review_ready_count: number;
+    unpublished_approved_transcript_count: number;
+    active_run_count: number;
+    failed_run_count: number;
+    limited_run_count: number;
+    validation_blocker_count: number;
+    recently_published: Array<{ id: number; scenario_id: string | null; category: string; published_at: string | null }>;
+    system_health: { database: "available" | "unavailable"; llm: "available" | "unavailable" };
+  };
 }
 
 // ── Family scenario player ────────────────────────────────────────────────
@@ -216,6 +239,8 @@ export type ParticipantRole = 'child' | 'parent' | 'ai_companion';
 export type FamilySessionState = "waiting_for_participants" | "in_progress" | "checkpoint" | "completion_review" | "help_and_resources" | "completed" | "paused_for_support" | "abandoned" | "expired";
 export type FamilySessionCommandType = "start" | "reveal_next" | "continue_checkpoint" | "enter_completion_review" | "acknowledge_completion" | "open_help" | "complete" | "reset";
 export type FamilyRole = "learner" | "caregiver";
+export type ParticipantPresenceStatus = "online" | "offline" | "left";
+export type FamilySessionEventType = "participant_joined" | "participant_left" | "participant_presence" | "state_changed" | "reveal" | "selection_focus" | "attempt_submitted" | "finding_validated" | "checkpoint_response" | "companion_shared_feedback" | "caregiver_comment" | "completed" | "guide_ready";
 export type ElementType = "conversation" | "message" | "email" | "email_thread" | "email_message" | "email_header" | "feed" | "post" | "comment" | "profile" | "profile_field" | "attachment" | "link_preview" | "game_profile" | "game_stat" | "game_badge" | "server" | "channel" | "member" | "listing" | "seller" | "price" | "forum_thread" | "forum_post" | "site_section" | "listing_field" | "system_event" | "action";
 export type SceneElementType = ElementType;
 export type ElementRelationship = "root" | "parent_child" | "reference";
@@ -273,6 +298,8 @@ export interface FamilySessionParticipant {
   joined_at: string;
   last_seen_at: string | null;
   left_at?: string | null;
+  presence_status?: ParticipantPresenceStatus;
+  presence_expires_at?: string | null;
 }
 
 export interface FamilyRelationshipInvitation {
@@ -341,7 +368,11 @@ export interface FamilyScenarioQuery {
 export interface FamilySession {
   id: number;
   public_id?: string | null;
+  session_ref?: string | null;
   owner_ref?: string | null;
+  caregiver_ref?: string | null;
+  turn_owner_ref?: string | null;
+  previous_session_ref?: string | null;
   transcript_id: number;
   parent_user_id: number | null;
   companion_mode: boolean;
@@ -383,6 +414,42 @@ export interface FamilyScene extends SceneDefinition {
   messages: FamilyMessage[];
 }
 
+/** Admin-only ground truth, intentionally separate from player scene payloads. */
+export interface SceneAnnotationDraft {
+  element_key: string;
+  tactic_tag: string;
+  start_offset?: number | null;
+  end_offset?: number | null;
+  explanation?: string | null;
+  tiered_hints: string[];
+}
+
+export interface AdminSceneDraft {
+  category: ScenarioCategory;
+  scene: SceneDefinition;
+  annotations: SceneAnnotationDraft[];
+}
+
+export interface AdminReviewQueueItem {
+  kind: 'simulation' | 'content_review';
+  id: number;
+  scenario_id: string | null;
+  mode: SimulationMode | null;
+  status: string;
+  created_at: string;
+}
+
+export interface SkinCapabilityManifest {
+  skin_contract_version: string;
+  tactic_tags_by_category: Record<ScenarioCategory, string[]>;
+  skins: Array<{
+    id: RenderSkin;
+    version: string;
+    supported_element_types: ElementType[];
+    responsive_modes: Array<'default' | 'compact'>;
+  }>;
+}
+
 export interface FamilySessionCapabilities {
   can_reveal_next: boolean;
   can_continue_checkpoint: boolean;
@@ -400,6 +467,12 @@ export interface FamilySessionCapabilities {
   can_invite_before_start: boolean;
   can_remove_before_start: boolean;
   can_leave: boolean;
+  can_heartbeat: boolean;
+  can_publish_selection_focus: boolean;
+  can_submit_shared_reflection: boolean;
+  can_add_caregiver_comment: boolean;
+  can_edit_own_caregiver_comment: boolean;
+  can_request_shared_companion_feedback: boolean;
 }
 
 export interface FamilySessionCommandRequest {
@@ -409,7 +482,7 @@ export interface FamilySessionCommandRequest {
 }
 
 export interface FamilySessionDetail {
-  session_schema_version: 2;
+  session_schema_version: 3;
   session: FamilySession & {
     state: FamilySessionState;
     state_version: number;
@@ -424,6 +497,7 @@ export interface FamilySessionDetail {
   participant_role: FamilyRole;
   capabilities: FamilySessionCapabilities;
   findings: ValidatedFinding[];
+  caregiver_comments: FamilyCaregiverComment[];
 }
 
 export interface FlagAttemptRequest {
@@ -431,6 +505,7 @@ export interface FlagAttemptRequest {
   reasoning: string;
   claim: "red_flag" | "not_red_flag" | "unsure";
   client_command_id: string;
+  share_reasoning_with_caregiver?: boolean;
 }
 
 export interface ValidatedFinding {
@@ -456,6 +531,47 @@ export interface FlagAttempt {
 
 export interface HintResponse { element_key: string; hint_level: number; hint: string; }
 
+
+export interface FamilySessionEvent {
+  id: number;
+  sequence: number;
+  event_type: FamilySessionEventType;
+  actor_ref: string | null;
+  payload: Record<string, unknown>;
+  is_ephemeral: boolean;
+  created_at: string;
+}
+
+export interface FamilyCaregiverComment {
+  comment_ref: string;
+  author_ref: string;
+  author_display_name: string;
+  element_key: string | null;
+  annotation_id: number | null;
+  text: string;
+  child_visible_label: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FamilyPresenceHeartbeatRequest {
+  client_event_id: string;
+  status?: "online" | "offline";
+}
+
+export interface FamilyCaregiverCommentCreateRequest {
+  element_key?: string;
+  annotation_id?: number;
+  text: string;
+  client_command_id: string;
+}
+
+export interface SharedCompanionFeedback {
+  response_text: string;
+  element_key: string | null;
+  shared: boolean;
+  support_resources: SupportResource[];
+}
 export interface CheckpointResponse {
   id: number;
   checkpoint_message_id: number;
@@ -464,6 +580,7 @@ export interface CheckpointResponse {
   flagged_message_ids: number[];
   tactic_tag_guess: string | null;
   created_at: string;
+  visibility?: FindingVisibility;
 }
 
 export interface ConversationGuide {

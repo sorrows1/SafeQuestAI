@@ -27,8 +27,18 @@ import type {
   FlagAttempt,
   FlagAttemptRequest,
   HintResponse,
+  FamilySessionParticipant,
+  FamilyPresenceHeartbeatRequest,
+  FamilyCaregiverComment,
+  FamilyCaregiverCommentCreateRequest,
+  SharedCompanionFeedback,
   SimulationRun,
   SimulationMode,
+  SimulationHistoryPage,
+  SimulationEventHistoryPage,
+  AdminSceneDraft,
+  AdminReviewQueueItem,
+  SkinCapabilityManifest,
 } from '@/types';
 
 // ── Public/auth types ────────────────────────────────────────────────────────
@@ -112,26 +122,48 @@ export const safeQuestApi = createApi({
     getFamilyRelationships: build.query<FamilyRelationship[], void>({ query: () => '/family/relationships', providesTags: ['FamilyLink'] }),
     updateFamilyRelationship: build.mutation<FamilyRelationship, { relationship_ref: string; action: 'unlink' | 'block' }>({ query: ({ relationship_ref, ...body }) => ({ url: '/family/relationships/' + relationship_ref, method: 'PATCH', body }), invalidatesTags: ['FamilyLink', 'FamilySession'] }),
     getAuthorizedFamilySessions: build.query<FamilyAuthorizedSession[], void>({ query: () => '/family/sessions', providesTags: ['FamilySession'] }),
-    getFamilySession: build.query<FamilySessionDetail, number>({
+    getFamilySession: build.query<FamilySessionDetail, number | string>({
       query: (sessionId) => "/family/sessions/" + sessionId,
       providesTags: (_result, _error, sessionId) => [{ type: "FamilySession", id: sessionId }],
     }),
-    commandFamilySession: build.mutation<FamilySessionDetail, { sessionId: number } & FamilySessionCommandRequest>({
+    commandFamilySession: build.mutation<FamilySessionDetail, { sessionId: number | string } & FamilySessionCommandRequest>({
       query: ({ sessionId, ...body }) => ({ url: "/family/sessions/" + sessionId + "/commands", method: "POST", body }),
       invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
     }),
-    getFamilyMessages: build.query<FamilyMessage[], { sessionId: number; upTo: number }>({
+    heartbeatFamilySession: build.mutation<FamilySessionParticipant, { sessionId: number | string } & FamilyPresenceHeartbeatRequest>({
+      query: ({ sessionId, ...body }) => ({ url: '/family/sessions/' + sessionId + '/presence', method: "POST", body }),
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
+    }),
+    publishFamilySelectionFocus: build.mutation<void, { sessionId: number | string; element_key: string; client_event_id: string }>({
+      query: ({ sessionId, ...body }) => ({ url: '/family/sessions/' + sessionId + '/selection-focus', method: "POST", body }),
+    }),
+    leaveFamilySession: build.mutation<void, number | string>({
+      query: (sessionId) => ({ url: '/family/sessions/' + sessionId + '/leave', method: "POST" }),
+      invalidatesTags: (_result, _error, sessionId) => [{ type: "FamilySession", id: sessionId }],
+    }),
+    createCaregiverComment: build.mutation<FamilyCaregiverComment, { sessionId: number | string } & FamilyCaregiverCommentCreateRequest>({
+      query: ({ sessionId, ...body }) => ({ url: '/family/sessions/' + sessionId + '/comments', method: "POST", body }),
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
+    }),
+    updateCaregiverComment: build.mutation<FamilyCaregiverComment, { sessionId: number | string; comment_ref: string; text: string }>({
+      query: ({ sessionId, comment_ref, ...body }) => ({ url: '/family/sessions/' + sessionId + '/comments/' + comment_ref, method: "PATCH", body }),
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
+    }),
+    getFamilyMessages: build.query<FamilyMessage[], { sessionId: number | string; upTo: number }>({
       query: ({ sessionId, upTo }) => '/family/sessions/' + sessionId + '/messages?up_to=' + upTo,
     }),
     submitCheckpointResponse: build.mutation<
       CheckpointResponse,
       {
-        sessionId: number;
+        sessionId: number | string;
         checkpoint_message_id: number;
         responder_role: ParticipantRole;
         response_text: string;
         flagged_message_ids: number[];
         tactic_tag_guess?: string | null;
+        share_with_caregiver?: boolean;
+        expected_state_version?: number;
+        client_command_id?: string;
       }
     >({
       query: ({ sessionId, ...body }) => ({ url: '/family/sessions/' + sessionId + '/checkpoint-responses', method: 'POST', body }),
@@ -140,34 +172,39 @@ export const safeQuestApi = createApi({
     submitCompanionCheckpoint: build.mutation<
       CompanionCheckpointResult,
       {
-        sessionId: number;
+        sessionId: number | string;
         checkpoint_message_id: number;
         child_response_text: string;
         flagged_message_ids: number[];
         tactic_tag_guess?: string | null;
+        client_command_id?: string;
       }
     >({
       query: ({ sessionId, ...body }) => ({ url: '/companion/sessions/' + sessionId + '/checkpoint', method: 'POST', body }),
       invalidatesTags: (_result, _error, { sessionId }) => [{ type: 'FamilySession', id: sessionId }],
     }),
-    submitFlagAttempt: build.mutation<FlagAttempt, { sessionId: number } & FlagAttemptRequest>({
+    submitFlagAttempt: build.mutation<FlagAttempt, { sessionId: number | string } & FlagAttemptRequest>({
       query: ({ sessionId, ...body }) => ({ url: "/companion/sessions/" + sessionId + "/flag-attempts", method: "POST", body }),
       invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
     }),
-    requestCompanionHint: build.mutation<HintResponse, { sessionId: number; element_key: string; client_command_id: string }>({
+    requestCompanionHint: build.mutation<HintResponse, { sessionId: number | string; element_key: string; client_command_id: string }>({
       query: ({ sessionId, ...body }) => ({ url: "/companion/sessions/" + sessionId + "/hints", method: "POST", body }),
     }),
     explainWithCompanion: build.mutation<
       { response_text: string; disclosure_triggered: boolean; support_resources: SupportResource[] },
-      { sessionId: number; message: string }
+      { sessionId: number | string; message: string }
     >({
       query: ({ sessionId, ...body }) => ({ url: '/companion/sessions/' + sessionId + '/explain', method: 'POST', body }),
     }),
-    completeFamilySession: build.mutation<ConversationGuide, number>({
+    requestSharedCompanionFeedback: build.mutation<SharedCompanionFeedback, { sessionId: number | string; message: string; element_key?: string; client_command_id: string }>({
+      query: ({ sessionId, ...body }) => ({ url: '/companion/sessions/' + sessionId + '/shared-feedback', method: "POST", body }),
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
+    }),
+    completeFamilySession: build.mutation<ConversationGuide, number | string>({
       query: (sessionId) => ({ url: '/family/sessions/' + sessionId + '/complete', method: 'POST' }),
       invalidatesTags: (_result, _error, sessionId) => [{ type: 'FamilySession', id: sessionId }],
     }),
-    getConversationGuide: build.query<ConversationGuide, number>({
+    getConversationGuide: build.query<ConversationGuide, number | string>({
       query: (sessionId) => '/family/sessions/' + sessionId + '/conversation-guide',
       providesTags: (_result, _error, sessionId) => [{ type: 'FamilySession', id: sessionId }],
     }),
@@ -182,9 +219,36 @@ export const safeQuestApi = createApi({
       Pick<SimulationRun, 'id' | 'status' | 'mode'>,
       { scenario_id: string; mode: SimulationMode; is_negative_example?: boolean }
     >({ query: (body) => ({ url: '/admin/simulations', method: 'POST', body }), invalidatesTags: ['Simulation'] }),
-    listSimulations: build.query<SimulationRun[], void>({ query: () => '/admin/simulations', providesTags: ['Simulation'] }),
-    getSimulation: build.query<SimulationRun, { runId: number; debug?: boolean }>({
-      query: ({ runId, debug = true }) => `/admin/simulations/${runId}?debug_detail=${debug}`,
+    listSimulations: build.query<SimulationRun[], { status?: string; scenario_id?: string; mode?: SimulationMode } | void>({
+      query: (filters) => {
+        const params = new URLSearchParams();
+        if (filters?.status) params.set('status', filters.status);
+        if (filters?.scenario_id) params.set('scenario_id', filters.scenario_id);
+        if (filters?.mode) params.set('mode', filters.mode);
+        const suffix = params.toString();
+        return `/admin/simulations${suffix ? `?${suffix}` : ''}`;
+      },
+      providesTags: ['Simulation'],
+    }),
+    getSimulationHistory: build.query<SimulationHistoryPage, { status?: string; scenario_id?: string; mode?: SimulationMode; page?: number; page_size?: number }>({
+      query: (filters) => {
+        const params = new URLSearchParams();
+        Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) params.set(key, String(value)); });
+        return `/admin/simulations/history?${params.toString()}`;
+      },
+      providesTags: ['Simulation'],
+    }),
+    getSimulation: build.query<SimulationRun, { runId: number; advancedRaw?: boolean }>({
+      query: ({ runId, advancedRaw = false }) => `/admin/simulations/${runId}?advanced_raw=${advancedRaw}`,
+      providesTags: (_result, _error, { runId }) => [{ type: 'Simulation', id: runId }],
+    }),
+    getSimulationEventHistory: build.query<SimulationEventHistoryPage, { runId: number; event_type?: string; severity?: string; page?: number; page_size?: number; advancedRaw?: boolean }>({
+      query: ({ runId, advancedRaw = false, ...filters }) => {
+        const params = new URLSearchParams();
+        Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) params.set(key, String(value)); });
+        params.set('advanced_raw', String(advancedRaw));
+        return `/admin/simulations/${runId}/history?${params.toString()}`;
+      },
       providesTags: (_result, _error, { runId }) => [{ type: 'Simulation', id: runId }],
     }),
     pauseSimulation: build.mutation<Pick<SimulationRun, 'id' | 'status'>, number>({
@@ -209,9 +273,23 @@ export const safeQuestApi = createApi({
       { id: number; status: SimulationRun['status']; curated_transcript_id: number | null },
       { runId: number; status: 'approved' | 'rejected'; reviewer_notes?: string }
     >({ query: ({ runId, ...body }) => ({ url: `/admin/simulations/${runId}/decision`, method: 'POST', body }), invalidatesTags: ['Simulation'] }),
-    getSimulationReviewQueue: build.query<SimulationRun[], void>({ query: () => '/admin/review-queue', providesTags: ['Simulation'] }),
+    getSimulationReviewQueue: build.query<AdminReviewQueueItem[], void>({ query: () => '/admin/review-queue', providesTags: ['Simulation'] }),
     publishCuratedTranscript: build.mutation<{ id: number; is_published: boolean }, number>({
       query: (id) => ({ url: `/admin/curated-transcripts/${id}/publish`, method: 'POST' }),
+    }),
+    getCuratedSceneReview: build.query<AdminSceneDraft, number>({
+      query: (id) => `/admin/curated-transcripts/${id}/review`,
+    }),
+    updateCuratedSceneReview: build.mutation<AdminSceneDraft, { id: number; body: AdminSceneDraft }>({
+      query: ({ id, body }) => ({ url: `/admin/curated-transcripts/${id}/review`, method: 'PUT', body }),
+    }),
+
+    // Preview validation uses the same scene contract and skin capability manifest as publication.
+    getSceneCapabilities: build.query<SkinCapabilityManifest, void>({
+      query: () => '/admin/scenarios/scene-capabilities',
+    }),
+    previewSceneDraft: build.mutation<AdminSceneDraft, AdminSceneDraft>({
+      query: (body) => ({ url: '/admin/scenarios/scene-preview', method: 'POST', body }),
     }),
 
     // ── Admin Scenarios ─────────────────────────────────────────────────────
@@ -420,6 +498,11 @@ export const {
   useGetAuthorizedFamilySessionsQuery,
   useGetFamilySessionQuery,
   useCommandFamilySessionMutation,
+  useHeartbeatFamilySessionMutation,
+  usePublishFamilySelectionFocusMutation,
+  useLeaveFamilySessionMutation,
+  useCreateCaregiverCommentMutation,
+  useUpdateCaregiverCommentMutation,
   useCreateFamilySessionMutation,
   useGetFamilyMessagesQuery,
   useSubmitCheckpointResponseMutation,
@@ -427,12 +510,15 @@ export const {
   useSubmitFlagAttemptMutation,
   useRequestCompanionHintMutation,
   useExplainWithCompanionMutation,
+  useRequestSharedCompanionFeedbackMutation,
   useCompleteFamilySessionMutation,
   useGetConversationGuideQuery,
   useGetSummaryQuery,
   useCreateSimulationMutation,
   useListSimulationsQuery,
+  useGetSimulationHistoryQuery,
   useGetSimulationQuery,
+  useGetSimulationEventHistoryQuery,
   usePauseSimulationMutation,
   useResumeSimulationMutation,
   useStopSimulationMutation,
@@ -442,6 +528,10 @@ export const {
   useDecideSimulationMutation,
   useGetSimulationReviewQueueQuery,
   usePublishCuratedTranscriptMutation,
+  useGetCuratedSceneReviewQuery,
+  useUpdateCuratedSceneReviewMutation,
+  useGetSceneCapabilitiesQuery,
+  usePreviewSceneDraftMutation,
   useListScenariosQuery,
   useGetScenarioQuery,
   useCreateScenarioMutation,

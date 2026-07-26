@@ -1,14 +1,19 @@
 """Authenticated family scenario routes; this player path makes no LLM calls."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import asyncio
+import json
+from datetime import datetime, timedelta, timezone
 import secrets
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
+from app.config.rollout import FeatureFlag, is_enabled, require_feature
+from app.telemetry import record as telemetry_record
 from app.family.guide_builder import build_conversation_guide
 from app.models.orm import (
     CheckpointResponse,
@@ -19,7 +24,11 @@ from app.models.orm import (
     CuratedTranscript,
     FamilySession,
     FamilySessionCommand,
+    FamilySessionEvent,
     FamilySessionParticipant,
+    FamilyCaregiverComment,
+    FamilyCaregiverCommentAudit,
+    FlagAttempt,
     SessionProgress,
     RedFlagSpan,
     User,
@@ -41,6 +50,14 @@ from app.models.schemas import (
     FamilySessionCommandType,
     FamilySessionOut,
     FamilySessionParticipantOut,
+    FamilySessionEventOut,
+    FamilySessionEventType,
+    FamilyPresenceHeartbeatRequest,
+    FamilySelectionFocusRequest,
+    FamilyCaregiverCommentCreateRequest,
+    FamilyCaregiverCommentUpdateRequest,
+    FamilyCaregiverCommentOut,
+    ParticipantPresenceStatus,
     SceneActor,
     SceneElementOut,
     SessionProgressOut,
@@ -55,6 +72,110 @@ from app.models.schemas import (
 router = APIRouter(prefix="/api/family", tags=["Family Sessions"])
 
 
+PRESENCE_TTL = timedelta(seconds=90)
+EPHEMERAL_EVENT_TTL = timedelta(minutes=2)
+
+
+def _shared_state_payload(session: FamilySession) -> dict[str, object]:
+    """Payload safe for every current participant, including caregivers."""
+    return {
+        "state": session.state,
+        "state_version": session.state_version,
+        "revealed_up_to": session.revealed_up_to,
+        "active_checkpoint_element_key": session.active_checkpoint_element_key,
+        "turn_owner_ref": member_ref(session.participation_turn_user_id) if session.participation_turn_user_id else None,
+    }
+
+
+def _emit_event(
+    db: Session,
+    session: FamilySession,
+    event_type: FamilySessionEventType | str,
+    payload: dict[str, object] | None = None,
+    *,
+    actor_participant: FamilySessionParticipant | None = None,
+    is_ephemeral: bool = False,
+) -> FamilySessionEvent:
+    """Append a safe event. Callers must never pass companion/disclosure content."""
+    # Serialize sequence allocation per session; the unique constraint is a final guard.
+    if session.id is None:
+        db.flush()
+    locked = db.query(FamilySession).filter(FamilySession.id == session.id).with_for_update().one()
+    session = locked
+    session.event_sequence = (session.event_sequence or 0) + 1
+    event = FamilySessionEvent(
+        family_session_id=session.id,
+        sequence=session.event_sequence,
+        event_type=event_type.value if isinstance(event_type, FamilySessionEventType) else event_type,
+        actor_participant_id=actor_participant.id if actor_participant else None,
+        payload=payload or {},
+        is_ephemeral=is_ephemeral,
+        expires_at=datetime.now(timezone.utc) + EPHEMERAL_EVENT_TTL if is_ephemeral else None,
+    )
+    db.add(event)
+    return event
+
+
+def _event_out(event: FamilySessionEvent, db: Session) -> FamilySessionEventOut:
+    actor = db.get(FamilySessionParticipant, event.actor_participant_id) if event.actor_participant_id else None
+    return FamilySessionEventOut(
+        id=event.id,
+        sequence=event.sequence,
+        event_type=FamilySessionEventType(event.event_type),
+        actor_ref=member_ref(actor.user_id) if actor else None,
+        payload=event.payload or {},
+        is_ephemeral=event.is_ephemeral,
+        created_at=_timestamp(event.created_at) or "",
+    )
+
+
+def _expire_presence(session: FamilySession, db: Session, now: datetime | None = None) -> bool:
+    """Presence is advisory: expiry never changes the gameplay state machine."""
+    now = now or datetime.now(timezone.utc)
+    changed = False
+    members = db.query(FamilySessionParticipant).filter(
+        FamilySessionParticipant.family_session_id == session.id,
+        FamilySessionParticipant.left_at.is_(None),
+        FamilySessionParticipant.presence_status == "online",
+        FamilySessionParticipant.presence_expires_at.is_not(None),
+        FamilySessionParticipant.presence_expires_at <= now,
+    ).all()
+    for member in members:
+        member.presence_status = "offline"
+        member.presence_expires_at = None
+        _emit_event(db, session, FamilySessionEventType.PARTICIPANT_PRESENCE, {
+            "member_ref": member_ref(member.user_id), "status": "offline",
+        })
+        changed = True
+    return changed
+
+
+def _comment_out(comment: FamilyCaregiverComment, db: Session) -> FamilyCaregiverCommentOut:
+    author = db.get(FamilySessionParticipant, comment.author_participant_id)
+    user = db.get(User, author.user_id) if author else None
+    element = db.get(CuratedSceneElement, comment.scene_element_id) if comment.scene_element_id else None
+    finding = db.get(ValidatedFinding, comment.validated_finding_id) if comment.validated_finding_id else None
+    span = db.get(RedFlagSpan, finding.red_flag_span_id) if finding else None
+    return FamilyCaregiverCommentOut(
+        comment_ref=comment.public_id,
+        author_ref=member_ref(author.user_id) if author else "",
+        author_display_name=user.display_name if user else "Caregiver",
+        element_key=element.element_key if element else None,
+        annotation_id=span.id if span else None,
+        text=comment.text,
+        child_visible_label=comment.child_visible_label,
+        created_at=_timestamp(comment.created_at) or "",
+        updated_at=_timestamp(comment.updated_at) or "",
+    )
+
+
+def _comments_out(session: FamilySession, db: Session) -> list[FamilyCaregiverCommentOut]:
+    rows = db.query(FamilyCaregiverComment).filter(
+        FamilyCaregiverComment.family_session_id == session.id,
+        FamilyCaregiverComment.deleted_at.is_(None),
+    ).order_by(FamilyCaregiverComment.created_at, FamilyCaregiverComment.id).all()
+    return [_comment_out(row, db) for row in rows]
+
 def _timestamp(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
@@ -63,9 +184,11 @@ def _session_out(session: FamilySession) -> FamilySessionOut:
     return FamilySessionOut(
         id=session.id,
         public_id=session.public_id,
+        session_ref=session.public_id,
         owner_ref=member_ref(session.owner_user_id or session.child_user_id),
         transcript_id=session.transcript_id,
-        parent_user_id=session.parent_user_id,
+        caregiver_ref=member_ref(session.parent_user_id) if session.parent_user_id else None,
+        turn_owner_ref=member_ref(session.participation_turn_user_id) if session.participation_turn_user_id else None,
         companion_mode=session.companion_mode,
         # Kept only for old clients; detection is mandatory in all new sessions.
         detective_mode=True,
@@ -75,10 +198,8 @@ def _session_out(session: FamilySession) -> FamilySessionOut:
         state_version=session.state_version,
         revealed_up_to=session.revealed_up_to,
         active_checkpoint_element_key=session.active_checkpoint_element_key,
-        participation_turn_user_id=session.participation_turn_user_id,
         completion_acknowledged_at=_timestamp(session.completion_acknowledged_at),
         attempt_number=session.attempt_number,
-        previous_session_id=session.previous_session_id,
         updated_at=_timestamp(session.updated_at),
     )
 
@@ -130,8 +251,14 @@ def _guide_out(guide: ConversationGuide) -> ConversationGuideOut:
     )
 
 
-def _load_session(session_id: int, current_user: User, db: Session) -> FamilySession:
-    session = db.get(FamilySession, session_id)
+def _load_session(session_id: int | str, current_user: User, db: Session) -> FamilySession:
+    session = None
+    if isinstance(session_id, int) or (isinstance(session_id, str) and session_id.isdigit()):
+        session = db.get(FamilySession, int(session_id))
+    if not session:
+        session = db.query(FamilySession).filter(
+            (FamilySession.public_id == str(session_id))
+        ).first()
     if not session or not session_participant(session, current_user.id, db):
         raise HTTPException(status_code=404, detail="Family session not found")
     return session
@@ -230,6 +357,11 @@ def create_session(
     ).first()
     if not transcript:
         raise HTTPException(status_code=404, detail="Published scenario not found")
+    if body.relationship_ref:
+        require_feature(FeatureFlag.RELATIONSHIPS)
+    else:
+        for flag in (FeatureFlag.NEW_SOLO_SESSIONS, FeatureFlag.SCENE_CONTRACT, FeatureFlag.GAMEPLAY_SHELL):
+            require_feature(flag)
     relationship = active_relationship_for_ref(db, body.relationship_ref, current_user.id) if body.relationship_ref else None
     caregiver_id = relationship.caregiver_user_id if relationship else None
     if relationship and relationship.learner_user_id != current_user.id:
@@ -238,17 +370,27 @@ def create_session(
         public_id=f"fs_{secrets.token_urlsafe(18)}", owner_user_id=current_user.id,
         transcript_id=transcript.id, child_user_id=current_user.id, parent_user_id=caregiver_id,
         companion_mode=caregiver_id is None, state="waiting_for_participants" if caregiver_id else "in_progress",
+        participation_turn_user_id=current_user.id,
     )
     db.add(session)
     db.flush()
-    db.add(FamilySessionParticipant(family_session_id=session.id, user_id=current_user.id, role="learner"))
+    now = datetime.now(timezone.utc)
+    learner = FamilySessionParticipant(
+        family_session_id=session.id, user_id=current_user.id, role="learner",
+        last_seen_at=now, last_heartbeat_at=now, presence_expires_at=now + PRESENCE_TTL, presence_status="online",
+    )
+    db.add(learner)
+    db.flush()
+    _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED, {"member_ref": member_ref(current_user.id), "role": "learner"}, actor_participant=learner)
+    _emit_event(db, session, FamilySessionEventType.PARTICIPANT_PRESENCE, {"member_ref": member_ref(current_user.id), "status": "online"}, actor_participant=learner)
     if caregiver_id is not None:
-        db.add(FamilySessionParticipant(family_session_id=session.id, user_id=caregiver_id, role="caregiver"))
+        db.add(FamilySessionParticipant(family_session_id=session.id, user_id=caregiver_id, role="caregiver", presence_status="offline"))
     eligible = db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == transcript.id).count()
     content_count = db.query(CuratedSceneElement).filter(CuratedSceneElement.transcript_id == transcript.id).count()
     db.add(SessionProgress(family_session_id=session.id, eligible_target_count=eligible, required_finding_count=eligible, content_progress=content_count))
     db.commit()
     db.refresh(session)
+    telemetry_record("family.session.transition", status="created", channel="family" if caregiver_id else "solo")
     return _session_out(session)
 
 
@@ -296,6 +438,7 @@ def _participant_out(member: FamilySessionParticipant, db: Session) -> FamilySes
         member_ref=member_ref(member.user_id), display_name=user.display_name if user else "Family member",
         avatar_url=user.avatar_url if user else None, role=FamilyRole(member.role),
         joined_at=_timestamp(member.joined_at) or "", last_seen_at=_timestamp(member.last_seen_at), left_at=_timestamp(member.left_at),
+        presence_status=ParticipantPresenceStatus(member.presence_status), presence_expires_at=_timestamp(member.presence_expires_at),
     )
 
 
@@ -316,6 +459,14 @@ def _session_detail_out(session: FamilySession, current_user: User, db: Session)
     transcript = db.get(CuratedTranscript, session.transcript_id)
     if not transcript:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    participant = session_participant(session, current_user.id, db)
+    if not participant:
+        raise HTTPException(status_code=404, detail="Family session not found")
+    role = FamilyRole(participant.role)
+    is_learner = role is FamilyRole.LEARNER
+    turn_owner_id = session.participation_turn_user_id or session.child_user_id
+    owns_turn = current_user.id == turn_owner_id
+    active = session.state not in {"completed", "expired", "abandoned", "paused_for_support"}
     next_element_exists = db.query(CuratedSceneElement.id).filter(
         CuratedSceneElement.transcript_id == session.transcript_id,
         CuratedSceneElement.sequence > session.revealed_up_to,
@@ -323,37 +474,46 @@ def _session_detail_out(session: FamilySession, current_user: User, db: Session)
     progress = _progress_out(session, db)
     review_acknowledged = session.completion_acknowledged_at is not None
     capabilities = FamilySessionCapabilitiesOut(
-        can_reveal_next=session.state == "in_progress" and session.active_checkpoint_element_key is None and next_element_exists,
-        can_continue_checkpoint=session.state == "checkpoint" and session.active_checkpoint_element_key is not None,
-        can_enter_completion_review=session.state == "in_progress" and progress.completion_ready,
+        can_reveal_next=active and is_learner and owns_turn and session.state == "in_progress" and session.active_checkpoint_element_key is None and next_element_exists,
+        can_continue_checkpoint=active and is_learner and owns_turn and session.state == "checkpoint" and session.active_checkpoint_element_key is not None,
+        can_enter_completion_review=active and is_learner and owns_turn and session.state == "in_progress" and progress.completion_ready,
         can_acknowledge_completion=session.state == "completion_review" and not review_acknowledged,
         can_open_help=session.state == "completion_review" and review_acknowledged,
         can_complete=session.state in {"completion_review", "help_and_resources"} and review_acknowledged,
-        can_reset=session.state not in {"paused_for_support", "expired"},
-        can_submit_flag_attempt=session.state in {"in_progress", "checkpoint"},
-        can_request_hint=session.state in {"in_progress", "checkpoint"},
-        can_use_private_companion=_participant_role(session, current_user, db) is FamilyRole.LEARNER and session.state not in {"completed", "expired", "abandoned"},
-        can_join_or_observe=_participant_role(session, current_user, db) is FamilyRole.CAREGIVER,
-        can_contribute_shared_prompts=not session.companion_mode and session.state not in {"completed", "expired", "abandoned"},
-        can_review_shared_results=not session.companion_mode and session.state in {"completion_review", "help_and_resources", "completed"},
-        can_invite_before_start=current_user.id == (session.owner_user_id or session.child_user_id) and session.state == "waiting_for_participants",
-        can_remove_before_start=current_user.id == (session.owner_user_id or session.child_user_id) and session.state == "waiting_for_participants",
-        can_leave=True,
+        can_reset=active and is_learner and owns_turn,
+        can_submit_flag_attempt=is_enabled(FeatureFlag.FLAG_ATTEMPTS) and active and session.state in {"in_progress", "checkpoint"},
+        can_request_hint=is_enabled(FeatureFlag.FLAG_ATTEMPTS) and active and is_learner and session.state in {"in_progress", "checkpoint"},
+        can_use_private_companion=active and is_learner,
+        can_join_or_observe=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and role is FamilyRole.CAREGIVER,
+        can_contribute_shared_prompts=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and active and role is FamilyRole.CAREGIVER,
+        can_review_shared_results=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and not session.companion_mode and session.state in {"completion_review", "help_and_resources", "completed"},
+        can_invite_before_start=is_enabled(FeatureFlag.RELATIONSHIPS) and is_learner and session.state == "waiting_for_participants",
+        can_remove_before_start=is_enabled(FeatureFlag.RELATIONSHIPS) and is_learner and session.state == "waiting_for_participants",
+        can_leave=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and role is FamilyRole.CAREGIVER,
+        can_heartbeat=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and active,
+        can_publish_selection_focus=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and active,
+        can_submit_shared_reflection=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and active and role is FamilyRole.CAREGIVER and session.state == "checkpoint",
+        can_add_caregiver_comment=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and active and role is FamilyRole.CAREGIVER,
+        can_edit_own_caregiver_comment=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and active and role is FamilyRole.CAREGIVER,
+        can_request_shared_companion_feedback=is_enabled(FeatureFlag.MULTIPLAYER_EVENTS) and active and is_learner,
     )
     members = db.query(FamilySessionParticipant).filter(FamilySessionParticipant.family_session_id == session.id).order_by(FamilySessionParticipant.id).all()
     return FamilySessionDetailOut(
         session=_session_out(session), scene=_scene_out(session, transcript, db), progress=progress,
         participants=[_participant_out(member, db) for member in members],
-        participant_role=_participant_role(session, current_user, db), capabilities=capabilities,
-        findings=_findings_out(session, db),
+        participant_role=role, capabilities=capabilities,
+        findings=_findings_out(session, db), caregiver_comments=_comments_out(session, db),
     )
 
 
 def _stale_state(session: FamilySession, current_user: User, db: Session, message: str) -> None:
+    telemetry_record("family.command.failed", reason="stale_state")
     raise HTTPException(status_code=409, detail={"message": message, "current": _session_detail_out(session, current_user, db).model_dump(mode="json")})
 
 
-def _complete_session(session: FamilySession, db: Session) -> ConversationGuide:
+def _complete_session(
+    session: FamilySession, db: Session, actor_participant: FamilySessionParticipant | None = None,
+) -> ConversationGuide:
     existing = db.query(ConversationGuide).filter(ConversationGuide.family_session_id == session.id).first()
     if existing:
         return existing
@@ -362,25 +522,246 @@ def _complete_session(session: FamilySession, db: Session) -> ConversationGuide:
         raise HTTPException(status_code=404, detail="Scenario not found")
     spans = db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == transcript.id).all()
     responses = db.query(CheckpointResponse).filter(CheckpointResponse.family_session_id == session.id).order_by(CheckpointResponse.created_at, CheckpointResponse.id).all()
-    companion_exchanges = db.query(CompanionExchange).filter(CompanionExchange.family_session_id == session.id).order_by(CompanionExchange.created_at, CompanionExchange.id).all()
-    guide = ConversationGuide(family_session_id=session.id, **build_conversation_guide(session, transcript.category, spans, responses, companion_exchanges))
+    attempts = db.query(FlagAttempt).filter(FlagAttempt.family_session_id == session.id).order_by(FlagAttempt.created_at, FlagAttempt.id).all()
+    findings = db.query(ValidatedFinding).filter(ValidatedFinding.family_session_id == session.id).order_by(ValidatedFinding.discovered_at, ValidatedFinding.id).all()
+    comments = db.query(FamilyCaregiverComment).filter(
+        FamilyCaregiverComment.family_session_id == session.id, FamilyCaregiverComment.deleted_at.is_(None),
+    ).order_by(FamilyCaregiverComment.created_at, FamilyCaregiverComment.id).all()
+    guide = ConversationGuide(
+        family_session_id=session.id,
+        **build_conversation_guide(
+            session, transcript.category, spans, responses,
+            shared_attempts=attempts, validated_findings=findings, caregiver_comments=comments,
+        ),
+    )
     session.state = "completed"
     session.completed_at = session.completed_at or datetime.now(timezone.utc)
     session.state_version += 1
     db.add(guide)
+    db.flush()
+    _emit_event(db, session, FamilySessionEventType.COMPLETED, _shared_state_payload(session), actor_participant=actor_participant)
+    _emit_event(db, session, FamilySessionEventType.GUIDE_READY, {"state": session.state}, actor_participant=actor_participant)
     return guide
 
 
 @router.get("/sessions/{session_id}", response_model=FamilySessionDetailOut)
-def get_session_detail(session_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_session_detail(session_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     session = _load_session(session_id, current_user, db)
+    if _expire_presence(session, db):
+        db.commit()
     return _session_detail_out(session, current_user, db)
 
+
+@router.get("/sessions/{session_id}/events")
+async def stream_session_events(
+    session_id: str,
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_feature(FeatureFlag.MULTIPLAYER_EVENTS)
+    # URLs use the opaque public ID, while the event stream stores the numeric
+    # primary key. Resolve it once before the response is handed off to the
+    # long-lived stream (which uses its own database sessions).
+    family_session_id = _load_session(session_id, current_user, db).id
+    telemetry_record("family.stream.reconnect", transport="sse")
+    try:
+        cursor = int(last_event_id or "0")
+        if cursor < 0:
+            raise ValueError
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Last-Event-ID must be a non-negative integer") from exc
+
+    async def stream():
+        nonlocal cursor
+        from app.models.orm import SessionLocal
+        while True:
+            local = SessionLocal()
+            try:
+                session = local.get(FamilySession, family_session_id)
+                participant = session_participant(session, current_user.id, local) if session else None
+                if not session or not participant:
+                    return
+                if _expire_presence(session, local):
+                    local.commit()
+                now = datetime.now(timezone.utc)
+                rows = local.query(FamilySessionEvent).filter(
+                    FamilySessionEvent.family_session_id == family_session_id,
+                    FamilySessionEvent.id > cursor,
+                ).order_by(FamilySessionEvent.id).limit(250).all()
+                for row in rows:
+                    cursor = row.id
+                    if row.is_ephemeral and row.expires_at and row.expires_at <= now:
+                        continue
+                    payload = _event_out(row, local).model_dump(mode="json")
+                    yield f"id: {row.id}\nevent: {row.event_type}\ndata: {json.dumps(payload)}\n\n"
+                if session.state in {"completed", "expired", "abandoned"} and rows:
+                    return
+            finally:
+                local.close()
+            yield ": keep-alive\n\n"
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+@router.post("/sessions/{session_id}/presence", response_model=FamilySessionParticipantOut)
+def heartbeat_presence(
+    session_id: str,
+    body: FamilyPresenceHeartbeatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_feature(FeatureFlag.MULTIPLAYER_EVENTS)
+    session = _load_session(session_id, current_user, db)
+    _expire_presence(session, db)
+    participant = session_participant(session, current_user.id, db)
+    if not participant:
+        raise HTTPException(status_code=404, detail="Family session not found")
+    now = datetime.now(timezone.utc)
+    if participant.last_heartbeat_at is None:
+        _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED, {
+            "member_ref": member_ref(participant.user_id), "role": participant.role,
+        }, actor_participant=participant)
+    previous = participant.presence_status
+    participant.last_seen_at = now
+    participant.last_heartbeat_at = now
+    participant.presence_status = body.status
+    participant.presence_expires_at = now + PRESENCE_TTL if body.status == "online" else None
+    if previous != body.status:
+        _emit_event(db, session, FamilySessionEventType.PARTICIPANT_PRESENCE, {
+            "member_ref": member_ref(participant.user_id), "status": body.status,
+        }, actor_participant=participant)
+    db.commit()
+    db.refresh(participant)
+    return _participant_out(participant, db)
+
+
+@router.post("/sessions/{session_id}/selection-focus", status_code=status.HTTP_204_NO_CONTENT)
+def publish_selection_focus(
+    session_id: str,
+    body: FamilySelectionFocusRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_feature(FeatureFlag.MULTIPLAYER_EVENTS)
+    session = _load_session(session_id, current_user, db)
+    participant = session_participant(session, current_user.id, db)
+    element = db.query(CuratedSceneElement).filter(
+        CuratedSceneElement.transcript_id == session.transcript_id,
+        CuratedSceneElement.element_key == body.element_key,
+        CuratedSceneElement.sequence <= session.revealed_up_to,
+    ).first()
+    if not participant or not element:
+        raise HTTPException(status_code=422, detail="The selected item is unavailable in this session")
+    _emit_event(db, session, FamilySessionEventType.SELECTION_FOCUS, {
+        "element_key": element.element_key,
+    }, actor_participant=participant, is_ephemeral=True)
+    db.commit()
+
+
+@router.post("/sessions/{session_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
+def leave_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _load_session(session_id, current_user, db)
+    participant = session_participant(session, current_user.id, db)
+    if not participant or participant.role != FamilyRole.CAREGIVER.value:
+        raise HTTPException(status_code=403, detail="Only a caregiver may leave a shared session; the learner keeps ownership")
+    now = datetime.now(timezone.utc)
+    participant.left_at = now
+    participant.presence_status = "left"
+    participant.presence_expires_at = None
+    _emit_event(db, session, FamilySessionEventType.PARTICIPANT_LEFT, {
+        "member_ref": member_ref(participant.user_id),
+    }, actor_participant=participant)
+    db.commit()
+
+
+@router.post("/sessions/{session_id}/comments", response_model=FamilyCaregiverCommentOut, status_code=status.HTTP_201_CREATED)
+def create_caregiver_comment(
+    session_id: str,
+    body: FamilyCaregiverCommentCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _load_session(session_id, current_user, db)
+    participant = session_participant(session, current_user.id, db)
+    if not participant or participant.role != FamilyRole.CAREGIVER.value:
+        raise HTTPException(status_code=403, detail="Only a caregiver may add a shared note")
+    existing = db.query(FamilyCaregiverComment).filter(
+        FamilyCaregiverComment.family_session_id == session.id,
+        FamilyCaregiverComment.client_command_id == body.client_command_id,
+    ).first()
+    if existing:
+        return _comment_out(existing, db)
+    element = None
+    finding = None
+    if body.element_key:
+        element = db.query(CuratedSceneElement).filter(
+            CuratedSceneElement.transcript_id == session.transcript_id,
+            CuratedSceneElement.element_key == body.element_key,
+            CuratedSceneElement.sequence <= session.revealed_up_to,
+        ).first()
+        if not element:
+            raise HTTPException(status_code=422, detail="The scene item is unavailable for a comment")
+    else:
+        finding = db.query(ValidatedFinding).filter(
+            ValidatedFinding.family_session_id == session.id,
+            ValidatedFinding.red_flag_span_id == body.annotation_id,
+        ).first()
+        if not finding:
+            raise HTTPException(status_code=422, detail="The finding is unavailable for a comment")
+    comment = FamilyCaregiverComment(
+        public_id=f"fc_{secrets.token_urlsafe(18)}", family_session_id=session.id,
+        author_participant_id=participant.id, scene_element_id=element.id if element else None,
+        validated_finding_id=finding.id if finding else None, text=body.text.strip(),
+        client_command_id=body.client_command_id,
+    )
+    db.add(comment)
+    db.flush()
+    db.add(FamilyCaregiverCommentAudit(comment_id=comment.id, actor_participant_id=participant.id, action="created", text_snapshot=comment.text))
+    out = _comment_out(comment, db)
+    _emit_event(db, session, FamilySessionEventType.CAREGIVER_COMMENT, {
+        "action": "created", "comment": out.model_dump(mode="json"),
+    }, actor_participant=participant)
+    db.commit()
+    return out
+
+
+@router.patch("/sessions/{session_id}/comments/{comment_ref}", response_model=FamilyCaregiverCommentOut)
+def update_caregiver_comment(
+    session_id: str,
+    comment_ref: str,
+    body: FamilyCaregiverCommentUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _load_session(session_id, current_user, db)
+    participant = session_participant(session, current_user.id, db)
+    comment = db.query(FamilyCaregiverComment).filter(
+        FamilyCaregiverComment.family_session_id == session.id,
+        FamilyCaregiverComment.public_id == comment_ref,
+        FamilyCaregiverComment.deleted_at.is_(None),
+    ).first()
+    if not participant or not comment or comment.author_participant_id != participant.id:
+        raise HTTPException(status_code=404, detail="Caregiver comment not found")
+    comment.text = body.text.strip()
+    db.add(FamilyCaregiverCommentAudit(comment_id=comment.id, actor_participant_id=participant.id, action="edited", text_snapshot=comment.text))
+    db.flush()
+    out = _comment_out(comment, db)
+    _emit_event(db, session, FamilySessionEventType.CAREGIVER_COMMENT, {
+        "action": "edited", "comment": out.model_dump(mode="json"),
+    }, actor_participant=participant)
+    db.commit()
+    return out
 
 
 @router.post("/sessions/{session_id}/commands", response_model=FamilySessionDetailOut)
 def command_session(
-    session_id: int,
+    session_id: str,
     body: FamilySessionCommandRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -403,6 +784,17 @@ def command_session(
     command = body.command
     target = session
     now = datetime.now(timezone.utc)
+    actor_participant = session_participant(session, current_user.id, db)
+    learner_turn_commands = {
+        FamilySessionCommandType.START, FamilySessionCommandType.REVEAL_NEXT,
+        FamilySessionCommandType.CONTINUE_CHECKPOINT, FamilySessionCommandType.ENTER_COMPLETION_REVIEW,
+        FamilySessionCommandType.RESET,
+    }
+    if command in learner_turn_commands and (
+        current_user.id != session.child_user_id
+        or current_user.id != (session.participation_turn_user_id or session.child_user_id)
+    ):
+        _stale_state(session, current_user, db, "It is the learner’s turn to move the scenario forward")
     if command is FamilySessionCommandType.START:
         if session.state == "waiting_for_participants":
             session.state = "in_progress"
@@ -444,6 +836,7 @@ def command_session(
         answered = db.query(CheckpointResponse.id).filter(
             CheckpointResponse.family_session_id == session.id,
             CheckpointResponse.checkpoint_message_id == element.source_message_id,
+            CheckpointResponse.responder_role == ParticipantRole.CHILD.value,
         ).first()
         if not answered:
             _stale_state(session, current_user, db, "Please save a reflection before continuing")
@@ -477,7 +870,7 @@ def command_session(
     elif command is FamilySessionCommandType.COMPLETE:
         if session.state not in {"completion_review", "help_and_resources"} or session.completion_acknowledged_at is None:
             _stale_state(session, current_user, db, "Acknowledge completion review before finishing")
-        _complete_session(session, db)
+        _complete_session(session, db, actor_participant)
     elif command is FamilySessionCommandType.RESET:
         if session.state in {"paused_for_support", "expired"}:
             _stale_state(session, current_user, db, "This session cannot be reset from its current state")
@@ -485,9 +878,11 @@ def command_session(
         session.archived_at = now
         session.state_version += 1
         target = FamilySession(
+            public_id=f"fs_{secrets.token_urlsafe(18)}", owner_user_id=session.owner_user_id or session.child_user_id,
             transcript_id=session.transcript_id,
             child_user_id=session.child_user_id,
             parent_user_id=session.parent_user_id,
+            participation_turn_user_id=session.child_user_id,
             companion_mode=session.companion_mode,
             detective_mode=session.detective_mode,
             state="in_progress",
@@ -502,6 +897,16 @@ def command_session(
         content_count = db.query(CuratedSceneElement).filter(CuratedSceneElement.transcript_id == target.transcript_id).count()
         db.add(SessionProgress(family_session_id=target.id, eligible_target_count=eligible, required_finding_count=eligible, content_progress=content_count))
 
+    if target is session:
+        if command is FamilySessionCommandType.REVEAL_NEXT:
+            _emit_event(db, session, FamilySessionEventType.REVEAL, _shared_state_payload(session), actor_participant=actor_participant)
+        _emit_event(db, session, FamilySessionEventType.STATE_CHANGED, _shared_state_payload(session), actor_participant=actor_participant)
+    else:
+        _emit_event(db, session, FamilySessionEventType.STATE_CHANGED, _shared_state_payload(session), actor_participant=actor_participant)
+        db.flush()
+        _emit_event(db, target, FamilySessionEventType.PARTICIPANT_JOINED, {"member_ref": member_ref(current_user.id), "role": "learner"}, actor_participant=None)
+        _emit_event(db, target, FamilySessionEventType.STATE_CHANGED, _shared_state_payload(target), actor_participant=None)
+
     db.add(FamilySessionCommand(
         family_session_id=session.id, client_command_id=body.client_command_id,
         command=command.value, expected_state_version=body.expected_state_version,
@@ -509,12 +914,15 @@ def command_session(
     ))
     db.commit()
     db.refresh(target)
+    telemetry_record("family.session.transition", command=command.value, status=target.state)
+    if target.state == "completed":
+        telemetry_record("session.completed", channel="family")
     return _session_detail_out(target, current_user, db)
 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[FamilyMessageOut])
 def get_messages(
-    session_id: int,
+    session_id: str,
     up_to: int = Query(..., ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -542,7 +950,7 @@ def get_messages(
 
 @router.post("/sessions/{session_id}/checkpoint-responses", response_model=CheckpointResponseOut, status_code=status.HTTP_201_CREATED)
 def record_checkpoint_response(
-    session_id: int,
+    session_id: str,
     body: CheckpointResponseRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -550,6 +958,20 @@ def record_checkpoint_response(
     session = _load_session(session_id, current_user, db)
     if session.completed_at:
         raise HTTPException(status_code=409, detail="Family session is already complete")
+    if body.expected_state_version is not None and body.expected_state_version != session.state_version:
+        _stale_state(session, current_user, db, "This session changed elsewhere; refresh and try again")
+    if body.client_command_id:
+        existing = db.query(CheckpointResponse).filter(
+            CheckpointResponse.family_session_id == session.id,
+            CheckpointResponse.client_command_id == body.client_command_id,
+        ).first()
+        if existing:
+            return CheckpointResponseOut(
+                id=existing.id, checkpoint_message_id=existing.checkpoint_message_id,
+                responder_role=ParticipantRole(existing.responder_role), response_text=existing.response_text,
+                flagged_message_ids=existing.flagged_message_ids or [], tactic_tag_guess=existing.tactic_tag_guess,
+                created_at=_timestamp(existing.created_at) or "", visibility=existing.visibility,
+            )
     if session.state != "checkpoint":
         raise HTTPException(status_code=409, detail="There is no active discussion pause")
     expected_role = ParticipantRole.CHILD if current_user.id == session.child_user_id else ParticipantRole.PARENT
@@ -584,8 +1006,15 @@ def record_checkpoint_response(
         response_text=body.response_text,
         flagged_message_ids=body.flagged_message_ids,
         tactic_tag_guess=body.tactic_tag_guess,
+        visibility="shared" if expected_role is ParticipantRole.PARENT or body.share_with_caregiver else "private",
+        client_command_id=body.client_command_id,
     )
     db.add(response)
+    db.flush()
+    _emit_event(db, session, FamilySessionEventType.CHECKPOINT_RESPONSE, {
+        "checkpoint_message_id": checkpoint.id, "responder_role": response.responder_role,
+        "shared": response.visibility == "shared",
+    }, actor_participant=session_participant(session, current_user.id, db))
     db.commit()
     db.refresh(response)
     return CheckpointResponseOut(
@@ -595,13 +1024,13 @@ def record_checkpoint_response(
         response_text=response.response_text,
         flagged_message_ids=response.flagged_message_ids or [],
         tactic_tag_guess=response.tactic_tag_guess,
-        created_at=_timestamp(response.created_at) or "",
+        created_at=_timestamp(response.created_at) or "", visibility=response.visibility,
     )
 
 
 @router.post("/sessions/{session_id}/complete", response_model=ConversationGuideOut)
 def complete_session(
-    session_id: int,
+    session_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -611,7 +1040,7 @@ def complete_session(
         return _guide_out(existing)
     if session.state not in {"completion_review", "help_and_resources"} or session.completion_acknowledged_at is None:
         _stale_state(session, current_user, db, "Acknowledge completion review before finishing")
-    guide = _complete_session(session, db)
+    guide = _complete_session(session, db, session_participant(session, current_user.id, db))
     db.commit()
     db.refresh(guide)
     return _guide_out(guide)
@@ -619,7 +1048,7 @@ def complete_session(
 
 @router.get("/sessions/{session_id}/conversation-guide", response_model=ConversationGuideOut)
 def get_conversation_guide(
-    session_id: int,
+    session_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

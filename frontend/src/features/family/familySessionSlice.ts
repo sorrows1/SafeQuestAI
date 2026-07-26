@@ -12,6 +12,7 @@ import type {
   SceneElement,
   SessionProgress,
   ValidatedFinding,
+  FamilySessionEvent,
 } from "@/types";
 
 const messagesAdapter = createEntityAdapter<FamilyMessage>({ sortComparer: (a, b) => a.sequence - b.sequence });
@@ -41,6 +42,8 @@ const initialState = {
   participantTurn: "child" as ParticipantRole,
   // Display-only state may move optimistically; authoritative hydration wins.
   revealedThrough: -1,
+  lastEventId: 0,
+  streamStatus: "idle" as "idle" | "connecting" | "connected" | "reconnecting" | "offline",
 };
 
 function hydrate(state: any, detail: FamilySessionDetail) {
@@ -133,6 +136,31 @@ const familySessionSlice = createSlice({
     flagAttemptPending(state, action: PayloadAction<boolean>) {
       state.pendingAttempt = action.payload;
     },
+    familySessionStreamStatusSet(state, action: PayloadAction<"idle" | "connecting" | "connected" | "reconnecting" | "offline">) {
+      state.streamStatus = action.payload;
+    },
+    familySessionEventReceived(state, action: PayloadAction<FamilySessionEvent>) {
+      const event = action.payload;
+      if (event.id <= state.lastEventId) return;
+      state.lastEventId = event.id;
+      const payload = event.payload;
+      if (event.event_type === "participant_presence" || event.event_type === "participant_left") {
+        const memberRef = typeof payload.member_ref === "string" ? payload.member_ref : null;
+        const participant = memberRef ? state.detail?.participants.find((item) => item.member_ref === memberRef) : undefined;
+        if (participant) {
+          participant.presence_status = event.event_type === "participant_left" ? "left" : payload.status === "online" ? "online" : "offline";
+        }
+      }
+      if (event.event_type === "state_changed" || event.event_type === "reveal" || event.event_type === "completed") {
+        const nextVersion = typeof payload.state_version === "number" ? payload.state_version : null;
+        if (state.session && nextVersion !== null && nextVersion >= (state.session.state_version ?? 0)) {
+          if (typeof payload.state === "string") state.session.state = payload.state as typeof state.session.state;
+          state.session.state_version = nextVersion;
+          if (typeof payload.revealed_up_to === "number") state.session.revealed_up_to = payload.revealed_up_to;
+          state.revealedThrough = Math.max(state.revealedThrough, state.session.revealed_up_to ?? -1);
+        }
+      }
+    },
   },
 });
 
@@ -146,6 +174,8 @@ export const {
   familySessionStarted,
   flagAttemptPending,
   flagAttemptReceived,
+  familySessionEventReceived,
+  familySessionStreamStatusSet,
   targetSelected,
   highlightedMessageToggled,
   participantTurnSet,
@@ -174,4 +204,6 @@ export const selectHighlightedMessageIds = (state: RootState) => state.familySes
 export const selectTagAssignments = (state: RootState) => state.familySession.tagAssignments;
 export const selectActiveCheckpoint = (state: RootState) => state.familySession.activeCheckpoint;
 export const selectParticipantTurn = (state: RootState) => state.familySession.participantTurn;
+export const selectFamilySessionStreamStatus = (state: RootState) => state.familySession.streamStatus;
+export const selectFamilySessionLastEventId = (state: RootState) => state.familySession.lastEventId;
 export default familySessionSlice.reducer;

@@ -11,6 +11,8 @@ vi.mock('@/store/api', () => ({
   safeQuestApi: { reducerPath: 'safeQuestApi', reducer: (s = {}) => s, middleware: () => (next: any) => (action: any) => next(action) },
   useGetFamilyScenariosQuery: (...args: unknown[]) => mocked.query(...args),
   useCreateFamilySessionMutation: () => [mocked.create, { isLoading: false, error: null }],
+  useGetFamilyRelationshipsQuery: () => ({ data: [], isLoading: false }),
+  useCreateFamilyInvitationMutation: () => [vi.fn(), { isLoading: false, error: null }],
 }));
 
 const scenario = {
@@ -119,9 +121,10 @@ describe('FamilyScenarioLobby Container', () => {
     renderLobby('/family/scenarios');
     fireEvent.click(screen.getByRole('button', { name: /learn more about a private prize/i }));
     fireEvent.click(screen.getByRole('button', { name: /start solo activity/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start session/i }));
 
     await waitFor(() => {
-      expect(mocked.create).toHaveBeenCalledWith({ transcriptId: 1 });
+      expect(mocked.create).toHaveBeenCalledWith({ transcriptId: 1, relationship_ref: undefined });
       expect(screen.getByText('Player Session View')).toBeTruthy();
     });
   });

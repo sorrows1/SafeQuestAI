@@ -8,6 +8,8 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
+from app.config.rollout import FeatureFlag, require_feature
+from app.telemetry import record as telemetry_record
 from app.companion.persona import DISCLOSURE_SUPPORT_MESSAGE, SENSITIVE_CONTENT_REDIRECT
 from app.companion.resources import resources_for
 from app.companion.safety import contains_explicit_content, is_real_disclosure, redact_personal_info, requests_antagonist_roleplay
@@ -19,25 +21,30 @@ from app.models.orm import (
     CuratedTranscript, FamilySession, FamilySessionParticipant, FlagAttempt,
     RedFlagSpan, SessionProgress, User, ValidatedFinding, get_db,
 )
+from app.api.family_sessions import _emit_event
 from app.models.schemas import (
     CheckpointResponseOut, CompanionCheckpointOut, CompanionCheckpointRequest,
     CompanionExplainOut, CompanionExplainRequest, FindingVisibility, FlagAttemptOut,
     FlagAttemptRequest, FlagValidationResult, HintOut, HintRequest, ParticipantRole,
-    SessionProgressOut, ValidatedFindingOut,
+    SessionProgressOut, ValidatedFindingOut, SharedCompanionFeedbackRequest, SharedCompanionFeedbackOut,
+    FamilySessionEventType,
 )
 
 router = APIRouter(prefix="/api/companion", tags=["Companion AI"])
 
 
-def get_llm_service() -> LLMService:
+def get_llm_service() -> LLMService | None:
+    """Provider outages fall back to deterministic reviewed-content guidance."""
     from app.main import llm_service
-    if llm_service is None:
-        raise HTTPException(503, "The companion is unavailable right now.")
     return llm_service
 
 
-def _load_child_session(session_id: int, user: User, db: Session) -> FamilySession:
-    session = db.get(FamilySession, session_id)
+def _load_child_session(session_id: int | str, user: User, db: Session) -> FamilySession:
+    session = None
+    if isinstance(session_id, int) or (isinstance(session_id, str) and session_id.isdigit()):
+        session = db.get(FamilySession, int(session_id))
+    if not session:
+        session = db.query(FamilySession).filter(FamilySession.public_id == str(session_id)).first()
     if not session or session.child_user_id != user.id:
         raise HTTPException(404, "Family session not found")
     if session.completed_at:
@@ -45,14 +52,20 @@ def _load_child_session(session_id: int, user: User, db: Session) -> FamilySessi
     return session
 
 
-def _load_participant_session(session_id: int, user: User, db: Session) -> tuple[FamilySession, FamilySessionParticipant]:
-    session = db.get(FamilySession, session_id)
+def _load_participant_session(session_id: int | str, user: User, db: Session) -> tuple[FamilySession, FamilySessionParticipant]:
+    session = None
+    if isinstance(session_id, int) or (isinstance(session_id, str) and session_id.isdigit()):
+        session = db.get(FamilySession, int(session_id))
+    if not session:
+        session = db.query(FamilySession).filter(FamilySession.public_id == str(session_id)).first()
+    if not session:
+        raise HTTPException(404, "Family session not found")
     participant = db.query(FamilySessionParticipant).filter(
-        FamilySessionParticipant.family_session_id == session_id,
+        FamilySessionParticipant.family_session_id == session.id,
         FamilySessionParticipant.user_id == user.id,
         FamilySessionParticipant.left_at.is_(None),
     ).first()
-    if not session or not participant:
+    if not participant:
         raise HTTPException(404, "Family session not found")
     if session.completed_at or session.state in {"abandoned", "expired"}:
         raise HTTPException(409, "This family session is no longer active")
@@ -63,7 +76,7 @@ def _out(response: CheckpointResponse) -> CheckpointResponseOut:
     return CheckpointResponseOut(id=response.id, checkpoint_message_id=response.checkpoint_message_id,
         responder_role=ParticipantRole(response.responder_role), response_text=response.response_text,
         flagged_message_ids=response.flagged_message_ids or [], tactic_tag_guess=response.tactic_tag_guess,
-        created_at=response.created_at.isoformat())
+        created_at=response.created_at.isoformat(), visibility=FindingVisibility(response.visibility or "private"))
 
 
 def _checkpoint(session: FamilySession, checkpoint_id: int, db: Session) -> CuratedMessage:
@@ -145,7 +158,7 @@ def _attempt_out(attempt: FlagAttempt, target: CuratedSceneElement, session: Fam
     )
 
 
-async def _respond(session: FamilySession, category: str, child_text: str, context: list[CuratedMessage], llm: LLMService, prompt: str | None = None):
+async def _respond(session: FamilySession, category: str, child_text: str, context: list[CuratedMessage], llm: LLMService | None, prompt: str | None = None):
     if is_real_disclosure(child_text):
         session.disclosure_flagged = True
         return DISCLOSURE_SUPPORT_MESSAGE, True, resources_for(category)
@@ -153,14 +166,22 @@ async def _respond(session: FamilySession, category: str, child_text: str, conte
         return SENSITIVE_CONTENT_REDIRECT, False, resources_for(category)
     if requests_antagonist_roleplay(child_text):
         return "The scenario messages are already part of the activity, so I won't role-play that person. What would you want to do if a message felt uncomfortable?", False, []
-    return await generate_companion_response(llm, child_text, context, prompt), False, []
+    if llm is None:
+        telemetry_record("companion.fallback", reason="provider_unavailable", channel="checkpoint")
+        return "Let’s pause and look at what the message asks for. You can choose a boundary and talk with someone you trust.", False, resources_for(category)
+    try:
+        return await generate_companion_response(llm, child_text, context, prompt), False, []
+    except Exception:
+        telemetry_record("companion.fallback", reason="provider_failure", channel="checkpoint")
+        return "Let’s pause and look at what the message asks for. You can choose a boundary and talk with someone you trust.", False, resources_for(category)
 
 
 @router.post("/sessions/{family_session_id}/flag-attempts", response_model=FlagAttemptOut, status_code=status.HTTP_201_CREATED)
 async def submit_flag_attempt(
-    family_session_id: int, body: FlagAttemptRequest, db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user), llm: LLMService = Depends(get_llm_service),
+    family_session_id: str, body: FlagAttemptRequest, db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user), llm: LLMService | None = Depends(get_llm_service),
 ):
+    require_feature(FeatureFlag.FLAG_ATTEMPTS)
     session, participant = _load_participant_session(family_session_id, current_user, db)
     target = _target(session, body.element_key, db)
     existing = db.query(FlagAttempt).filter(
@@ -180,6 +201,7 @@ async def submit_flag_attempt(
         raise HTTPException(404, "Scenario not found")
     from app.models.schemas import ScenarioCategory
     allowed_tags = [span.tactic_tag for span in annotations if span.tactic_tag in TACTIC_TAGS_BY_CATEGORY[ScenarioCategory(transcript.category)]]
+    created_findings: list[tuple[ValidatedFinding, RedFlagSpan]] = []
     if disclosure:
         session.disclosure_flagged = True
         feedback = {
@@ -202,10 +224,18 @@ async def submit_flag_attempt(
             claim=body.claim, reasoning=sanitized_reasoning, exchanges=exchanges,
             current_findings=[finding.model_dump() for finding in _findings(session, db)], channel="private_child",
         )
-        feedback = await generate_attempt_feedback(
-            llm, context, is_concerning=is_concerning,
-            explanations=[span.child_safe_explanation or "" for span in annotations], allowed_tags=allowed_tags, claim=body.claim,
-        )
+        from app.companion.service import deterministic_attempt_feedback
+        try:
+            if llm is None:
+                raise RuntimeError("companion provider unavailable")
+            feedback = await generate_attempt_feedback(
+                llm, context, is_concerning=is_concerning,
+                explanations=[span.child_safe_explanation or "" for span in annotations], allowed_tags=allowed_tags, claim=body.claim,
+            )
+        except Exception:
+            telemetry_record("companion.fallback", reason="provider_failure", channel="flag_attempt")
+            feedback = deterministic_attempt_feedback(is_concerning=is_concerning,
+                explanations=[span.child_safe_explanation or "" for span in annotations], allowed_tags=allowed_tags, claim=body.claim)
         db.add(CompanionExchange(family_session_id=session.id, exchange_type="flag_attempt", child_text=sanitized_reasoning,
             companion_text=feedback["response_text"], disclosure_triggered=False))
         result = "validated" if is_concerning else "not_a_flag"
@@ -219,7 +249,8 @@ async def submit_flag_attempt(
     attempt = FlagAttempt(family_session_id=session.id, participant_id=participant.id, element_id=target.id,
         sanitized_reasoning=sanitized_reasoning, claimed_red_flag=body.claim == "red_flag", claim=body.claim,
         client_command_id=body.client_command_id, validation_result=result, feedback_snapshot=feedback,
-        disclosure_state="triggered" if disclosure else "none")
+        disclosure_state="triggered" if disclosure else "none",
+        visibility="shared" if participant.role == "caregiver" or body.share_reasoning_with_caregiver else "private")
     db.add(attempt)
     if is_concerning:
         for annotation in annotations:
@@ -228,9 +259,19 @@ async def submit_flag_attempt(
                 ValidatedFinding.red_flag_span_id == annotation.id,
             ).first()
             if not finding:
-                db.add(ValidatedFinding(family_session_id=session.id, participant_id=participant.id, element_id=target.id,
-                    red_flag_span_id=annotation.id, visibility="shared"))
+                finding = ValidatedFinding(family_session_id=session.id, participant_id=participant.id, element_id=target.id,
+                    red_flag_span_id=annotation.id, visibility="shared")
+                db.add(finding)
+                created_findings.append((finding, annotation))
     db.flush()
+    _emit_event(db, session, FamilySessionEventType.ATTEMPT_SUBMITTED, {
+        "element_key": target.element_key, "claim": body.claim, "validation_result": result,
+    }, actor_participant=participant)
+    for finding, annotation in created_findings:
+        _emit_event(db, session, FamilySessionEventType.FINDING_VALIDATED, {
+            "element_key": target.element_key, "annotation_id": annotation.id,
+            "tactic_tag": annotation.tactic_tag, "explanation": annotation.child_safe_explanation,
+        }, actor_participant=participant)
     progress = db.get(SessionProgress, session.id)
     if progress:
         progress.validated_finding_count = db.query(ValidatedFinding).filter(ValidatedFinding.family_session_id == session.id).count()
@@ -241,9 +282,12 @@ async def submit_flag_attempt(
 
 @router.post("/sessions/{family_session_id}/hints", response_model=HintOut)
 def request_hint(
-    family_session_id: int, body: HintRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+    family_session_id: str, body: HintRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
+    require_feature(FeatureFlag.FLAG_ATTEMPTS)
     session, _ = _load_participant_session(family_session_id, current_user, db)
+    if current_user.id != session.child_user_id:
+        raise HTTPException(403, "Private companion hints are available only to the learner")
     target = _target(session, body.element_key, db)
     prior = db.query(CompanionExchange).filter(
         CompanionExchange.family_session_id == session.id,
@@ -261,15 +305,14 @@ def request_hint(
     db.add(CompanionExchange(family_session_id=session.id, exchange_type=f"hint:{target.element_key}:{level}",
         child_text="", companion_text=hint, disclosure_triggered=False))
     db.commit()
+    telemetry_record("companion.hint", channel="private_child")
     return HintOut(element_key=target.element_key, hint_level=level, hint=hint)
 
 
 @router.post("/sessions/{family_session_id}/checkpoint", response_model=CompanionCheckpointOut, status_code=status.HTTP_201_CREATED)
-async def companion_checkpoint(family_session_id: int, body: CompanionCheckpointRequest, db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user), llm: LLMService = Depends(get_llm_service)):
+async def companion_checkpoint(family_session_id: str, body: CompanionCheckpointRequest, db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user), llm: LLMService | None = Depends(get_llm_service)):
     session = _load_child_session(family_session_id, current_user, db)
-    if not session.companion_mode:
-        raise HTTPException(422, "Companion checkpoint responses require companion mode")
     checkpoint = _checkpoint(session, body.checkpoint_message_id, db)
     _validate_flags(session, body.flagged_message_ids, db)
     context = db.query(CuratedMessage).filter(CuratedMessage.transcript_id == session.transcript_id,
@@ -278,18 +321,24 @@ async def companion_checkpoint(family_session_id: int, body: CompanionCheckpoint
         context, llm, checkpoint.checkpoint_prompt)
     child = CheckpointResponse(family_session_id=session.id, checkpoint_message_id=checkpoint.id,
         responder_role=ParticipantRole.CHILD.value, response_text=redact_personal_info(body.child_response_text),
-        flagged_message_ids=body.flagged_message_ids, tactic_tag_guess=body.tactic_tag_guess)
+        flagged_message_ids=body.flagged_message_ids, tactic_tag_guess=body.tactic_tag_guess,
+        visibility="private", client_command_id=body.client_command_id)
     companion = CheckpointResponse(family_session_id=session.id, checkpoint_message_id=checkpoint.id,
-        responder_role=ParticipantRole.AI_COMPANION.value, response_text=response_text, flagged_message_ids=[], tactic_tag_guess=None)
+        responder_role=ParticipantRole.AI_COMPANION.value, response_text=response_text, flagged_message_ids=[], tactic_tag_guess=None,
+        visibility="private")
     db.add_all([child, companion])
+    db.flush()
+    _emit_event(db, session, FamilySessionEventType.CHECKPOINT_RESPONSE, {
+        "checkpoint_message_id": checkpoint.id, "responder_role": "child", "shared": False,
+    }, actor_participant=session_participant(session, current_user.id, db))
     db.commit(); db.refresh(child); db.refresh(companion)
     return CompanionCheckpointOut(response_text=response_text, child_response=_out(child), checkpoint_response=_out(companion),
         disclosure_triggered=disclosure, support_resources=resources)
 
 
 @router.post("/sessions/{family_session_id}/explain", response_model=CompanionExplainOut)
-async def explain_reasoning(family_session_id: int, body: CompanionExplainRequest, db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user), llm: LLMService = Depends(get_llm_service)):
+async def explain_reasoning(family_session_id: str, body: CompanionExplainRequest, db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user), llm: LLMService | None = Depends(get_llm_service)):
     session = _load_child_session(family_session_id, current_user, db)
     context = db.query(CuratedMessage).filter(CuratedMessage.transcript_id == session.transcript_id,
         CuratedMessage.sequence <= session.revealed_up_to).order_by(CuratedMessage.sequence).all()
@@ -301,3 +350,62 @@ async def explain_reasoning(family_session_id: int, body: CompanionExplainReques
         companion_text=response_text, disclosure_triggered=disclosure))
     db.commit()
     return CompanionExplainOut(response_text=response_text, disclosure_triggered=disclosure, support_resources=resources)
+
+
+@router.post("/sessions/{family_session_id}/shared-feedback", response_model=SharedCompanionFeedbackOut)
+async def request_shared_feedback(
+    family_session_id: str,
+    body: SharedCompanionFeedbackRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    llm: LLMService | None = Depends(get_llm_service),
+):
+    """Create a server-authored explanation the learner explicitly chose to share."""
+    session = _load_child_session(family_session_id, current_user, db)
+    exchange_type = f"shared:{body.client_command_id[-20:]}"
+    existing = db.query(CompanionExchange).filter(
+        CompanionExchange.family_session_id == session.id,
+        CompanionExchange.exchange_type == exchange_type,
+    ).first()
+    if existing:
+        return SharedCompanionFeedbackOut(
+            response_text=existing.companion_text,
+            element_key=body.element_key,
+            shared=existing.visibility == "shared",
+            support_resources=[],
+        )
+    transcript = db.get(CuratedTranscript, session.transcript_id)
+    if not transcript:
+        raise HTTPException(404, "Scenario not found")
+    target = _target(session, body.element_key, db) if body.element_key else None
+    context = db.query(CuratedMessage).filter(
+        CuratedMessage.transcript_id == session.transcript_id,
+        CuratedMessage.sequence <= session.revealed_up_to,
+    ).order_by(CuratedMessage.sequence).all()
+    response_text, disclosure, resources = await _respond(
+        session, transcript.category, body.message, context, llm,
+        "Give a short child-safe explanation that can be shared with a caregiver. Do not mention private disclosures.",
+    )
+    exchange = CompanionExchange(
+        family_session_id=session.id,
+        exchange_type=exchange_type,
+        child_text=redact_personal_info(body.message),
+        companion_text=response_text,
+        disclosure_triggered=disclosure,
+        visibility="private" if disclosure else "shared",
+        shared_at=None if disclosure else datetime.now(timezone.utc),
+    )
+    db.add(exchange)
+    db.flush()
+    if not disclosure:
+        _emit_event(db, session, FamilySessionEventType.COMPANION_SHARED_FEEDBACK, {
+            "element_key": target.element_key if target else None,
+            "response_text": response_text,
+        }, actor_participant=session_participant(session, current_user.id, db))
+    db.commit()
+    return SharedCompanionFeedbackOut(
+        response_text=response_text,
+        element_key=target.element_key if target else None,
+        shared=not disclosure,
+        support_resources=resources,
+    )

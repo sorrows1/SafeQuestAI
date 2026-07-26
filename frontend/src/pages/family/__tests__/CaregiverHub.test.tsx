@@ -1,0 +1,102 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { ThemeProvider } from '@mui/material';
+import { MemoryRouter } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { darkTheme } from '@/theme';
+import { CaregiverHub } from '../CaregiverHub';
+
+const mocked = vi.hoisted(() => ({
+  relationships: vi.fn(),
+  invitations: vi.fn(),
+  sessions: vi.fn(),
+  revoke: vi.fn(),
+  updateRel: vi.fn(),
+  createInv: vi.fn(),
+}));
+
+vi.mock('@/store/api', () => ({
+  safeQuestApi: { reducerPath: 'safeQuestApi', reducer: (s = {}) => s, middleware: () => (next: any) => (action: any) => next(action) },
+  useGetFamilyRelationshipsQuery: () => mocked.relationships(),
+  useGetFamilyInvitationsQuery: () => mocked.invitations(),
+  useGetAuthorizedFamilySessionsQuery: () => mocked.sessions(),
+  useRevokeFamilyInvitationMutation: () => [mocked.revoke, { isLoading: false }],
+  useUpdateFamilyRelationshipMutation: () => [mocked.updateRel, { isLoading: false }],
+  useCreateFamilyInvitationMutation: () => [mocked.createInv, { isLoading: false, error: null }],
+}));
+
+const mockRel = {
+  relationship_ref: 'fr_123',
+  role: 'caregiver',
+  member_ref: 'member_456',
+  member_display_name: 'Alex Parent',
+  member_avatar_url: null,
+  accepted_at: '2026-07-26T00:00:00Z',
+  status: 'active',
+};
+
+const mockInv = {
+  invitation_ref: 'fi_789',
+  status: 'pending',
+  expires_at: '2026-08-01T00:00:00Z',
+  created_at: '2026-07-26T00:00:00Z',
+  delivery_label: "Mom's Tablet",
+  token: 'tok_abc123',
+  short_code: 'A7B9K2M4',
+};
+
+const renderHub = () =>
+  render(
+    <ThemeProvider theme={darkTheme}>
+      <MemoryRouter>
+        <CaregiverHub />
+      </MemoryRouter>
+    </ThemeProvider>
+  );
+
+describe('CaregiverHub Page', () => {
+  beforeEach(() => {
+    mocked.relationships.mockReturnValue({ data: [mockRel], isLoading: false });
+    mocked.invitations.mockReturnValue({ data: [mockInv], isLoading: false });
+    mocked.sessions.mockReturnValue({ data: [], isLoading: false });
+  });
+
+  it('renders header, metric cards, and family relationships list', () => {
+    renderHub();
+
+    expect(screen.getByText('Caregiver & Family Hub')).toBeTruthy();
+    expect(screen.getByText('Alex Parent')).toBeTruthy();
+    expect(screen.getByText('Caregiver')).toBeTruthy();
+  });
+
+  it('opens invite modal when Invite Family Member button is clicked', async () => {
+    renderHub();
+
+    const inviteBtns = screen.getAllByRole('button', { name: /invite family member/i });
+    fireEvent.click(inviteBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      expect(screen.getByLabelText(/family member email/i)).toBeTruthy();
+    });
+  });
+
+  it('switches tabs to view pending invitations', () => {
+    renderHub();
+
+    fireEvent.click(screen.getByRole('tab', { name: /invitations/i }));
+
+    expect(screen.getByText("Mom's Tablet")).toBeTruthy();
+    expect(screen.getByText('Code: A7B9K2M4')).toBeTruthy();
+  });
+
+  it('shows confirmation dialog when unlinking a relationship', async () => {
+    renderHub();
+
+    fireEvent.click(screen.getByRole('button', { name: /unlink/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/unlink family member\?/i)).toBeTruthy();
+      expect(screen.getByText(/unlinking alex parent will stop active session notifications/i)).toBeTruthy();
+    });
+  });
+});

@@ -15,7 +15,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision: str = "20260726_phase7_family_linking"
-down_revision: Union[str, Sequence[str], None] = "20260725_phase1_contracts"
+down_revision: Union[str, Sequence[str], None] = "20260726_p5_scene_contract"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -55,7 +55,6 @@ def upgrade() -> None:
         batch.add_column(sa.Column("status", sa.String(length=20), nullable=False, server_default="active"))
         batch.add_column(sa.Column("blocked_by_user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=True))
     op.create_index("ix_family_relationships_public_id", "family_relationships", ["public_id"], unique=True)
-    op.create_index("uq_family_relationship_unordered_pair", "family_relationships", ["user_low_id", "user_high_id"], unique=True)
 
     op.create_table(
         "family_relationship_audit_events",
@@ -71,6 +70,9 @@ def upgrade() -> None:
         op.create_index(f"ix_family_relationship_audit_events_{column}", "family_relationship_audit_events", [column])
 
     _backfill_family_references()
+    with op.batch_alter_table("family_relationships") as batch:
+        batch.create_check_constraint("ck_family_relationship_distinct_users", "user_low_id IS NULL OR user_low_id < user_high_id")
+    op.create_index("uq_family_relationship_unordered_pair", "family_relationships", ["user_low_id", "user_high_id"], unique=True)
 
 
 def _backfill_family_references() -> None:
@@ -96,12 +98,15 @@ def _backfill_family_references() -> None:
         status = "accepted" if row["accepted_at"] else ("revoked" if row["revoked_at"] else "pending")
         bind.execute(invitations.update().where(invitations.c.id == row["id"]).values(public_id=_opaque("fi"), status=status))
 
+    seen_pairs = set()
     for row in bind.execute(sa.select(relationships)).mappings():
         caregiver, learner = row["caregiver_user_id"], row["learner_user_id"]
-        if caregiver == learner:
-            bind.execute(relationships.update().where(relationships.c.id == row["id"]).values(public_id=_opaque("fr"), status="revoked", revoked_at=row["revoked_at"] or now))
+        pair = tuple(sorted((caregiver, learner)))
+        if caregiver == learner or pair in seen_pairs:
+            bind.execute(relationships.update().where(relationships.c.id == row["id"]).values(public_id=_opaque("fr"), user_low_id=None, user_high_id=None, status="revoked", revoked_at=row["revoked_at"] or now))
             continue
-        bind.execute(relationships.update().where(relationships.c.id == row["id"]).values(public_id=_opaque("fr"), user_low_id=min(caregiver, learner), user_high_id=max(caregiver, learner), status="revoked" if row["revoked_at"] else "active"))
+        seen_pairs.add(pair)
+        bind.execute(relationships.update().where(relationships.c.id == row["id"]).values(public_id=_opaque("fr"), user_low_id=pair[0], user_high_id=pair[1], status="revoked" if row["revoked_at"] else "active"))
 
 
 
@@ -112,6 +117,7 @@ def downgrade() -> None:
     op.drop_index("uq_family_relationship_unordered_pair", table_name="family_relationships")
     op.drop_index("ix_family_relationships_public_id", table_name="family_relationships")
     with op.batch_alter_table("family_relationships") as batch:
+        batch.drop_constraint("ck_family_relationship_distinct_users", type_="check")
         batch.drop_column("blocked_by_user_id")
         batch.drop_column("status")
         batch.drop_column("user_high_id")

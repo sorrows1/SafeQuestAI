@@ -4,6 +4,8 @@ import { useCreateFamilySessionMutation, useGetFamilyScenariosQuery } from '@/st
 import type { FamilyScenarioQuery, PublishedFamilyScenario, RenderSkin } from '@/types';
 import { FamilyAppShell } from '@/components/family/FamilyAppShell';
 import { ScenarioBrowserView } from './ScenarioBrowserView';
+import { CaregiverSelectorModal } from '@/components/family/CaregiverSelectorModal';
+import { InviteFamilyMemberModal } from '@/components/family/InviteFamilyMemberModal';
 
 export function FamilyScenarioLobby() {
   const navigate = useNavigate();
@@ -19,6 +21,8 @@ export function FamilyScenarioLobby() {
   });
   const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get('page')) || 1));
   const [selected, setSelected] = useState<PublishedFamilyScenario | null>(null);
+  const [selectorModalOpen, setSelectorModalOpen] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -75,12 +79,28 @@ export function FamilyScenarioLobby() {
     setPage(1);
   };
 
-  const start = async () => {
+  const handleScenarioClick = (item: PublishedFamilyScenario | null) => {
+    setSelected(item);
+  };
+
+  const handleOpenSelector = () => {
+    setSelectorModalOpen(true);
+  };
+
+  const handleStartSession = async (relationshipRef?: string) => {
     if (!selected) return;
-    const session = await createSession({
-      transcriptId: selected.id,
-    }).unwrap();
-    navigate('/family/scenarios/' + selected.id + '/sessions/' + session.id, { state: { session } });
+    try {
+      const session = await createSession({
+        transcriptId: selected.id,
+        relationship_ref: relationshipRef,
+      }).unwrap();
+      const sessionRefOrId = session.public_id || session.id;
+      setSelectorModalOpen(false);
+      setSelected(null);
+      navigate('/family/scenarios/' + selected.id + '/sessions/' + sessionRefOrId, { state: { session } });
+    } catch {
+      // Error handled by RTK mutation error state
+    }
   };
 
   return (
@@ -111,11 +131,29 @@ export function FamilyScenarioLobby() {
         queryStatus={queryStatus}
         onRefetch={refetch}
         selected={selected}
-        onSelectScenario={setSelected}
-        onStartSolo={start}
+        onSelectScenario={handleScenarioClick}
+        onStartSolo={handleOpenSelector}
         creating={creating}
         createError={Boolean(error)}
       />
+
+      {/* Caregiver Selector Modal when starting a scenario */}
+      {selected && (
+        <CaregiverSelectorModal
+          open={selectorModalOpen}
+          scenarioTitle={selected.title}
+          onClose={() => setSelectorModalOpen(false)}
+          onConfirm={(relRef) => handleStartSession(relRef)}
+          onOpenInviteModal={() => {
+            setSelectorModalOpen(false);
+            setInviteModalOpen(true);
+          }}
+          isStarting={creating}
+        />
+      )}
+
+      {/* Invite Family Member Modal */}
+      <InviteFamilyMemberModal open={inviteModalOpen} onClose={() => setInviteModalOpen(false)} />
     </FamilyAppShell>
   );
 }

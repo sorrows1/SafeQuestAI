@@ -10,7 +10,8 @@ const steps = [
     title: 'Pick a Reviewed Scenario',
     description:
       'Choose from curated online situations covering gaming boundaries, cyberbullying, scam messages, social media posting, and private image requests.',
-    color: '#60a5fa',
+    colorLight: '#1d4ed8',
+    colorDark: '#60a5fa',
   },
   {
     icon: ChatBubbleOutlineOutlinedIcon,
@@ -18,7 +19,8 @@ const steps = [
     title: 'Experience Realistic Chats',
     description:
       'Navigate realistic, non-visual interactive dialogue in realistic app skins (Chat, Email, Social Feed) without exposure to real online antagonists.',
-    color: '#34d399',
+    colorLight: '#047857',
+    colorDark: '#34d399',
   },
   {
     icon: PsychologyOutlinedIcon,
@@ -26,7 +28,8 @@ const steps = [
     title: 'Reflect & Grow Together',
     description:
       'Pause at checkpoints to share your thoughts. Generate parent-child conversation guides focused on empathy and normalized help-seeking.',
-    color: '#a78bfa',
+    colorLight: '#6d28d9',
+    colorDark: '#a78bfa',
   },
 ];
 
@@ -51,6 +54,7 @@ export function HowItWorksSection() {
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 3 }}>
           {steps.map((item, index) => {
             const Icon = item.icon;
+            const accentColor = theme.palette.mode === 'dark' ? item.colorDark : item.colorLight;
             return (
               <Card
                 key={index}
@@ -62,7 +66,7 @@ export function HowItWorksSection() {
                   overflow: 'hidden',
                   borderColor: theme.palette.divider,
                   '&:hover': {
-                    borderColor: item.color,
+                    borderColor: accentColor,
                     transform: 'translateY(-4px)',
                   },
                 }}
@@ -74,8 +78,8 @@ export function HowItWorksSection() {
                         width: 52,
                         height: 52,
                         borderRadius: '14px',
-                        bgcolor: alpha(item.color, 0.12),
-                        color: item.color,
+                        bgcolor: alpha(accentColor, 0.12),
+                        color: accentColor,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -83,7 +87,7 @@ export function HowItWorksSection() {
                     >
                       <Icon sx={{ fontSize: 28 }} />
                     </Box>
-                    <Typography variant="caption" sx={{ fontWeight: 800, color: item.color, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                       {item.step}
                     </Typography>
                     <Typography variant="h4" component="h3" sx={{ fontWeight: 700 }}>

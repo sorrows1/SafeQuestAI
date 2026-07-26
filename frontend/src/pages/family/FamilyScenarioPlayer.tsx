@@ -18,6 +18,7 @@ import {
   selectFamilyFindings,
   selectFamilyMessages,
   selectFamilySession,
+  selectFamilySessionStreamStatus,
   selectFlagAttemptPending,
   selectHighlightedMessageIds,
   selectLastFlagAttempt,
@@ -28,6 +29,7 @@ import {
 import { useAppDispatch, useAppSelector } from "@/store";
 import {
   useCommandFamilySessionMutation,
+  useCreateCaregiverCommentMutation,
   useExplainWithCompanionMutation,
   useRequestCompanionHintMutation,
   useSubmitFlagAttemptMutation,
@@ -38,23 +40,30 @@ import {
 import type { FamilySessionCommandType, ParticipantRole } from "@/types";
 import type { ScenePanelNavigation } from "@/components/scenario-render/types";
 import type { ClaimType } from "@/components/family/FlagInspectorRail";
+import { useFamilySessionEvents } from "@/features/family/useFamilySessionEvents";
 
 const commandId = () => globalThis.crypto?.randomUUID?.() ?? `command-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function FamilyScenarioPlayer() {
   const { sessionId: sessionIdParam } = useParams();
-  const sessionId = Number(sessionIdParam);
+  const sessionId = useMemo(() => {
+    if (!sessionIdParam) return null;
+    const num = Number(sessionIdParam);
+    return Number.isFinite(num) && num > 0 ? num : sessionIdParam;
+  }, [sessionIdParam]);
   const dispatch = useAppDispatch();
-  const currentUser = useAppSelector((state) => state.auth.user);
-  const { data: detail, isLoading, isError, refetch } = useGetFamilySessionQuery(sessionId, { skip: !sessionId });
+  const { data: detail, isLoading, isError, refetch } = useGetFamilySessionQuery(sessionId!, { skip: !sessionId });
   const [command, { isLoading: commandLoading }] = useCommandFamilySessionMutation();
+  useFamilySessionEvents(sessionId, refetch);
   const [submitCheckpoint, { isLoading: submitting }] = useSubmitCheckpointResponseMutation();
   const [submitCompanionCheckpoint, { isLoading: companionSubmitting }] = useSubmitCompanionCheckpointMutation();
   const [explainWithCompanion, { isLoading: explaining }] = useExplainWithCompanionMutation();
   const [submitFlagAttempt, { isLoading: attemptSubmitting }] = useSubmitFlagAttemptMutation();
   const [requestCompanionHint] = useRequestCompanionHintMutation();
+  const [createCaregiverComment, { isLoading: submittingComment }] = useCreateCaregiverCommentMutation();
   const session = useAppSelector(selectFamilySession);
   const capabilities = useAppSelector(selectFamilyCapabilities);
+  const streamStatus = useAppSelector(selectFamilySessionStreamStatus);
   const allMessages = useAppSelector(selectFamilyMessages);
   const visibleMessages = useAppSelector(selectVisibleFamilyMessages);
   const highlightedMessageIds = useAppSelector(selectHighlightedMessageIds);
@@ -75,6 +84,22 @@ export function FamilyScenarioPlayer() {
   const sceneRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const priorVisibleCount = useRef(0);
+
+  const handleAddCaregiverComment = async (text: string, elementKey?: string | null) => {
+    if (!session || !text.trim()) return;
+    setActionError(null);
+    try {
+      await createCaregiverComment({
+        sessionId: session.id,
+        text: text.trim(),
+        element_key: elementKey ?? undefined,
+        client_command_id: commandId(),
+      }).unwrap();
+      void refetch();
+    } catch {
+      setActionError("Your comment could not be added right now. Please try again.");
+    }
+  };
 
   useEffect(() => {
     if (detail) dispatch(familySessionHydrated(detail));
@@ -133,13 +158,14 @@ export function FamilyScenarioPlayer() {
     if (!session || !activeCheckpoint) return;
     setActionError(null);
     try {
-      if (session.companion_mode) {
+      if (responderRole === "child") {
         const result = await submitCompanionCheckpoint({
           sessionId: session.id,
           checkpoint_message_id: activeCheckpoint.messageId,
           child_response_text: responseText,
           flagged_message_ids: highlightedMessageIds,
           tactic_tag_guess: tacticTagGuess || null,
+          client_command_id: commandId(),
         }).unwrap();
         dispatch(checkpointResponseRecorded(result.child_response));
         dispatch(checkpointResponseRecorded(result.checkpoint_response));
@@ -152,6 +178,8 @@ export function FamilyScenarioPlayer() {
           response_text: responseText,
           flagged_message_ids: highlightedMessageIds,
           tactic_tag_guess: tacticTagGuess || null,
+          expected_state_version: session.state_version,
+          client_command_id: commandId(),
         }).unwrap();
         dispatch(checkpointResponseRecorded(response));
       }
@@ -223,7 +251,7 @@ export function FamilyScenarioPlayer() {
 
   const updateTag = (tag: string) => highlightedMessageIds.forEach((messageId) => dispatch(tagAssignmentSet({ messageId, tag })));
   const selectedTag = useMemo(() => Object.values(tagAssignments).find(Boolean) ?? "", [tagAssignments]);
-  const responderRole: ParticipantRole = session?.companion_mode ? "child" : currentUser?.id === session?.parent_user_id ? "parent" : "child";
+  const responderRole: ParticipantRole = detail?.participant_role === "caregiver" ? "parent" : "child";
   const panelNavigation: ScenePanelNavigation = {
     activeElementKey: panelHistory[panelHistory.length - 1] ?? null,
     canGoBack: panelHistory.length > 1,
@@ -233,7 +261,7 @@ export function FamilyScenarioPlayer() {
   };
 
   if (!sessionId) return <Alert severity="error">This scenario link is incomplete.</Alert>;
-  if (isLoading || !session || session.id !== sessionId) {
+  if (isLoading || !session || (session.id !== sessionId && session.public_id !== sessionId)) {
     return (
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Skeleton variant="rounded" height={80} sx={{ mb: 3, borderRadius: 3 }} />
@@ -260,7 +288,7 @@ export function FamilyScenarioPlayer() {
     );
   }
 
-  const checkpoint = activeCheckpoint ? <CheckpointPause prompt={activeCheckpoint.prompt} selectedCount={highlightedMessageIds.length} companionMode={session.companion_mode} submitting={submitting || companionSubmitting || commandLoading || attemptSubmitting} onSubmit={submit} onTagChange={updateTag} /> : null;
+  const checkpoint = activeCheckpoint ? <CheckpointPause prompt={activeCheckpoint.prompt} selectedCount={highlightedMessageIds.length} companionMode={Boolean(capabilities?.can_use_private_companion)} submitting={submitting || companionSubmitting || commandLoading || attemptSubmitting} onSubmit={submit} onTagChange={updateTag} /> : null;
 
   return (
     <FamilyGameplayView
@@ -313,6 +341,17 @@ export function FamilyScenarioPlayer() {
       onOpenHelp={() => void sendCommand("open_help")}
       onFinishCompletion={() => void sendCommand("complete")}
       onRetryAction={() => void refetch()}
+      participants={detail?.participants ?? []}
+      streamStatus={streamStatus}
+      turnRole={detail?.participant_role === 'caregiver' ? 'caregiver' : 'learner'}
+      userRole={detail?.participant_role === 'caregiver' ? 'caregiver' : 'learner'}
+      onReconnectStream={() => void refetch()}
+      caregiverComments={detail?.caregiver_comments ?? []}
+      canAddComment={Boolean(capabilities?.can_add_caregiver_comment)}
+      onSubmitComment={handleAddCaregiverComment}
+      isSubmittingComment={submittingComment}
+      checkpointResponses={detail?.session ? [] : []}
+      conversationGuide={null}
     >
       {hintNotice && (
         <Alert severity="info" onClose={() => setHintNotice(null)} sx={{ mt: 2, borderRadius: 2 }}>

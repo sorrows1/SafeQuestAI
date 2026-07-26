@@ -262,6 +262,8 @@ class FamilySession(Base):
     state_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     active_checkpoint_element_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     participation_turn_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    # Per-session sequence source for persisted, reconnectable family events.
+    event_sequence: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # Acknowledging the completion review is distinct from reaching the end.
     completion_acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completion_acknowledged_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
@@ -345,6 +347,64 @@ class FamilySessionParticipant(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     left_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    presence_status: Mapped[str] = mapped_column(String(20), default="offline", nullable=False)
+    last_heartbeat_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    presence_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class FamilySessionEvent(Base):
+    """Append-only, participant-safe event log used for family SSE recovery.
+
+    Event payloads contain only shared state and server-authored text. Private
+    companion exchanges and disclosure signals must never be copied here.
+    """
+    __tablename__ = "family_session_events"
+    __table_args__ = (
+        UniqueConstraint("family_session_id", "sequence", name="uq_family_session_event_sequence"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    family_session_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_sessions.id"), nullable=False, index=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    actor_participant_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("family_session_participants.id"), nullable=True, index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    is_ephemeral: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class FamilyCaregiverComment(Base):
+    """A shared caregiver note anchored to a scene element or validated finding."""
+    __tablename__ = "family_caregiver_comments"
+    __table_args__ = (
+        UniqueConstraint("family_session_id", "client_command_id", name="uq_family_caregiver_comment_command"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    family_session_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_sessions.id"), nullable=False, index=True)
+    author_participant_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_session_participants.id"), nullable=False, index=True)
+    scene_element_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("curated_scene_elements.id"), nullable=True, index=True)
+    validated_finding_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("validated_findings.id"), nullable=True, index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    child_visible_label: Mapped[str] = mapped_column(String(80), default="Caregiver note", nullable=False)
+    client_command_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class FamilyCaregiverCommentAudit(Base):
+    """Append-only audit trail for a caregiver comment; never exposed to players."""
+    __tablename__ = "family_caregiver_comment_audits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    comment_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_caregiver_comments.id"), nullable=False, index=True)
+    actor_participant_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_session_participants.id"), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    text_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class FamilyRelationshipAuditEvent(Base):
@@ -388,6 +448,7 @@ class FlagAttempt(Base):
     validation_result: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
     feedback_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     disclosure_state: Mapped[str] = mapped_column(String(30), default="none", nullable=False)
+    visibility: Mapped[str] = mapped_column(String(20), default="private", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -419,6 +480,8 @@ class CheckpointResponse(Base):
     response_text: Mapped[str] = mapped_column(Text, nullable=False)
     flagged_message_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
     tactic_tag_guess: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    visibility: Mapped[str] = mapped_column(String(20), default="private", nullable=False)
+    client_command_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -453,6 +516,8 @@ class CompanionExchange(Base):
     child_text: Mapped[str] = mapped_column(Text, nullable=False)
     companion_text: Mapped[str] = mapped_column(Text, nullable=False)
     disclosure_triggered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    visibility: Mapped[str] = mapped_column(String(20), default="private", nullable=False)
+    shared_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

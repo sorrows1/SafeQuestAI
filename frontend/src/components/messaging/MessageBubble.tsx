@@ -8,12 +8,12 @@ export interface MessageBubbleProps {
   content: string;
   speakerLabel: string;
   side: MessageSide;
-  pace: string;
+  pace?: string;
   selectable?: boolean;
 }
 
 /** A presentation-only message bubble shared by admin and player experiences. */
-export const MessageBubble = memo(function MessageBubble({ content, speakerLabel, side, pace: _pace, selectable = false }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ content, speakerLabel, side, pace = 'normal', selectable = false }: MessageBubbleProps) {
   const isRight = side === 'right';
 
   return (

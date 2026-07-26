@@ -29,6 +29,8 @@ interface Props {
   totalCount: number;
   highlightedCount: number;
   hintLevel?: number;
+  turnRole?: 'learner' | 'caregiver' | 'shared';
+  turnLabel?: string;
   onHint: () => void;
   onReset: () => void;
   onOpenGuide: () => void;
@@ -45,6 +47,8 @@ export function GameplayMissionBar({
   totalCount,
   highlightedCount,
   hintLevel = 0,
+  turnRole,
+  turnLabel,
   onHint,
   onReset,
   onOpenGuide,

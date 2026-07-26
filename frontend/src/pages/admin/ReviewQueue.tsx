@@ -11,7 +11,7 @@ export function ReviewQueue() {
       <Box sx={{ p: 3 }}>
         <Typography variant="h5">Review Queue</Typography>
         <Typography color="text.secondary" sx={{ mb: 2 }}>
-          Review-ready runs open in the same workbench used for live controls and publication.
+          First approve the simulation, then review its inspectable content and annotations. Publication is a separate, validated action.
         </Typography>
         <Paper variant="outlined">
           {isLoading ? (
@@ -25,9 +25,9 @@ export function ReviewQueue() {
           ) : (
             <List disablePadding>
               {items.map((item) => (
-                <ListItemButton key={item.id} onClick={() => navigate(`/admin/simulator/${item.id}`)}>
-                  <ListItemText primary={`#${item.id} · ${item.scenario_id}`} secondary={`${item.mode} · ${item.status}`} />
-                  <Button size="small">Open workbench</Button>
+                <ListItemButton key={`${item.kind}-${item.id}`} onClick={() => navigate(item.kind === 'content_review' ? `/admin/curated-transcripts/${item.id}/review` : `/admin/simulator/${item.id}`)}>
+                  <ListItemText primary={`#${item.id} · ${item.scenario_id ?? 'curated content'}`} secondary={item.kind === 'content_review' ? 'Content and annotation review required before publication' : `${item.mode} · ${item.status}`} />
+                  <Button size="small">{item.kind === 'content_review' ? 'Review content' : 'Open workbench'}</Button>
                 </ListItemButton>
               ))}
             </List>

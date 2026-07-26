@@ -28,11 +28,24 @@ const initialState = messagesAdapter.getInitialState({
   typing: false,
 });
 
-function normalizeStatus(status: string): ViewerRunStatus {
-  if (['paused', 'awaiting_admin', 'ready_for_review', 'approved', 'rejected', 'limit_reached'].includes(status)) return status as ViewerRunStatus;
-  if (status === 'failed') return 'failed';
-  if (['pending', 'approved', 'rejected', 'completed'].includes(status)) return 'completed';
-  return 'running';
+export function normalizeSimulationStatus(status: string): ViewerRunStatus {
+  switch (status) {
+    case 'running':
+    case 'paused':
+    case 'awaiting_admin':
+    case 'ready_for_review':
+    case 'approved':
+    case 'rejected':
+    case 'limit_reached':
+    case 'failed':
+    case 'completed':
+      return status;
+    case 'queued':
+    case 'pending':
+      return 'idle';
+    default:
+      return 'idle';
+  }
 }
 
 const simulationViewerSlice = createSlice({
@@ -64,7 +77,7 @@ const simulationViewerSlice = createSlice({
       state.typing = false;
     },
     runStatusChanged(state, action: PayloadAction<string>) {
-      state.runStatus = normalizeStatus(action.payload);
+      state.runStatus = normalizeSimulationStatus(action.payload);
       if (state.runStatus !== 'running') state.typing = false;
     },
     connectionStatusChanged(state, action: PayloadAction<ConnectionStatus>) {
@@ -76,7 +89,7 @@ const simulationViewerSlice = createSlice({
     },
     runHydrated(state, action: PayloadAction<SimulationRun>) {
       state.runId = action.payload.id;
-      state.runStatus = normalizeStatus(action.payload.status);
+      state.runStatus = normalizeSimulationStatus(action.payload.status);
       state.activeBranch = String(action.payload.progress?.active_branch ?? 'main');
       messagesAdapter.setAll(
         state,

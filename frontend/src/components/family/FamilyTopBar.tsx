@@ -60,7 +60,7 @@ export function FamilyTopBar() {
 
   const navLinks = [
     { label: 'Scenario Catalog', path: '/family/scenarios', icon: CategoryOutlinedIcon },
-    { label: 'Caregiver Hub', path: '/family/caregiver', icon: FamilyRestroomIcon },
+    { label: 'Caregiver Hub', path: '/family/hub', icon: FamilyRestroomIcon },
   ];
 
   return (

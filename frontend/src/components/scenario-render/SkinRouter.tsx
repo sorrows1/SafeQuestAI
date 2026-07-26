@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Box, Paper, Typography } from "@mui/material";
 import SecurityIcon from "@mui/icons-material/Security";
 import type { ElementType, RenderSkin } from "@/types";
@@ -9,6 +10,7 @@ import { ForumSkin } from "./ForumSkin";
 import { MarketplaceSkin } from "./MarketplaceSkin";
 import { InspectableElement } from "./SelectableMessage";
 import type { ScenarioSkinProps, SkinRouterProps } from "./types";
+import { recordClientTelemetry } from "@/telemetry";
 
 export interface SkinCapability {
   id: RenderSkin;
@@ -92,7 +94,11 @@ export function GenericFallbackSkin({ scene, selection, onSelect, readOnly, test
 export function SkinRouter({ renderSkin, ...props }: SkinRouterProps) {
   const id = renderSkin ?? props.scene.render_skin;
   const capability = skinRegistry[id];
-  if (!capability || !capability.validate(props)) return <GenericFallbackSkin {...props} />;
+  const usesFallback = !capability || !capability.validate(props);
+  useEffect(() => {
+    if (usesFallback) recordClientTelemetry("skin.fallback", { source: "skin_router" });
+  }, [usesFallback]);
+  if (usesFallback) return <GenericFallbackSkin {...props} />;
   const Renderer = capability.Renderer;
   return <Renderer {...props} />;
 }

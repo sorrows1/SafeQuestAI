@@ -5,9 +5,35 @@ from sqlalchemy.orm import Session
 from app.auth.security import require_admin
 from app.models.orm import User, get_db
 from app.models.content_schemas import ScenarioDefinition
+from app.generation.taxonomy import TACTIC_TAGS_BY_CATEGORY
+from app.models.schemas import AdminSceneDraft, SKIN_CAPABILITIES, SKIN_CONTRACT_VERSION
 from app.repositories import content_repo
 
 router = APIRouter(prefix="/api/admin/scenarios", tags=["Admin - Scenarios"])
+
+
+@router.get("/scene-capabilities")
+def scene_capabilities(_: User = Depends(require_admin)):
+    """Authoritative capability manifest for admin compatibility checks."""
+    return {
+        "skin_contract_version": SKIN_CONTRACT_VERSION,
+        "tactic_tags_by_category": {category.value: tags for category, tags in TACTIC_TAGS_BY_CATEGORY.items()},
+        "skins": [
+            {
+                "id": skin.value,
+                "version": SKIN_CONTRACT_VERSION,
+                "supported_element_types": sorted(element.value for element in supported),
+                "responsive_modes": ["default", "compact"],
+            }
+            for skin, supported in SKIN_CAPABILITIES.items()
+        ],
+    }
+
+
+@router.post("/scene-preview", response_model=AdminSceneDraft)
+def preview_scene_draft(body: AdminSceneDraft, _: User = Depends(require_admin)):
+    """Validate an admin draft for production-renderer preview without persisting it."""
+    return body
 
 
 @router.get("/", response_model=list[ScenarioDefinition])

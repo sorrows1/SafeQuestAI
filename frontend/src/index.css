@@ -48,6 +48,50 @@ body {
   background: rgba(255, 255, 255, 0.25);
 }
 
+/* Accessibility & High Contrast Rules */
+:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid Highlight;
+  }
+}
+
+/* Touch target minimum dimensions */
+button,
+a,
+[role="button"],
+[role="tab"] {
+  min-height: 36px;
+}
+
+/* Screen reader utility class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
 /* React Flow override */
 .react-flow__attribution {
   display: none;

@@ -25,9 +25,12 @@ import { Settings } from '@/pages/admin/Settings';
 import { Users } from '@/pages/admin/Users';
 const SimulationWorkbench = lazy(() => import('@/pages/admin/SimulationWorkbench').then((module) => ({ default: module.SimulationWorkbench })));
 const ReviewQueue = lazy(() => import('@/pages/admin/ReviewQueue').then((module) => ({ default: module.ReviewQueue })));
+const CuratedContentReview = lazy(() => import('@/pages/admin/CuratedContentReview').then((module) => ({ default: module.CuratedContentReview })));
 const AdminFallback = () => <div style={{ padding: 24 }}>Loading admin workspace…</div>;
 
 import { FamilyScenarioLobby } from '@/pages/family/FamilyScenarioLobby';
+import { CaregiverHub } from '@/pages/family/CaregiverHub';
+import { InvitationAcceptView } from '@/pages/family/InvitationAcceptView';
 import { Landing } from '@/pages/Landing';
 import { FamilyScenarioPlayer } from '@/pages/family/FamilyScenarioPlayer';
 
@@ -62,6 +65,30 @@ function ThemedApp() {
               element={
                 <ProtectedRoute>
                   <FamilyScenarioPlayer />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/family/hub"
+              element={
+                <ProtectedRoute>
+                  <CaregiverHub />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/family/caregiver"
+              element={
+                <ProtectedRoute>
+                  <CaregiverHub />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/family/invitations/accept"
+              element={
+                <ProtectedRoute>
+                  <InvitationAcceptView />
                 </ProtectedRoute>
               }
             />
@@ -181,6 +208,16 @@ function ThemedApp() {
                 <AdminRoute>
                   <Suspense fallback={<AdminFallback />}>
                     <ReviewQueue />
+                  </Suspense>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/curated-transcripts/:id/review"
+              element={
+                <AdminRoute>
+                  <Suspense fallback={<AdminFallback />}>
+                    <CuratedContentReview />
                   </Suspense>
                 </AdminRoute>
               }

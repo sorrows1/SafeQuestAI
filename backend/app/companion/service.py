@@ -18,6 +18,10 @@ from app.models.orm import CompanionExchange, CuratedSceneElement, CuratedMessag
 from app.models.schemas import ScenarioCategory
 
 PROMPT_CONTEXT_VERSION = "phase4-grounded-v1"
+MAX_CONTEXT_ELEMENTS = 30
+MAX_CONTEXT_EXCHANGES = 4
+MAX_CONTEXT_FINDINGS = 20
+MAX_ELEMENT_TEXT = 2_000
 
 
 class CompanionStructuredOutput(BaseModel):
@@ -36,7 +40,10 @@ def _tag_definition(tag: str) -> str:
 
 def curated_context(messages: Sequence[CuratedMessage]) -> str:
     """Compatibility helper for the existing checkpoint/explain companion path."""
-    return "\n".join(f"Scenario message {m.sequence} ({m.speaker_label}): {m.content}" for m in messages)
+    return "\n".join(
+        f"Scenario message {m.sequence} ({m.speaker_label}): {m.content[:MAX_ELEMENT_TEXT]}"
+        for m in messages[-MAX_CONTEXT_ELEMENTS:]
+    )
 
 
 def build_companion_context(
@@ -68,10 +75,10 @@ def build_companion_context(
             "parent_element_key": item.parent_element_key,
             "element_type": item.element_type,
             "semantic_role": item.semantic_role,
-            "display_text": item.content or "",
+            "display_text": (item.content or "")[:MAX_ELEMENT_TEXT],
             "relationship": "selected" if item.element_key == selected_key else ("nearby" if item.parent_element_key in nearby_keys else "revealed"),
         }
-        for item in revealed_elements
+        for item in revealed_elements[-MAX_CONTEXT_ELEMENTS:]
     ]
     allowed_tags = sorted({span.tactic_tag for span in annotations if span.tactic_tag in TACTIC_TAGS_BY_CATEGORY[category]})
     return {
@@ -88,12 +95,12 @@ def build_companion_context(
         "curator_result": bool(annotations),
         "child_safe_explanation": " ".join(filter(None, (span.child_safe_explanation for span in annotations))),
         "allowed_tactic_tags": {tag: _tag_definition(tag) for tag in allowed_tags},
-        "current_validated_findings": list(current_findings),
+        "current_validated_findings": list(current_findings)[-MAX_CONTEXT_FINDINGS:],
         "child_submission": {"claim": claim, "reasoning": redact_personal_info(reasoning or "")},
         "current_checkpoint": checkpoint,
         "prior_relevant_exchanges": [
             {"child": redact_personal_info(item.child_text), "companion": redact_personal_info(item.companion_text)}
-            for item in exchanges[-4:]
+            for item in exchanges[-MAX_CONTEXT_EXCHANGES:]
         ],
         "hint_level": hint_level,
         "channel_rules": "This is a private child companion channel; do not reveal it to family participants." if channel == "private_child" else "This is shared family feedback; never include private companion exchanges.",

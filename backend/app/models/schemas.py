@@ -77,6 +77,28 @@ class FamilySessionCommandType(str, Enum):
     RESET = "reset"
 
 
+class ParticipantPresenceStatus(str, Enum):
+    ONLINE = "online"
+    OFFLINE = "offline"
+    LEFT = "left"
+
+
+class FamilySessionEventType(str, Enum):
+    PARTICIPANT_JOINED = "participant_joined"
+    PARTICIPANT_LEFT = "participant_left"
+    PARTICIPANT_PRESENCE = "participant_presence"
+    STATE_CHANGED = "state_changed"
+    REVEAL = "reveal"
+    SELECTION_FOCUS = "selection_focus"
+    ATTEMPT_SUBMITTED = "attempt_submitted"
+    FINDING_VALIDATED = "finding_validated"
+    CHECKPOINT_RESPONSE = "checkpoint_response"
+    COMPANION_SHARED_FEEDBACK = "companion_shared_feedback"
+    CAREGIVER_COMMENT = "caregiver_comment"
+    COMPLETED = "completed"
+    GUIDE_READY = "guide_ready"
+
+
 class ElementType(str, Enum):
     CONVERSATION = "conversation"
     MESSAGE = "message"
@@ -137,10 +159,33 @@ class FlagValidationResult(str, Enum):
     NEEDS_SUPPORT = "needs_support"
 
 
+class EscalationSpeed(str, Enum):
+    SLOW = "slow"
+    MEDIUM = "medium"
+    FAST = "fast"
+
+
+class RedFlagVisibility(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 class DifficultyModifier(BaseModel):
-    trust_delta_multiplier: float = 1.0
-    escalation_speed: str = "slow"
-    red_flag_visibility: str = "medium"
+    """Bounded authoring controls; keys are canonical Difficulty values."""
+
+    trust_delta_multiplier: float = Field(default=1.0, ge=0.25, le=2.0, multiple_of=0.05)
+    escalation_speed: EscalationSpeed = EscalationSpeed.MEDIUM
+    red_flag_visibility: RedFlagVisibility = RedFlagVisibility.MEDIUM
+
+
+def default_difficulty_modifiers() -> dict[Difficulty, DifficultyModifier]:
+    """Explicit, safe starting values for each authoring difficulty."""
+    return {
+        Difficulty.EASY: DifficultyModifier(trust_delta_multiplier=0.6, escalation_speed=EscalationSpeed.SLOW, red_flag_visibility=RedFlagVisibility.HIGH),
+        Difficulty.MEDIUM: DifficultyModifier(),
+        Difficulty.HARD: DifficultyModifier(trust_delta_multiplier=1.2, escalation_speed=EscalationSpeed.MEDIUM, red_flag_visibility=RedFlagVisibility.LOW),
+    }
 
 
 class StageStep(BaseModel):
@@ -170,7 +215,7 @@ class ScenarioDefinition(BaseModel):
     tags: list[str] = Field(default_factory=list)
     learning_objectives: list[str] = Field(default_factory=list)
     stage_sequence: list[StageStep] = Field(default_factory=list)
-    difficulty_modifiers: dict[str, DifficultyModifier] = Field(default_factory=dict)
+    difficulty_modifiers: dict[Difficulty, DifficultyModifier] = Field(default_factory=default_difficulty_modifiers)
     category: ScenarioCategory = ScenarioCategory.GROOMING
     render_skin: RenderSkin = RenderSkin.CHAT
     generation_mode: GenerationMode = GenerationMode.DUAL_AGENT
@@ -181,6 +226,7 @@ class ScenarioDefinition(BaseModel):
     @model_validator(mode="after")
     def validate_actor_bindings_and_mode(self) -> "ScenarioDefinition":
         """Require canonical role bindings; repository checks resolve their IDs."""
+        self.difficulty_modifiers = {**default_difficulty_modifiers(), **self.difficulty_modifiers}
         if self.category is ScenarioCategory.OVERSHARING:
             if self.generation_mode is not GenerationMode.SINGLE_PASS:
                 raise ValueError("oversharing scenarios must use generation_mode 'single_pass'")
@@ -280,9 +326,14 @@ class CreateFamilySessionRequest(BaseModel):
 class FamilySessionOut(BaseModel):
     id: int
     public_id: str | None = None
+    session_ref: str | None = None
     owner_ref: str | None = None
     transcript_id: int
-    parent_user_id: int | None
+    parent_user_id: int | None = None
+    # Opaque references are authoritative for new collaboration clients.
+    caregiver_ref: str | None = None
+    turn_owner_ref: str | None = None
+    previous_session_ref: str | None = None
     companion_mode: bool
     detective_mode: bool
     started_at: str
@@ -314,6 +365,9 @@ class CheckpointResponseRequest(BaseModel):
     response_text: str = Field(min_length=1, max_length=10_000)
     flagged_message_ids: list[int] = Field(default_factory=list)
     tactic_tag_guess: str | None = Field(default=None, max_length=100)
+    share_with_caregiver: bool = False
+    expected_state_version: int | None = Field(default=None, ge=1)
+    client_command_id: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class CheckpointResponseOut(BaseModel):
@@ -324,6 +378,7 @@ class CheckpointResponseOut(BaseModel):
     flagged_message_ids: list[int]
     tactic_tag_guess: str | None
     created_at: str
+    visibility: FindingVisibility = FindingVisibility.PRIVATE
 
 
 class ConversationGuideOut(BaseModel):
@@ -467,19 +522,81 @@ SKIN_CAPABILITIES: dict[RenderSkin, frozenset[ElementType]] = {
     RenderSkin.CHAT: frozenset({ElementType.CONVERSATION, ElementType.MESSAGE, ElementType.PROFILE, ElementType.PROFILE_FIELD, ElementType.ATTACHMENT, ElementType.LINK_PREVIEW, ElementType.SYSTEM_EVENT, ElementType.ACTION}),
     RenderSkin.EMAIL: frozenset({ElementType.CONVERSATION, ElementType.MESSAGE, ElementType.EMAIL, ElementType.EMAIL_THREAD, ElementType.EMAIL_MESSAGE, ElementType.EMAIL_HEADER, ElementType.PROFILE, ElementType.PROFILE_FIELD, ElementType.ATTACHMENT, ElementType.LINK_PREVIEW, ElementType.SYSTEM_EVENT, ElementType.ACTION}),
     RenderSkin.SOCIAL_FEED: frozenset({ElementType.CONVERSATION, ElementType.MESSAGE, ElementType.FEED, ElementType.POST, ElementType.COMMENT, ElementType.PROFILE, ElementType.PROFILE_FIELD, ElementType.ATTACHMENT, ElementType.LINK_PREVIEW, ElementType.SYSTEM_EVENT, ElementType.ACTION}),
-    RenderSkin.GAME_CHAT: frozenset(ElementType),
-    RenderSkin.FORUM: frozenset(ElementType),
-    RenderSkin.MARKETPLACE: frozenset(ElementType),
+    RenderSkin.GAME_CHAT: frozenset({ElementType.CONVERSATION, ElementType.MESSAGE, ElementType.PROFILE, ElementType.PROFILE_FIELD, ElementType.ATTACHMENT, ElementType.LINK_PREVIEW, ElementType.SYSTEM_EVENT, ElementType.ACTION, ElementType.GAME_PROFILE, ElementType.GAME_STAT, ElementType.GAME_BADGE, ElementType.SERVER, ElementType.CHANNEL, ElementType.MEMBER}),
+    RenderSkin.FORUM: frozenset({ElementType.CONVERSATION, ElementType.MESSAGE, ElementType.PROFILE, ElementType.PROFILE_FIELD, ElementType.ATTACHMENT, ElementType.LINK_PREVIEW, ElementType.SYSTEM_EVENT, ElementType.ACTION, ElementType.FORUM_THREAD, ElementType.FORUM_POST, ElementType.COMMENT, ElementType.SITE_SECTION}),
+    RenderSkin.MARKETPLACE: frozenset({ElementType.CONVERSATION, ElementType.MESSAGE, ElementType.PROFILE, ElementType.PROFILE_FIELD, ElementType.ATTACHMENT, ElementType.LINK_PREVIEW, ElementType.SYSTEM_EVENT, ElementType.ACTION, ElementType.LISTING, ElementType.SELLER, ElementType.PRICE, ElementType.LISTING_FIELD}),
 }
 
 
 def validate_scene_for_skin(scene: SceneDefinition, *, require_selectable: bool = False) -> SceneDefinition:
+    if scene.skin_version != SKIN_CONTRACT_VERSION:
+        raise ValueError(f"scene uses unsupported skin version {scene.skin_version!r}; expected {SKIN_CONTRACT_VERSION}")
     unsupported = [element.element_type.value for element in scene.elements if element.element_type not in SKIN_CAPABILITIES[scene.render_skin]]
     if unsupported:
         raise ValueError("scene uses element types unsupported by its skin: " + ", ".join(unsupported))
     if require_selectable and not any(element.selectable for element in scene.elements):
         raise ValueError("scene requires at least one selectable element")
     return scene
+
+
+class SceneAnnotationDraft(BaseModel):
+    """Admin-only ground-truth annotation; never included in player scene payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    element_key: str = Field(min_length=1, max_length=255, pattern=r"[a-zA-Z0-9_-]+")
+    tactic_tag: str = Field(min_length=1, max_length=100)
+    start_offset: int | None = Field(default=None, ge=0)
+    end_offset: int | None = Field(default=None, ge=0)
+    explanation: str | None = Field(default=None, max_length=2_000)
+    tiered_hints: list[str] = Field(default_factory=list, max_length=3)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "SceneAnnotationDraft":
+        if (self.start_offset is None) != (self.end_offset is None):
+            raise ValueError("annotation start_offset and end_offset must be supplied together")
+        if self.start_offset is not None and self.end_offset is not None and self.end_offset <= self.start_offset:
+            raise ValueError("annotation end_offset must be greater than start_offset")
+        if any(not hint.strip() or len(hint) > 500 for hint in self.tiered_hints):
+            raise ValueError("tiered hints must be non-empty and no longer than 500 characters")
+        return self
+
+
+class AdminSceneDraft(BaseModel):
+    """Validated, inspectable scene input used by admin preview and publication review."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: ScenarioCategory
+    scene: SceneDefinition
+    annotations: list[SceneAnnotationDraft] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_inspectable_content(self) -> "AdminSceneDraft":
+        from app.generation.taxonomy import TACTIC_TAGS_BY_CATEGORY
+
+        validate_scene_for_skin(self.scene)
+        elements = {element.element_key: element for element in self.scene.elements}
+        allowed_tags = set(TACTIC_TAGS_BY_CATEGORY[self.category])
+        for annotation in self.annotations:
+            element = elements.get(annotation.element_key)
+            if element is None:
+                raise ValueError(f"annotation target {annotation.element_key!r} does not exist in the scene")
+            if not element.selectable:
+                raise ValueError(f"annotation target {annotation.element_key!r} must be selectable")
+            if annotation.tactic_tag not in allowed_tags:
+                raise ValueError(f"annotation tactic tag {annotation.tactic_tag!r} is not allowed for {self.category.value}")
+            if annotation.start_offset is not None:
+                if annotation.end_offset is None or annotation.end_offset > len(element.content or ""):
+                    raise ValueError(f"annotation range for {annotation.element_key!r} is outside its public content")
+        return self
+
+
+def validate_scene_draft_for_publication(draft: AdminSceneDraft) -> AdminSceneDraft:
+    validate_scene_for_skin(draft.scene, require_selectable=True)
+    if not draft.annotations:
+        raise ValueError("publication requires at least one reviewed red-flag annotation")
+    return draft
 
 
 class FamilySceneOut(SceneDefinition):
@@ -505,6 +622,8 @@ class FamilySessionParticipantOut(BaseModel):
     joined_at: str
     last_seen_at: str | None = None
     left_at: str | None = None
+    presence_status: ParticipantPresenceStatus = ParticipantPresenceStatus.OFFLINE
+    presence_expires_at: str | None = None
 
 
 class FamilySessionCapabilitiesOut(BaseModel):
@@ -524,10 +643,16 @@ class FamilySessionCapabilitiesOut(BaseModel):
     can_invite_before_start: bool = False
     can_remove_before_start: bool = False
     can_leave: bool = False
+    can_heartbeat: bool = False
+    can_publish_selection_focus: bool = False
+    can_submit_shared_reflection: bool = False
+    can_add_caregiver_comment: bool = False
+    can_edit_own_caregiver_comment: bool = False
+    can_request_shared_companion_feedback: bool = False
 
 
 class FamilySessionDetailOut(BaseModel):
-    session_schema_version: int = 2
+    session_schema_version: int = 3
     session: FamilySessionOut
     scene: FamilySceneOut
     progress: SessionProgressOut
@@ -535,6 +660,7 @@ class FamilySessionDetailOut(BaseModel):
     participant_role: FamilyRole = FamilyRole.LEARNER
     capabilities: FamilySessionCapabilitiesOut = Field(default_factory=FamilySessionCapabilitiesOut)
     findings: list["ValidatedFindingOut"] = Field(default_factory=list)
+    caregiver_comments: list["FamilyCaregiverCommentOut"] = Field(default_factory=list)
 
 
 class FamilySessionCommandRequest(BaseModel):
@@ -548,6 +674,7 @@ class FlagAttemptRequest(BaseModel):
     reasoning: str = Field(min_length=1, max_length=10_000)
     claim: Literal["red_flag", "not_red_flag", "unsure"]
     client_command_id: str = Field(min_length=8, max_length=128)
+    share_reasoning_with_caregiver: bool = False
 
     @model_validator(mode="before")
     def accept_legacy_claim(cls, data: Any) -> Any:
@@ -589,6 +716,68 @@ class HintOut(BaseModel):
     element_key: str
     hint_level: int = Field(ge=1)
     hint: str
+
+
+class FamilySessionEventOut(BaseModel):
+    id: int
+    sequence: int
+    event_type: FamilySessionEventType
+    actor_ref: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    is_ephemeral: bool = False
+    created_at: str
+
+
+class FamilyPresenceHeartbeatRequest(BaseModel):
+    client_event_id: str = Field(min_length=8, max_length=128)
+    status: Literal["online", "offline"] = "online"
+
+
+class FamilySelectionFocusRequest(BaseModel):
+    element_key: str = Field(min_length=1, max_length=255)
+    client_event_id: str = Field(min_length=8, max_length=128)
+
+
+class FamilyCaregiverCommentCreateRequest(BaseModel):
+    element_key: str | None = Field(default=None, min_length=1, max_length=255)
+    annotation_id: int | None = Field(default=None, ge=1)
+    text: str = Field(min_length=1, max_length=2_000)
+    client_command_id: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def require_single_anchor(self) -> "FamilyCaregiverCommentCreateRequest":
+        if (self.element_key is None) == (self.annotation_id is None):
+            raise ValueError("A caregiver comment needs exactly one scene element or finding anchor")
+        return self
+
+
+class FamilyCaregiverCommentUpdateRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2_000)
+
+
+class FamilyCaregiverCommentOut(BaseModel):
+    comment_ref: str
+    author_ref: str
+    author_display_name: str
+    element_key: str | None = None
+    annotation_id: int | None = None
+    text: str
+    child_visible_label: str
+    created_at: str
+    updated_at: str
+
+
+class SharedCompanionFeedbackRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=10_000)
+    element_key: str | None = Field(default=None, min_length=1, max_length=255)
+    client_command_id: str = Field(min_length=8, max_length=128)
+
+
+class SharedCompanionFeedbackOut(BaseModel):
+    response_text: str
+    element_key: str | None = None
+    shared: bool
+    support_resources: list["SupportResourceOut"] = Field(default_factory=list)
 
 
 FamilySessionDetailOut.model_rebuild()
@@ -654,6 +843,7 @@ class DiagnosticWarningOut(BaseModel):
     code: str
     message: str
     severity: Literal["info", "warning", "error"] = "info"
+    source: str = "runtime"
 
 
 class SimulationOverviewOut(BaseModel):
@@ -668,10 +858,12 @@ class SimulationOverviewOut(BaseModel):
 class SimulationProgressionOut(BaseModel):
     current_stage: str | None = None
     next_stage: str | None = None
+    current_objective: str | None = None
     completed_objectives: list[str] = Field(default_factory=list)
 
 
 class SimulationObjectiveStateOut(BaseModel):
+    current: str | None = None
     completed: list[str] = Field(default_factory=list)
     pending: list[str] = Field(default_factory=list)
 
@@ -680,15 +872,25 @@ class SimulationSafetyFindingOut(BaseModel):
     code: str
     message: str
     severity: Literal["info", "warning", "error"] = "warning"
+    source: str = "llm_evaluation"
 
 
 class PromptProvenanceOut(BaseModel):
+    id: str
     name: str
+    role: str
     version: str | None = None
+    hash: str | None = None
     role_scope: str | None = None
 
 
 class ResourceUsageOut(BaseModel):
+    messages: int = Field(default=0, ge=0)
+    message_limit: int = Field(default=0, ge=0)
+    message_percent: int = Field(default=0, ge=0, le=100)
+    running_seconds: int = Field(default=0, ge=0)
+    minute_limit: int = Field(default=0, ge=0)
+    time_percent: int = Field(default=0, ge=0, le=100)
     llm_calls: int = Field(default=0, ge=0)
     prompt_tokens: int = Field(default=0, ge=0)
     completion_tokens: int = Field(default=0, ge=0)
@@ -698,6 +900,7 @@ class WorkerLeaseOut(BaseModel):
     worker_id: str | None = None
     leased_until: str | None = None
     state: str | None = None
+    healthy: bool = False
 
 
 class SimulationRevisionOut(BaseModel):
@@ -707,11 +910,23 @@ class SimulationRevisionOut(BaseModel):
     created_at: str
 
 
+class SimulationBranchSummaryOut(BaseModel):
+    active_branch: str = "main"
+    branch_count: int = Field(default=1, ge=1)
+    revision_count: int = Field(default=0, ge=0)
+    latest_revision_id: int | None = None
+
+
 class SimulationEventOut(BaseModel):
     id: int
     sequence: int
     event_type: str
+    category: Literal["lifecycle", "transcript", "revision", "resources", "safety", "system"]
+    severity: Literal["info", "warning", "error"] = "info"
+    label: str
     created_at: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    raw_payload: dict[str, Any] | None = None
 
 
 class SimulationDiagnosticsOut(BaseModel):
@@ -719,6 +934,7 @@ class SimulationDiagnosticsOut(BaseModel):
     objectives: SimulationObjectiveStateOut = Field(default_factory=SimulationObjectiveStateOut)
     warnings: list[DiagnosticWarningOut] = Field(default_factory=list)
     safety_findings: list[SimulationSafetyFindingOut] = Field(default_factory=list)
+    tactic_tags: list[str] = Field(default_factory=list)
     prompt_provenance: list[PromptProvenanceOut] = Field(default_factory=list)
 
 
@@ -727,6 +943,7 @@ class SimulationDetailOut(BaseModel):
     diagnostics: SimulationDiagnosticsOut = Field(default_factory=SimulationDiagnosticsOut)
     resource_usage: ResourceUsageOut = Field(default_factory=ResourceUsageOut)
     worker_lease: WorkerLeaseOut = Field(default_factory=WorkerLeaseOut)
+    branch_summary: SimulationBranchSummaryOut = Field(default_factory=SimulationBranchSummaryOut)
     revisions: list[SimulationRevisionOut] = Field(default_factory=list)
     events: list[SimulationEventOut] = Field(default_factory=list)
     raw_diagnostics: dict[str, Any] | None = None
@@ -744,6 +961,7 @@ class CompanionCheckpointRequest(BaseModel):
     child_response_text: str = Field(min_length=1, max_length=10_000)
     flagged_message_ids: list[int] = Field(default_factory=list)
     tactic_tag_guess: str | None = Field(default=None, max_length=100)
+    client_command_id: str | None = Field(default=None, min_length=8, max_length=128)
 
 class CompanionCheckpointOut(BaseModel):
     response_text: str
@@ -759,3 +977,6 @@ class CompanionExplainOut(BaseModel):
     response_text: str
     disclosure_triggered: bool
     support_resources: list[SupportResourceOut] = Field(default_factory=list)
+
+
+SharedCompanionFeedbackOut.model_rebuild()

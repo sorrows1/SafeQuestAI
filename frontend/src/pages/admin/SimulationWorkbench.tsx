@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
+  AlertTitle,
   Box,
   Button,
+  ButtonGroup,
+  Card,
+  CardContent,
   Checkbox,
   Chip,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -14,7 +22,14 @@ import {
   Divider,
   FormControl,
   FormControlLabel,
+  Grid,
+  InputAdornment,
   InputLabel,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
   MenuItem,
   Paper,
   Select,
@@ -30,6 +45,26 @@ import StopIcon from '@mui/icons-material/Stop';
 import EditIcon from '@mui/icons-material/Edit';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import WarningIcon from '@mui/icons-material/Warning';
+import ErrorIcon from '@mui/icons-material/Error';
+import InfoIcon from '@mui/icons-material/Info';
+import BugReportIcon from '@mui/icons-material/BugReport';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import ShieldIcon from '@mui/icons-material/Shield';
+import FlagIcon from '@mui/icons-material/Flag';
+import CodeIcon from '@mui/icons-material/Code';
+import StorageIcon from '@mui/icons-material/Storage';
+import SearchIcon from '@mui/icons-material/Search';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DownloadIcon from '@mui/icons-material/Download';
+import PlayCircleIcon from '@mui/icons-material/PlayCircle';
+import CheckIcon from '@mui/icons-material/Check';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import PublishIcon from '@mui/icons-material/Publish';
+import ThumbUpIcon from '@mui/icons-material/ThumbUp';
+import ThumbDownIcon from '@mui/icons-material/ThumbDown';
+import SendIcon from '@mui/icons-material/Send';
 import { useSnackbar } from 'notistack';
 import { AppShell } from '@/components/common/AppShell';
 import { MessageBubble } from '@/components/messaging/MessageBubble';
@@ -66,60 +101,732 @@ import {
 } from '@/features/simulation/simulationViewerSlice';
 import type { SimulationMode, SimulationRun } from '@/types';
 
-const labels: Record<string, string> = { initiator: 'Initiator', respondent: 'Respondent', authored_moment: 'Authoring draft' };
+const speakerLabels: Record<string, string> = {
+  initiator: 'Initiator',
+  respondent: 'Respondent',
+  authored_moment: 'Authoring draft',
+  administrator: 'Administrator',
+};
+
 const canEdit = (status: string) => ['paused', 'awaiting_admin', 'ready_for_review'].includes(status);
-function DetailPanel({ run }: { run: SimulationRun }) {
+
+const STATUS_CHIP_COLORS: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
+  running: 'primary',
+  paused: 'default',
+  awaiting_admin: 'warning',
+  ready_for_review: 'info',
+  approved: 'success',
+  rejected: 'error',
+  failed: 'error',
+  limit_reached: 'warning',
+};
+
+const CATEGORY_COLORS: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
+  lifecycle: 'primary',
+  transcript: 'info',
+  revision: 'secondary',
+  resources: 'warning',
+  safety: 'error',
+  system: 'default',
+};
+
+function getNextActionBanner(status: string) {
+  switch (status) {
+    case 'running':
+      return {
+        severity: 'info' as const,
+        title: 'Simulation in progress',
+        message: 'Dual-agent execution is actively generating turns. You can pause at any time to inspect diagnostics or make edits.',
+      };
+    case 'awaiting_admin':
+      return {
+        severity: 'warning' as const,
+        title: 'Admin intervention required',
+        message: 'The simulation is in respondent mode. Enter a message below to advance the conversation.',
+      };
+    case 'paused':
+      return {
+        severity: 'info' as const,
+        title: 'Simulation paused',
+        message: 'Execution is paused. You can edit past messages, regenerate turns, or click Resume to continue.',
+      };
+    case 'limit_reached':
+      return {
+        severity: 'warning' as const,
+        title: 'Resource limit reached',
+        message: 'Message or time limit exceeded. Resume to extend limits or Stop to send to review queue.',
+      };
+    case 'ready_for_review':
+      return {
+        severity: 'info' as const,
+        title: 'Ready for review',
+        message: 'Simulation execution has finished. Inspect transcript quality and Approve or Reject the run.',
+      };
+    case 'approved':
+      return {
+        severity: 'success' as const,
+        title: 'Run approved',
+        message: 'This run has been approved. Publish the curated transcript to make it available in family scenario gameplay.',
+      };
+    case 'rejected':
+      return {
+        severity: 'error' as const,
+        title: 'Run rejected',
+        message: 'This run was rejected during review. Check safety findings and diagnostics before starting a new run.',
+      };
+    case 'failed':
+      return {
+        severity: 'error' as const,
+        title: 'Run execution failed',
+        message: 'An error occurred during LLM generation or system execution. Review the event log for stack traces.',
+      };
+    default:
+      return null;
+  }
+}
+
+// ── Diagnostic Detail Panel ──────────────────────────────────────────────────
+function DiagnosticDetailPanel({ run }: { run: SimulationRun }) {
   const [tab, setTab] = useState(0);
-  const diagnostic = useMemo(
-    () => ({
-      progression: run.diagnostics?.progression ?? {},
-      objectives: run.diagnostics?.objectives ?? [],
-      safety_flags: run.diagnostics?.flags ?? [],
-      personas: run.personas ?? {},
-      prompts: run.prompts ?? {},
-      usage: run.usage ?? {},
-      worker: run.worker_status ?? {},
-      revisions: run.revisions ?? [],
-    }),
-    [run]
-  );
+  const [showRawPrompts, setShowRawPrompts] = useState(false);
+
+  const diagnostics = useMemo(() => {
+    const rawDiag: any = run.diagnostics ?? {};
+    return {
+      progression: rawDiag.progression ?? (run.progress?.progression as any) ?? {},
+      objectives: rawDiag.objectives ?? {
+        current: (run.progress?.current_objective as string) ?? null,
+        completed: (run.progress?.completed_objectives as string[]) ?? [],
+        pending: (run.progress?.pending_objectives as string[]) ?? [],
+      },
+      warnings: rawDiag.warnings ?? [],
+      safety_findings: rawDiag.safety_findings ?? rawDiag.flags?.map((f: string) => ({ code: f, message: f, severity: 'warning', source: 'safety' })) ?? [],
+      tactic_tags: rawDiag.tactic_tags ?? (run.progress?.tactic_tags as string[]) ?? [],
+      prompt_provenance: rawDiag.prompt_provenance ?? [],
+      flags: rawDiag.flags ?? [],
+    };
+  }, [run]);
+
+  const usage = useMemo(() => {
+    const u: any = run.resource_usage ?? run.usage ?? {};
+    return {
+      messages: Number(u.messages ?? 0),
+      message_limit: Number(u.message_limit ?? 30),
+      message_percent: Number(u.message_percent ?? 0),
+      running_seconds: Number(u.running_seconds ?? 0),
+      minute_limit: Number(u.minute_limit ?? 600),
+      time_percent: Number(u.time_percent ?? 0),
+      llm_calls: Number(u.llm_calls ?? 0),
+      prompt_tokens: Number(u.prompt_tokens ?? 0),
+      completion_tokens: Number(u.completion_tokens ?? 0),
+    };
+  }, [run]);
+
+  const worker: any = run.worker_lease ?? (run.worker_status as any) ?? {};
+  const branchSummary = run.branch_summary ?? {
+    active_branch: (run.progress?.active_branch as string) ?? 'main',
+    branch_count: 1,
+    revision_count: run.revisions?.length ?? 0,
+    latest_revision_id: run.revisions?.[run.revisions.length - 1]?.id ?? null,
+  };
+
+  const prompts = run.prompts ?? {};
+
   return (
-    <Paper variant="outlined" sx={{ minWidth: { lg: 330 }, maxWidth: { lg: 440 }, overflow: 'hidden' }}>
-      <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto">
+    <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 420 }, minWidth: { lg: 380 }, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <Tabs
+        value={tab}
+        onChange={(_, value) => setTab(value)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}
+      >
         <Tab label="Overview" />
         <Tab label="Progress" />
-        <Tab label="Safety" />
+        <Tab label={`Safety (${diagnostics.safety_findings.length + diagnostics.warnings.length})`} />
         <Tab label="Prompts" />
         <Tab label="Usage" />
       </Tabs>
-      <Box sx={{ p: 2, maxHeight: 560, overflow: 'auto' }}>
+
+      <Box sx={{ p: 2, maxHeight: 600, overflow: 'auto', flex: 1 }}>
+        {/* Tab 0: Overview */}
         {tab === 0 && (
-          <>
-            <Typography variant="subtitle2">Run {run.id}</Typography>
-            <Typography variant="body2">Scenario: {run.scenario_id}</Typography>
-            <Typography variant="body2">Mode: {run.mode}</Typography>
-            <Typography variant="body2">Active branch: {String(run.progress?.active_branch ?? 'main')}</Typography>
-          </>
+          <Stack spacing={2}>
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">
+                  RUN DETAILS
+                </Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  Run #{run.id}
+                </Typography>
+                <Grid container spacing={1} sx={{ mt: 0.5 }}>
+                  <Grid size={{ xs: 6 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Scenario
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {run.scenario_id ?? 'Custom'}
+                    </Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Mode
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {run.mode}
+                    </Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Status
+                    </Typography>
+                    <Box sx={{ mt: 0.2 }}>
+                      <Chip label={run.status} size="small" color={STATUS_CHIP_COLORS[run.status] || 'default'} />
+                    </Box>
+                  </Grid>
+                  <Grid size={{ xs: 6 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Created At
+                    </Typography>
+                    <Typography variant="body2">{new Date(run.created_at).toLocaleTimeString()}</Typography>
+                  </Grid>
+                </Grid>
+
+                {run.stop_reason && (
+                  <Alert severity="info" sx={{ mt: 1.5, py: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                      Stop Reason:
+                    </Typography>{' '}
+                    <Typography variant="caption">{run.stop_reason}</Typography>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Worker Lease Card */}
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    WORKER LEASE STATUS
+                  </Typography>
+                  <Chip
+                    label={worker.healthy ? 'Healthy' : worker.state ? worker.state : 'No worker'}
+                    size="small"
+                    color={worker.healthy ? 'success' : 'default'}
+                  />
+                </Stack>
+                <Typography variant="body2">
+                  <strong>Worker ID:</strong> {worker.worker_id ?? 'Unassigned'}
+                </Typography>
+                {worker.leased_until && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Leased until: {new Date(worker.leased_until).toLocaleTimeString()}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Branch Summary Card */}
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">
+                  BRANCH & REVISION SUMMARY
+                </Typography>
+                <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Active Branch
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {branchSummary.active_branch}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Branches
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {branchSummary.branch_count}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Revisions
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {branchSummary.revision_count}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Stack>
         )}
-        {tab === 1 && <pre>{JSON.stringify({ progression: diagnostic.progression, objectives: diagnostic.objectives }, null, 2)}</pre>}
-        {tab === 2 && <pre>{JSON.stringify(diagnostic.safety_flags, null, 2)}</pre>}
-        {tab === 3 && <pre>{JSON.stringify({ personas: diagnostic.personas, rendered_prompt_layers: diagnostic.prompts }, null, 2)}</pre>}
-        {tab === 4 && <pre>{JSON.stringify({ usage: diagnostic.usage, worker: diagnostic.worker, revisions: diagnostic.revisions }, null, 2)}</pre>}
+
+        {/* Tab 1: Progress */}
+        {tab === 1 && (
+          <Stack spacing={2}>
+            {/* Stages */}
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">
+                  STAGE PROGRESSION
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 1 }}>
+                  <Chip
+                    icon={<AccountTreeIcon />}
+                    label={`Current: ${diagnostics.progression.current_stage ?? 'Initial'}`}
+                    color="primary"
+                    variant="filled"
+                    size="small"
+                  />
+                  {diagnostics.progression.next_stage && (
+                    <Chip label={`Next: ${diagnostics.progression.next_stage}`} variant="outlined" size="small" />
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+
+            {/* Objectives */}
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">
+                  OBJECTIVES
+                </Typography>
+
+                {diagnostics.objectives.current && (
+                  <Alert severity="info" icon={<HourglassEmptyIcon />} sx={{ mt: 1, py: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
+                      Active Objective:
+                    </Typography>
+                    <Typography variant="body2">{diagnostics.objectives.current}</Typography>
+                  </Alert>
+                )}
+
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+                  Completed Objectives ({diagnostics.objectives.completed?.length ?? 0})
+                </Typography>
+                {diagnostics.objectives.completed?.length ? (
+                  <List dense disablePadding>
+                    {diagnostics.objectives.completed.map((obj: string, i: number) => (
+                      <ListItem key={i} disableGutters sx={{ py: 0.2 }}>
+                        <ListItemIcon sx={{ minWidth: 24 }}>
+                          <CheckIcon color="success" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText primary={<Typography variant="body2">{obj}</Typography>} />
+                      </ListItem>
+                    ))}
+                  </List>
+                ) : (
+                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block' }}>
+                    None completed yet.
+                  </Typography>
+                )}
+
+                {Boolean(diagnostics.objectives.pending?.length) && (
+                  <>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+                      Pending Objectives ({diagnostics.objectives.pending.length})
+                    </Typography>
+                    <List dense disablePadding>
+                      {diagnostics.objectives.pending.map((obj: string, i: number) => (
+                        <ListItem key={i} disableGutters sx={{ py: 0.2 }}>
+                          <ListItemIcon sx={{ minWidth: 24 }}>
+                            <HourglassEmptyIcon color="action" fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText primary={<Typography variant="body2" color="text.secondary">{obj}</Typography>} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Tactic Tags */}
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  DETECTED TACTIC TAGS
+                </Typography>
+                {diagnostics.tactic_tags.length ? (
+                  <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                    {diagnostics.tactic_tags.map((tag: string) => (
+                      <Chip key={tag} label={tag} size="small" variant="outlined" color="secondary" />
+                    ))}
+                  </Stack>
+                ) : (
+                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block' }}>
+                    No tactics recorded yet.
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Stack>
+        )}
+
+        {/* Tab 2: Safety */}
+        {tab === 2 && (
+          <Stack spacing={2}>
+            {/* Safety Findings */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ShieldIcon color="warning" fontSize="small" />
+                Safety Findings ({diagnostics.safety_findings.length})
+              </Typography>
+              {diagnostics.safety_findings.length ? (
+                <Stack spacing={1}>
+                  {diagnostics.safety_findings.map((item: any, idx: number) => (
+                    <Alert key={idx} severity={item.severity === 'error' ? 'error' : item.severity === 'info' ? 'info' : 'warning'} sx={{ py: 0.5 }}>
+                      <AlertTitle sx={{ fontSize: '0.85rem', fontWeight: 600, mb: 0 }}>
+                        {item.code || item.message}
+                      </AlertTitle>
+                      <Typography variant="caption" sx={{ display: 'block' }}>
+                        {item.message}
+                      </Typography>
+                      {item.source && (
+                        <Chip label={`Source: ${item.source}`} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.65rem', mt: 0.5 }} />
+                      )}
+                    </Alert>
+                  ))}
+                </Stack>
+              ) : (
+                <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    No safety findings reported for this run.
+                  </Typography>
+                </Paper>
+              )}
+            </Box>
+
+            {/* Diagnostic Warnings */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <WarningIcon color="action" fontSize="small" />
+                Diagnostic Warnings ({diagnostics.warnings.length})
+              </Typography>
+              {diagnostics.warnings.length ? (
+                <Stack spacing={1}>
+                  {diagnostics.warnings.map((w: any, idx: number) => (
+                    <Paper key={idx} variant="outlined" sx={{ p: 1.5, borderColor: 'warning.light' }}>
+                      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                          {w.code || 'Warning'}
+                        </Typography>
+                        <Chip label={w.severity || 'warning'} size="small" color={w.severity === 'error' ? 'error' : 'warning'} />
+                      </Stack>
+                      <Typography variant="body2" sx={{ mt: 0.5 }}>
+                        {w.message}
+                      </Typography>
+                      {w.source && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                          Source: {w.source}
+                        </Typography>
+                      )}
+                    </Paper>
+                  ))}
+                </Stack>
+              ) : (
+                <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    No diagnostic warnings recorded.
+                  </Typography>
+                </Paper>
+              )}
+            </Box>
+
+            {/* Flags */}
+            {Boolean(diagnostics.flags.length) && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Flags ({diagnostics.flags.length})
+                </Typography>
+                <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                  {diagnostics.flags.map((flag: string, i: number) => (
+                    <Chip key={i} icon={<FlagIcon />} label={flag} size="small" color="error" variant="outlined" />
+                  ))}
+                </Stack>
+              </Box>
+            )}
+          </Stack>
+        )}
+
+        {/* Tab 3: Prompts */}
+        {tab === 3 && (
+          <Stack spacing={2}>
+            <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle2">Prompt Provenance</Typography>
+              <Button
+                size="small"
+                startIcon={<BugReportIcon />}
+                onClick={() => setShowRawPrompts((v) => !v)}
+              >
+                {showRawPrompts ? 'Hide Rendered Text' : 'Inspect Prompt Text'}
+              </Button>
+            </Stack>
+
+            {diagnostics.prompt_provenance.length ? (
+              <Stack spacing={1}>
+                {diagnostics.prompt_provenance.map((p: any) => (
+                  <Card key={p.id || p.name} variant="outlined">
+                    <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {p.name || p.id}
+                        </Typography>
+                        <Chip label={p.role || p.role_scope || 'template'} size="small" variant="outlined" />
+                      </Stack>
+                      <Stack direction="row" spacing={2} sx={{ mt: 0.5 }}>
+                        {p.version && (
+                          <Typography variant="caption" color="text.secondary">
+                            v{p.version}
+                          </Typography>
+                        )}
+                        {p.hash && (
+                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                            hash: {String(p.hash).substring(0, 8)}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Stack>
+            ) : (
+              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary">
+                  No prompt provenance records attached.
+                </Typography>
+              </Paper>
+            )}
+
+            <Collapse in={showRawPrompts}>
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'action.hover' }}>
+                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 1 }}>
+                  RENDERED PROMPT LAYERS (Debug Authorization Gated)
+                </Typography>
+                {Object.keys(prompts).length ? (
+                  <Stack spacing={1}>
+                    {Object.entries(prompts).map(([key, val]) => (
+                      <Box key={key}>
+                        <Typography variant="caption" color="primary" sx={{ fontWeight: 600 }}>
+                          {key}:
+                        </Typography>
+                        <Paper variant="outlined" sx={{ p: 1, mt: 0.5, bgcolor: 'background.paper', maxHeight: 150, overflow: 'auto' }}>
+                          <Typography variant="caption" component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                            {typeof val === 'string' ? val : JSON.stringify(val, null, 2)}
+                          </Typography>
+                        </Paper>
+                      </Box>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    No rendered prompt text captured for this run.
+                  </Typography>
+                )}
+              </Paper>
+            </Collapse>
+          </Stack>
+        )}
+
+        {/* Tab 4: Usage */}
+        {tab === 4 && (
+          <Stack spacing={2}>
+            {/* Message Budget Meter */}
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    MESSAGE BUDGET
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                    {usage.messages} / {usage.message_limit} ({Math.round(usage.message_percent)}%)
+                  </Typography>
+                </Stack>
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.min(100, usage.message_percent)}
+                  color={usage.message_percent > 85 ? 'warning' : 'primary'}
+                  sx={{ height: 8, borderRadius: 1 }}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Time Limit Meter */}
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    EXECUTION TIME
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                    {usage.running_seconds}s / {usage.minute_limit}s ({Math.round(usage.time_percent)}%)
+                  </Typography>
+                </Stack>
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.min(100, usage.time_percent)}
+                  color={usage.time_percent > 85 ? 'warning' : 'primary'}
+                  sx={{ height: 8, borderRadius: 1 }}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Token and LLM Statistics */}
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  LLM CALL METRICS
+                </Typography>
+                <Grid container spacing={1.5}>
+                  <Grid size={{ xs: 4 }}>
+                    <Paper variant="outlined" sx={{ p: 1, textAlign: 'center' }}>
+                      <Typography variant="h6">{usage.llm_calls}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        LLM Calls
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid size={{ xs: 4 }}>
+                    <Paper variant="outlined" sx={{ p: 1, textAlign: 'center' }}>
+                      <Typography variant="h6">{usage.prompt_tokens}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Prompt Tokens
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid size={{ xs: 4 }}>
+                    <Paper variant="outlined" sx={{ p: 1, textAlign: 'center' }}>
+                      <Typography variant="h6">{usage.completion_tokens}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Comp. Tokens
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Stack>
+        )}
       </Box>
     </Paper>
   );
 }
+
+// ── Chronological Event Log Timeline ─────────────────────────────────────────
+function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: string; payload: any }> }) {
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const filteredEvents = useMemo(() => {
+    return events.filter((e) => {
+      const cat = e.payload?.category || 'system';
+      if (filterCategory !== 'all' && cat !== filterCategory) return false;
+      if (searchQuery.trim()) {
+        const str = JSON.stringify(e).toLowerCase();
+        if (!str.includes(searchQuery.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [events, filterCategory, searchQuery]);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+        <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <StorageIcon fontSize="small" /> Event Log Timeline ({events.length})
+        </Typography>
+
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', width: { xs: '100%', sm: 'auto' } }}>
+          <TextField
+            size="small"
+            placeholder="Filter events..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+            sx={{ minWidth: 160 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+              <MenuItem value="all">All Categories</MenuItem>
+              <MenuItem value="lifecycle">Lifecycle</MenuItem>
+              <MenuItem value="transcript">Transcript</MenuItem>
+              <MenuItem value="revision">Revision</MenuItem>
+              <MenuItem value="resources">Resources</MenuItem>
+              <MenuItem value="safety">Safety</MenuItem>
+              <MenuItem value="system">System</MenuItem>
+            </Select>
+          </FormControl>
+        </Stack>
+      </Stack>
+
+      <Box sx={{ maxHeight: 220, overflow: 'auto' }}>
+        {filteredEvents.length ? (
+          <List dense disablePadding>
+            {filteredEvents.map((evt, idx) => {
+              const category = evt.payload?.category || 'system';
+              const label = evt.payload?.label || evt.event;
+              const severity = evt.payload?.severity || 'info';
+
+              return (
+                <Accordion key={`${evt.id}-${evt.event}-${idx}`} variant="outlined" sx={{ '&:before': { display: 'none' }, mb: 0.5 }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ fontSize: 16 }} />} sx={{ minHeight: 36, px: 1.5, py: 0 }}>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', width: '100%' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', minWidth: 40 }}>
+                        #{evt.id || idx + 1}
+                      </Typography>
+                      <Chip label={category} size="small" color={CATEGORY_COLORS[category] || 'default'} sx={{ height: 18, fontSize: '0.65rem' }} />
+                      {severity === 'error' && <ErrorIcon color="error" sx={{ fontSize: 16 }} />}
+                      {severity === 'warning' && <WarningIcon color="warning" sx={{ fontSize: 16 }} />}
+                      <Typography variant="caption" sx={{ fontWeight: 500, flex: 1 }} noWrap>
+                        {label}
+                      </Typography>
+                    </Stack>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ p: 1.5, bgcolor: 'action.hover' }}>
+                    <Typography variant="caption" component="pre" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', m: 0 }}>
+                      {JSON.stringify(evt.payload, null, 2)}
+                    </Typography>
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })}
+          </List>
+        ) : (
+          <Typography variant="caption" color="text.secondary" sx={{ py: 2, display: 'block', textAlign: 'center' }}>
+            No events match the current filter.
+          </Typography>
+        )}
+      </Box>
+    </Paper>
+  );
+}
+
+// ── Main Simulation Workbench Component ──────────────────────────────────────
 export function SimulationWorkbench() {
   const { runId: routeRunId } = useParams<{ runId?: string }>();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { enqueueSnackbar } = useSnackbar();
+
   const token = useAppSelector((state) => state.auth.accessToken);
   const messages = useAppSelector(selectSimulationMessages);
   const status = useAppSelector(selectSimulationRunStatus);
   const typing = useAppSelector(selectSimulationTyping);
   const connection = useAppSelector(selectSimulationConnectionStatus);
   const persistedCursor = useAppSelector(selectSimulationLastEventId);
+
   const [selectedRunId, setSelectedRunId] = useState<number | null>(routeRunId ? Number(routeRunId) : null);
   const [scenarioId, setScenarioId] = useState('');
   const [mode, setMode] = useState<SimulationMode>('ai_vs_ai');
@@ -130,9 +837,12 @@ export function SimulationWorkbench() {
   const [reconnectNonce, setReconnectNonce] = useState(0);
   const [eventLog, setEventLog] = useState<Array<{ id: number; event: string; payload: unknown }>>([]);
   const [transcriptId, setTranscriptId] = useState<number | null>(null);
+  const [showRawJson, setShowRawJson] = useState(false);
+
   const timelineRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(persistedCursor);
   const abortRef = useRef<AbortController | null>(null);
+
   const { data: scenarios = [] } = useListScenariosQuery();
   const { data: savedRuns = [] } = useListSimulationsQuery();
   const {
@@ -140,7 +850,8 @@ export function SimulationWorkbench() {
     isFetching: loadingRun,
     error: runError,
     refetch,
-  } = useGetSimulationQuery({ runId: selectedRunId ?? 0, debug: true }, { skip: selectedRunId === null });
+  } = useGetSimulationQuery({ runId: selectedRunId ?? 0 }, { skip: selectedRunId === null });
+
   const [createRun, { isLoading: creating }] = useCreateSimulationMutation();
   const [pauseRun] = usePauseSimulationMutation();
   const [resumeRun] = useResumeSimulationMutation();
@@ -150,12 +861,15 @@ export function SimulationWorkbench() {
   const [regenerate] = useRegenerateSimulationLastTurnMutation();
   const [decide] = useDecideSimulationMutation();
   const [publish] = usePublishCuratedTranscriptMutation();
+
   useEffect(() => {
     if (!scenarioId && scenarios[0]) setScenarioId(scenarios[0].id);
   }, [scenarioId, scenarios]);
+
   useEffect(() => {
     setSelectedRunId(routeRunId ? Number(routeRunId) : null);
   }, [routeRunId]);
+
   useEffect(() => {
     if (run) {
       dispatch(runHydrated(run));
@@ -163,19 +877,24 @@ export function SimulationWorkbench() {
       setTranscriptId(null);
     }
   }, [dispatch, run]);
+
   useEffect(() => {
     cursorRef.current = persistedCursor;
   }, [persistedCursor]);
+
   useEffect(() => {
     if (autoScroll) timelineRef.current?.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'smooth' });
   }, [autoScroll, messages, typing]);
+
   const reportError = (error: any, fallback: string) => enqueueSnackbar(error?.data?.detail ?? fallback, { variant: 'error' });
+
   const openStream = useCallback(() => {
     if (!selectedRunId || !token) return;
     abortRef.current?.abort();
     const abort = new AbortController();
     abortRef.current = abort;
     dispatch(connectionStatusChanged('connecting'));
+
     void (async () => {
       try {
         const response = await fetch(`/api/admin/simulations/${selectedRunId}/events`, {
@@ -184,26 +903,32 @@ export function SimulationWorkbench() {
         });
         if (!response.ok || !response.body) throw new Error('stream unavailable');
         dispatch(connectionStatusChanged('connected'));
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+
         while (!abort.signal.aborted) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
           const frames = buffer.split('\n\n');
           buffer = frames.pop() ?? '';
+
           for (const frame of frames) {
             const id = Number(frame.match(/^id:\s*(\d+)/m)?.[1] ?? 0);
             const event = frame.match(/^event:\s*(.+)$/m)?.[1];
             const raw = frame.match(/^data:\s*(.+)$/m)?.[1];
             if (!event || !raw) continue;
-            const payload = JSON.parse(raw) as any;
+            const normalized = JSON.parse(raw) as any;
+            const payload = normalized.payload ?? normalized;
+
             if (id) {
               cursorRef.current = id;
               dispatch(eventCursorUpdated(id));
             }
-            setEventLog((items) => [...items.slice(-49), { id, event, payload }]);
+            setEventLog((items) => [...items.slice(-49), { id, event, payload: normalized }]);
+
             if (event === 'message')
               dispatch(
                 messageReceived({ id: payload.id, sequence: payload.sequence, sender: payload.sender, content: payload.content, pace: 'normal' })
@@ -226,10 +951,12 @@ export function SimulationWorkbench() {
       }
     })();
   }, [dispatch, refetch, selectedRunId, token]);
+
   useEffect(() => {
     openStream();
     return () => abortRef.current?.abort();
   }, [openStream, reconnectNonce]);
+
   const start = async () => {
     const scenario = scenarios.find((item) => item.id === scenarioId);
     if (!scenario) return;
@@ -248,6 +975,7 @@ export function SimulationWorkbench() {
       reportError(error, 'Could not start simulation');
     }
   };
+
   const control = async (operation: () => Promise<unknown>, success: string) => {
     try {
       await operation();
@@ -257,11 +985,13 @@ export function SimulationWorkbench() {
       reportError(error, 'Simulation control failed');
     }
   };
+
   const submitAdmin = async () => {
     if (!selectedRunId || !adminText.trim()) return;
     await control(() => respond({ runId: selectedRunId, content: adminText.trim() }).unwrap(), 'Response submitted');
     setAdminText('');
   };
+
   const saveEdit = async () => {
     if (!selectedRunId || !edit?.content.trim()) return;
     try {
@@ -279,196 +1009,441 @@ export function SimulationWorkbench() {
       reportError(error, 'Edit was not accepted; refresh and try again.');
     }
   };
+
   const review = async (reviewStatus: 'approved' | 'rejected') => {
     if (!selectedRunId) return;
     try {
       const result = await decide({ runId: selectedRunId, status: reviewStatus }).unwrap();
       dispatch(runStatusChanged(result.status));
       setTranscriptId(result.curated_transcript_id);
-      enqueueSnackbar(`Run ${reviewStatus}`, { variant: 'success' });
+      if (reviewStatus === 'approved' && result.curated_transcript_id) {
+        enqueueSnackbar('Simulation approved. Review scene content and annotations before publication.', { variant: 'success' });
+        navigate(`/admin/curated-transcripts/${result.curated_transcript_id}/review`);
+      } else {
+        enqueueSnackbar(`Run ${reviewStatus}`, { variant: 'success' });
+      }
     } catch (error) {
       reportError(error, 'Review decision failed');
     }
   };
+
+  const copyRawJson = () => {
+    if (!run) return;
+    navigator.clipboard.writeText(JSON.stringify(run, null, 2));
+    enqueueSnackbar('Copied raw JSON to clipboard', { variant: 'info' });
+  };
+
+  const downloadRawJson = () => {
+    if (!run) return;
+    const blob = new Blob([JSON.stringify(run, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `simulation-run-${run.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const currentScenario = scenarios.find((item) => item.id === scenarioId);
+  const nextActionBanner = run ? getNextActionBanner(run.status) : null;
+
   return (
     <AppShell>
-      <Box sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Box>
-          <Typography variant="h5">Simulation Workbench</Typography>
-          <Typography color="text.secondary">Durable admin-only runtime with reconnectable event history.</Typography>
+      <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+        {/* Page Header */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+              Simulation Workbench
+            </Typography>
+            <Typography color="text.secondary" variant="body2">
+              Durable multi-agent execution, human-in-the-loop interventions, and diagnostic observability.
+            </Typography>
+          </Box>
+
+          {run && (
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Chip
+                label={`Status: ${run.status}`}
+                color={STATUS_CHIP_COLORS[run.status] || 'default'}
+                sx={{ fontWeight: 600 }}
+              />
+              <Chip
+                label={`SSE: ${connection}`}
+                color={connection === 'connected' ? 'success' : connection === 'error' ? 'error' : 'default'}
+                variant="outlined"
+              />
+              <Button size="small" startIcon={<RefreshIcon />} onClick={() => setReconnectNonce((v) => v + 1)}>
+                Reconnect
+              </Button>
+            </Stack>
+          )}
         </Box>
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1}>
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel>Scenario</InputLabel>
-              <Select
-                label="Scenario"
-                value={scenarioId}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setScenarioId(value);
-                  const next = scenarios.find((scenario) => scenario.id === value);
-                  if (next?.generation_mode === 'single_pass') setMode('single_pass');
-                }}
+
+        {/* Start / Select Run Header Panel */}
+        <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.paper' }}>
+          <Grid container spacing={2} sx={{ alignItems: 'center' }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Scenario</InputLabel>
+                <Select
+                  label="Scenario"
+                  value={scenarioId}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setScenarioId(value);
+                    const next = scenarios.find((scenario) => scenario.id === value);
+                    if (next?.generation_mode === 'single_pass') setMode('single_pass');
+                  }}
+                >
+                  <MenuItem value="">Choose a scenario</MenuItem>
+                  {scenarios.map((scenario) => (
+                    <MenuItem key={scenario.id} value={scenario.id}>
+                      {scenario.display_name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Mode</InputLabel>
+                <Select
+                  label="Mode"
+                  value={mode}
+                  onChange={(event) => setMode(event.target.value as SimulationMode)}
+                  disabled={currentScenario?.generation_mode === 'single_pass'}
+                >
+                  <MenuItem value="ai_vs_ai">AI vs AI</MenuItem>
+                  <MenuItem value="admin_as_respondent">Admin as respondent</MenuItem>
+                  <MenuItem value="single_pass">Single pass</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid size={{ xs: 6, md: 2 }}>
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<PlayCircleIcon />}
+                onClick={start}
+                disabled={!scenarioId || creating}
               >
-                <MenuItem value="">Choose a scenario</MenuItem>
-                {scenarios.map((scenario) => (
-                  <MenuItem key={scenario.id} value={scenario.id}>
-                    {scenario.display_name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Mode</InputLabel>
-              <Select
-                label="Mode"
-                value={mode}
-                onChange={(event) => setMode(event.target.value as SimulationMode)}
-                disabled={currentScenario?.generation_mode === 'single_pass'}
-              >
-                <MenuItem value="ai_vs_ai">AI vs AI</MenuItem>
-                <MenuItem value="admin_as_respondent">Admin as respondent</MenuItem>
-                <MenuItem value="single_pass">Single pass</MenuItem>
-              </Select>
-            </FormControl>
-            <Button variant="contained" onClick={start} disabled={!scenarioId || creating}>
-              Start
-            </Button>
-            <Divider flexItem orientation="vertical" />
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel>Saved run</InputLabel>
-              <Select label="Saved run" value={selectedRunId ?? ''} onChange={(event) => navigate(`/admin/simulator/${event.target.value}`)}>
-                <MenuItem value="">No saved run</MenuItem>
-                {savedRuns.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>
-                    #{item.id} · {item.scenario_id} · {item.status}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Chip size="small" label={`${status} · ${connection}`} color={connection === 'error' ? 'error' : 'default'} />
-            <Button size="small" startIcon={<RefreshIcon />} onClick={() => setReconnectNonce((value) => value + 1)} disabled={!selectedRunId}>
-              Reconnect
-            </Button>
-          </Stack>
+                Start Run
+              </Button>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 4 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Saved run</InputLabel>
+                <Select
+                  label="Saved run"
+                  value={selectedRunId ?? ''}
+                  onChange={(event) => navigate(`/admin/simulator/${event.target.value}`)}
+                >
+                  <MenuItem value="">Select saved simulation run...</MenuItem>
+                  {savedRuns.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>
+                      #{item.id} · {item.scenario_id} · {item.status}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
         </Paper>
-        {runError && <Alert severity="error">Could not restore this saved run. Use Reconnect or choose another run.</Alert>}
-        {run?.status === 'limit_reached' && (
-          <Alert severity="warning">Resource limit reached. Resume with an explicit limit extension or stop for review.</Alert>
-        )}
-        {run && (
-          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-            <Button startIcon={<PauseIcon />} onClick={() => control(() => pauseRun(run.id).unwrap(), 'Paused')} disabled={run.status !== 'running'}>
-              Pause
-            </Button>
-            <Button
-              startIcon={<PlayArrowIcon />}
-              onClick={() => control(() => resumeRun({ runId: run.id, extend_limits: run.status === 'limit_reached' }).unwrap(), 'Resumed')}
-              disabled={!['paused', 'awaiting_admin', 'limit_reached'].includes(run.status)}
-            >
-              Resume
-            </Button>
-            <Button
-              startIcon={<StopIcon />}
-              onClick={() => control(() => stopRun(run.id).unwrap(), 'Ready for review')}
-              disabled={!['running', 'paused', 'awaiting_admin', 'limit_reached'].includes(run.status)}
-            >
-              Stop
-            </Button>
-            <Button
-              startIcon={<RestartAltIcon />}
-              onClick={() => control(() => regenerate(run.id).unwrap(), 'Regenerating last turn')}
-              disabled={!canEdit(run.status) || !messages.length}
-            >
-              Regenerate last turn
-            </Button>
-            <Button onClick={() => review('approved')} disabled={run.status !== 'ready_for_review'}>
-              Approve
-            </Button>
-            <Button color="error" onClick={() => review('rejected')} disabled={run.status !== 'ready_for_review'}>
-              Reject
-            </Button>
-            <Button onClick={() => transcriptId && control(() => publish(transcriptId).unwrap(), 'Published')} disabled={!transcriptId}>
-              Publish approved transcript
-            </Button>
-          </Stack>
-        )}
-        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flex: 1, minHeight: 0 }}>
-          <Paper ref={timelineRef} variant="outlined" sx={{ p: 2, flex: 1, minHeight: 360, overflow: 'auto' }}>
-            {loadingRun && (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <CircularProgress size={24} />
-              </Box>
-            )}
-            {!loadingRun && !run && (
-              <Typography color="text.secondary">
-                Start a simulation or select a saved run. This panel stays responsive while events arrive.
+
+        {/* Onboarding View when no run is selected */}
+        {!selectedRunId && !run && (
+          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', bgcolor: 'action.hover' }}>
+            <Box sx={{ maxWidth: 500, mx: 'auto' }}>
+              <AccountTreeIcon color="primary" sx={{ fontSize: 48, mb: 1 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                No active simulation selected
               </Typography>
-            )}
-            {messages.map((message) => (
-              <Box key={message.id} sx={{ position: 'relative' }}>
-                <MessageBubble
-                  content={message.content}
-                  speakerLabel={labels[message.sender] ?? message.sender}
-                  side={message.sender === 'respondent' ? 'right' : 'left'}
-                  pace={message.pace}
-                  selectable
-                />
-                {run && canEdit(run.status) && (
-                  <Button size="small" startIcon={<EditIcon />} sx={{ mb: 1 }} onClick={() => setEdit({ id: message.id, content: message.content })}>
-                    Edit · {String(message.metadata?.revision_id ? 'revised branch' : 'main')}
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Select a scenario and execution mode above to launch a new multi-turn AI simulation, or select a previously saved run to inspect its transcripts, diagnostic state, and events.
+              </Typography>
+
+              <Stack direction="row" spacing={2} sx={{ justifyContent: 'center' }}>
+                <Button variant="contained" onClick={start} disabled={!scenarioId || creating}>
+                  Start New Simulation
+                </Button>
+                {Boolean(savedRuns.length) && (
+                  <Button variant="outlined" onClick={() => navigate(`/admin/simulator/${savedRuns[0].id}`)}>
+                    Open Recent Run (#{savedRuns[0].id})
                   </Button>
                 )}
-              </Box>
-            ))}
-            <TypingIndicator typing={typing && status === 'running'} />
-            <FormControlLabel
-              control={<Checkbox checked={autoScroll} onChange={(event) => setAutoScroll(event.target.checked)} />}
-              label="Auto-scroll"
-            />
-            {run?.status === 'awaiting_admin' && (
-              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Respond as administrator"
-                  value={adminText}
-                  onChange={(event) => setAdminText(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault();
-                      void submitAdmin();
-                    }
-                  }}
-                />
-                <Button variant="contained" onClick={submitAdmin}>
-                  Send
-                </Button>
               </Stack>
-            )}
-          </Paper>
-          {run && <DetailPanel run={run} />}
-        </Stack>
-        {run && (
-          <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 160, overflow: 'auto' }}>
-            <Typography variant="subtitle2">Event log</Typography>
-            {eventLog.length ? (
-              eventLog.map((event) => (
-                <Typography key={`${event.id}-${event.event}`} component="pre" variant="caption">
-                  #{event.id} {event.event} {JSON.stringify(event.payload)}
-                </Typography>
-              ))
-            ) : (
-              <Typography variant="caption" color="text.secondary">
-                No live events yet. Persisted messages were restored before the stream opened.
-              </Typography>
-            )}
+            </Box>
           </Paper>
         )}
+
+        {/* Error Alert */}
+        {runError && (
+          <Alert severity="error">
+            Could not restore saved run #{selectedRunId}. Use Reconnect or select another run.
+          </Alert>
+        )}
+
+        {/* Active Run Banner & Action Callout */}
+        {run && (
+          <Stack spacing={2}>
+            {/* Recommended Next Action Banner */}
+            {nextActionBanner && (
+              <Alert severity={nextActionBanner.severity} icon={<InfoIcon />}>
+                <AlertTitle sx={{ fontWeight: 700 }}>{nextActionBanner.title}</AlertTitle>
+                {nextActionBanner.message}
+              </Alert>
+            )}
+
+            {/* Grouped Controls Bar */}
+            <Paper variant="outlined" sx={{ p: 1.5 }}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                  {/* Group 1: Lifecycle */}
+                  <ButtonGroup size="small" variant="outlined">
+                    <Button
+                      startIcon={<PauseIcon />}
+                      onClick={() => control(() => pauseRun(run.id).unwrap(), 'Simulation paused')}
+                      disabled={run.status !== 'running'}
+                    >
+                      Pause
+                    </Button>
+                    <Button
+                      startIcon={<PlayArrowIcon />}
+                      onClick={() => control(() => resumeRun({ runId: run.id, extend_limits: run.status === 'limit_reached' }).unwrap(), 'Simulation resumed')}
+                      disabled={!['paused', 'awaiting_admin', 'limit_reached'].includes(run.status)}
+                    >
+                      Resume
+                    </Button>
+                    <Button
+                      startIcon={<StopIcon />}
+                      color="warning"
+                      onClick={() => control(() => stopRun(run.id).unwrap(), 'Simulation stopped')}
+                      disabled={!['running', 'paused', 'awaiting_admin', 'limit_reached'].includes(run.status)}
+                    >
+                      Stop
+                    </Button>
+                  </ButtonGroup>
+
+                  <Divider flexItem orientation="vertical" />
+
+                  {/* Group 2: Interventions */}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<RestartAltIcon />}
+                    onClick={() => control(() => regenerate(run.id).unwrap(), 'Regenerating last turn')}
+                    disabled={!canEdit(run.status) || !messages.length}
+                  >
+                    Regenerate Turn
+                  </Button>
+
+                  <Divider flexItem orientation="vertical" />
+
+                  {/* Group 3: Review & Publication */}
+                  <ButtonGroup size="small">
+                    <Button
+                      variant="contained"
+                      color="success"
+                      startIcon={<ThumbUpIcon />}
+                      onClick={() => review('approved')}
+                      disabled={run.status !== 'ready_for_review'}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<ThumbDownIcon />}
+                      onClick={() => review('rejected')}
+                      disabled={run.status !== 'ready_for_review'}
+                    >
+                      Reject
+                    </Button>
+                  </ButtonGroup>
+
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    startIcon={<PublishIcon />}
+                    onClick={() => transcriptId && control(() => publish(transcriptId).unwrap(), 'Published curated transcript')}
+                    disabled={!transcriptId}
+                  >
+                    Publish Transcript
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          </Stack>
+        )}
+
+        {/* Main Content Area: Transcript Timeline + Diagnostic Panel */}
+        {run && (
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ minHeight: 500 }}>
+            {/* Left: Transcript Timeline */}
+            <Paper ref={timelineRef} variant="outlined" sx={{ p: 2, flex: 1, minHeight: 400, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+              <Box sx={{ pb: 1, borderBottom: 1, borderColor: 'divider', mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  Transcript Timeline ({messages.length} turns)
+                </Typography>
+                <FormControlLabel
+                  control={<Checkbox size="small" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />}
+                  label={<Typography variant="caption">Auto-scroll</Typography>}
+                />
+              </Box>
+
+              {loadingRun && (
+                <Box sx={{ textAlign: 'center', py: 6 }}>
+                  <CircularProgress size={32} />
+                </Box>
+              )}
+
+              {!loadingRun && messages.length === 0 && (
+                <Box sx={{ py: 6, textAlign: 'center' }}>
+                  <Typography color="text.secondary" variant="body2">
+                    No messages generated yet in this run. Click Resume or enter admin input to begin.
+                  </Typography>
+                </Box>
+              )}
+
+              <Box sx={{ flex: 1 }}>
+                {messages.map((message) => {
+                  const tacticTags = (message.metadata?.tactic_tags as string[]) ?? [];
+                  const isCheckpoint = Boolean(message.metadata?.is_checkpoint);
+                  const stageId = message.metadata?.stage_id as string | undefined;
+                  const objectiveId = message.metadata?.objective_id as string | undefined;
+                  const revisionId = message.metadata?.revision_id as number | undefined;
+                  const isSuperseded = Boolean(message.metadata?.superseded);
+
+                  return (
+                    <Box key={message.id} sx={{ mb: 2, opacity: isSuperseded ? 0.6 : 1.0 }}>
+                      {/* Message Metadata Header Bar */}
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+                        <Chip
+                          label={speakerLabels[message.sender] ?? message.sender}
+                          size="small"
+                          color={message.sender === 'respondent' ? 'secondary' : 'primary'}
+                          sx={{ height: 20, fontSize: '0.7rem' }}
+                        />
+                        {stageId && (
+                          <Chip label={`Stage: ${stageId}`} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+                        )}
+                        {objectiveId && (
+                          <Chip label={`Obj: ${objectiveId}`} size="small" variant="outlined" color="info" sx={{ height: 18, fontSize: '0.65rem' }} />
+                        )}
+                        {isCheckpoint && (
+                          <Chip label="Checkpoint" size="small" color="warning" sx={{ height: 18, fontSize: '0.65rem' }} />
+                        )}
+                        {revisionId && (
+                          <Chip label={`Rev #${revisionId}`} size="small" variant="outlined" color="secondary" sx={{ height: 18, fontSize: '0.65rem' }} />
+                        )}
+                        {isSuperseded && (
+                          <Chip label="Superseded" size="small" color="default" sx={{ height: 18, fontSize: '0.65rem' }} />
+                        )}
+                      </Stack>
+
+                      {/* Tactic Chips */}
+                      {Boolean(tacticTags.length) && (
+                        <Stack direction="row" spacing={0.5} useFlexGap sx={{ mb: 0.5, flexWrap: 'wrap' }}>
+                          {tacticTags.map((tag) => (
+                            <Chip key={tag} label={tag} size="small" variant="outlined" color="secondary" sx={{ height: 18, fontSize: '0.65rem' }} />
+                          ))}
+                        </Stack>
+                      )}
+
+                      <MessageBubble
+                        content={message.content}
+                        speakerLabel={speakerLabels[message.sender] ?? message.sender}
+                        side={message.sender === 'respondent' ? 'right' : 'left'}
+                        selectable
+                      />
+
+                      {run && canEdit(run.status) && (
+                        <Button
+                          size="small"
+                          startIcon={<EditIcon />}
+                          sx={{ mt: 0.5, fontSize: '0.75rem' }}
+                          onClick={() => setEdit({ id: message.id, content: message.content })}
+                        >
+                          Edit turn
+                        </Button>
+                      )}
+                    </Box>
+                  );
+                })}
+              </Box>
+
+              <TypingIndicator typing={typing && status === 'running'} />
+
+              {/* Admin Respondent Input Bar */}
+              {run?.status === 'awaiting_admin' && (
+                <Paper variant="outlined" sx={{ p: 1.5, mt: 2, bgcolor: 'action.hover' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 1 }}>
+                    ADMIN RESPONDENT INTERVENTION
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Respond as administrator..."
+                      value={adminText}
+                      onChange={(event) => setAdminText(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault();
+                          void submitAdmin();
+                        }
+                      }}
+                    />
+                    <Button variant="contained" startIcon={<SendIcon />} onClick={submitAdmin}>
+                      Send
+                    </Button>
+                  </Stack>
+                </Paper>
+              )}
+            </Paper>
+
+            {/* Right: Diagnostic Detail Panel */}
+            <DiagnosticDetailPanel run={run} />
+          </Stack>
+        )}
+
+        {/* Filterable Chronological Event Log */}
+        {run && <ChronologicalEventLog events={eventLog} />}
+
+        {/* Collapsed Advanced Raw JSON Drawer */}
+        {run && (
+          <Accordion variant="outlined" expanded={showRawJson} onChange={(_, exp) => setShowRawJson(exp)}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CodeIcon fontSize="small" /> Advanced Raw JSON & Diagnostics
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                <Button size="small" variant="outlined" startIcon={<ContentCopyIcon />} onClick={copyRawJson}>
+                  Copy JSON
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={downloadRawJson}>
+                  Download JSON
+                </Button>
+              </Stack>
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.paper', maxHeight: 300, overflow: 'auto' }}>
+                <Typography variant="caption" component="pre" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', m: 0 }}>
+                  {JSON.stringify(run, null, 2)}
+                </Typography>
+              </Paper>
+            </AccordionDetails>
+          </Accordion>
+        )}
+
+        {/* Edit Revision Dialog */}
         <Dialog open={Boolean(edit)} onClose={() => setEdit(null)} fullWidth maxWidth="sm">
-          <DialogTitle>Edit active message</DialogTitle>
+          <DialogTitle>Edit active message turn</DialogTitle>
           <DialogContent>
             <TextField
               autoFocus
@@ -476,14 +1451,14 @@ export function SimulationWorkbench() {
               minRows={4}
               fullWidth
               margin="dense"
-              label="Message"
+              label="Revised Message Content"
               value={edit?.content ?? ''}
               onChange={(event) => setEdit((value) => (value ? { ...value, content: event.target.value } : value))}
             />
             <TextField
               fullWidth
               margin="dense"
-              label="Reason for revision"
+              label="Reason for revision (Audit Trail)"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               helperText="The backend records this audit reason and supersedes downstream turns."

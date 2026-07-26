@@ -152,14 +152,14 @@ def _backfill_existing_data() -> None:
 
     element_by_message: dict[int, int] = {}
     for message in bind.execute(sa.select(messages).order_by(messages.c.transcript_id, messages.c.sequence)).mappings():
-        key = f"message-{message["id"]}"
+        key = f"message-{message['id']}"
         existing = bind.execute(sa.select(elements.c.id).where(elements.c.transcript_id == message["transcript_id"], elements.c.element_key == key)).scalar_one_or_none()
         if existing is None:
             result = bind.execute(elements.insert().values(
                 transcript_id=message["transcript_id"], element_key=key, element_type="message",
                 parent_element_key=None, source_message_id=message["id"], sequence=message["sequence"],
                 content=message["content"], presentation={}, selectable=True,
-                accessible_label=f"Message from {message["speaker_label"]}", semantic_role="article",
+                accessible_label=f"Message from {message['speaker_label']}", semantic_role="article",
             ))
             existing = result.inserted_primary_key[0]
         element_by_message[message["id"]] = existing

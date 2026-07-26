@@ -6,9 +6,9 @@ import {
   Container,
   Drawer,
   Fab,
-  Grid,
   IconButton,
   Paper,
+  Stack,
   Typography,
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
@@ -17,11 +17,23 @@ import { SkinRouter } from '@/components/scenario-render/SkinRouter';
 import { SceneArtifactPanel, panelTargetFor } from '@/components/scenario-render/SceneArtifactPanel';
 import type { ScenePanelNavigation } from '@/components/scenario-render/types';
 import type { ClaimType, CompanionNotice } from '@/components/family/FlagInspectorRail';
-import type { FamilyMessage, FamilyScene, FlagAttempt, RenderSkin, ValidatedFinding } from '@/types';
+import type {
+  CheckpointResponse,
+  ConversationGuide,
+  FamilyCaregiverComment,
+  FamilyMessage,
+  FamilyScene,
+  FamilySessionParticipant,
+  FlagAttempt,
+  RenderSkin,
+  ValidatedFinding,
+} from '@/types';
 import { GameplayMissionBar } from '@/components/family/GameplayMissionBar';
 import { FlagInspectorRail } from '@/components/family/FlagInspectorRail';
 import { InstructionsGuideModal } from '@/components/family/InstructionsGuideModal';
 import { CompletionReviewModal } from '@/components/family/CompletionReviewModal';
+import { PresenceAvatarBar } from '@/components/family/PresenceAvatarBar';
+import { CaregiverCommentSection } from '@/components/family/CaregiverCommentSection';
 
 export interface FamilyGameplayViewProps {
   detectiveMode?: boolean;
@@ -73,6 +85,25 @@ export interface FamilyGameplayViewProps {
   onOpenHelp?: () => void;
   onFinishCompletion?: () => void;
   onRetryAction?: () => void;
+
+  // Presence & Multiplayer props
+  participants?: FamilySessionParticipant[];
+  streamStatus?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'offline';
+  turnRole?: 'learner' | 'caregiver' | 'shared';
+  userRole?: 'learner' | 'caregiver';
+  onReconnectStream?: () => void;
+  onContinueAsync?: () => void;
+  onEndTogetherLater?: () => void;
+
+  // Caregiver comments props
+  caregiverComments?: FamilyCaregiverComment[];
+  canAddComment?: boolean;
+  onSubmitComment?: (text: string, elementKey?: string | null) => Promise<void>;
+  isSubmittingComment?: boolean;
+
+  // Post-session review props
+  checkpointResponses?: CheckpointResponse[];
+  conversationGuide?: ConversationGuide | null;
 }
 
 /** Presentational game shell for SafeQuest Family Scenario Player. */
@@ -121,6 +152,22 @@ export function FamilyGameplayView({
   onOpenHelp,
   onFinishCompletion,
   onRetryAction,
+
+  participants = [],
+  streamStatus = 'connected',
+  turnRole = 'learner',
+  userRole = 'learner',
+  onReconnectStream,
+  onContinueAsync,
+  onEndTogetherLater,
+
+  caregiverComments = [],
+  canAddComment = false,
+  onSubmitComment,
+  isSubmittingComment = false,
+
+  checkpointResponses = [],
+  conversationGuide = null,
 }: FamilyGameplayViewProps) {
   const semanticScene: FamilyScene = scene ?? {
     scene_schema_version: 1, skin_version: "1.0", render_skin: renderSkin, elements: messages.map((message) => ({ element_key: "legacy-" + message.id, element_type: "message", parent_element_key: null, source_message_id: message.id, sequence: message.sequence, content: message.content, presentation: {}, selectable: true, accessible_label: "Message from " + message.speaker_label, semantic_role: "article" })), messages,
@@ -175,11 +222,23 @@ export function FamilyGameplayView({
         totalCount={totalCount}
         highlightedCount={highlightedMessageIds.length}
         hintLevel={hintLevel}
+        turnRole={turnRole}
         onHint={onHint ?? (() => {})}
         onReset={onReset ?? (() => {})}
         onOpenGuide={() => setGuideOpen(true)}
         onToggleMobileInspector={() => setMobileInspectorOpen(true)}
         isResetting={isResetting}
+      />
+
+      {/* Presence & Stream Status Banner */}
+      <PresenceAvatarBar
+        participants={participants}
+        streamStatus={streamStatus}
+        turnRole={turnRole}
+        userRole={userRole}
+        onReconnect={onReconnectStream}
+        onContinueAsync={onContinueAsync}
+        onEndLater={onEndTogetherLater}
       />
 
       {/* 2. Main Responsive Layout (Scenario on Left, Inspector Rail on Right) */}
@@ -255,8 +314,54 @@ export function FamilyGameplayView({
           {children}
         </Box>
 
-        {/* Right Column: Persistent Desktop Inspector Rail */}
+        {/* Right Column: Persistent Desktop Inspector Rail & Caregiver Comments */}
         <Box sx={{ minWidth: 0, display: { xs: 'none', lg: 'block' } }}>
+          <Stack spacing={2.5}>
+            <FlagInspectorRail
+              scenarioTitle={title}
+              scenarioDescription={scenarioDescription}
+              messages={messages}
+              highlightedMessageIds={highlightedMessageIds}
+              tagAssignments={tagAssignments}
+              selectedMessageId={selectedMessageId}
+              selectedElementKey={selectedElementKey}
+              onSelectMessage={setSelectedMessageId}
+              companionNotice={companionNotice}
+              onAskCompanion={handleAskCompanionInternal}
+              onSubmitAttempt={onSubmitAttempt}
+              pendingAttempt={pendingAttempt}
+              lastAttempt={lastAttempt}
+              validatedFindings={validatedFindings}
+              isExplaining={isExplaining}
+            />
+
+            <CaregiverCommentSection
+              comments={caregiverComments}
+              elementKey={selectedElementKey}
+              canAddComment={canAddComment}
+              onSubmitComment={onSubmitComment}
+              isSubmitting={isSubmittingComment}
+            />
+          </Stack>
+        </Box>
+      </Box>
+
+      {/* 3. Mobile Inspector Drawer */}
+      <Drawer
+        anchor="right"
+        open={mobileInspectorOpen}
+        onClose={() => setMobileInspectorOpen(false)}
+        slotProps={{ paper: { sx: { width: { xs: '85vw', sm: 380 }, p: 2.5 } } }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+            Flag Inspector & Notes
+          </Typography>
+          <IconButton onClick={() => setMobileInspectorOpen(false)} aria-label="Close inspector drawer">
+            <CloseIcon />
+          </IconButton>
+        </Box>
+        <Stack spacing={2}>
           <FlagInspectorRail
             scenarioTitle={title}
             scenarioDescription={scenarioDescription}
@@ -274,41 +379,14 @@ export function FamilyGameplayView({
             validatedFindings={validatedFindings}
             isExplaining={isExplaining}
           />
-        </Box>
-      </Box>
-
-      {/* 3. Mobile Inspector Drawer */}
-      <Drawer
-        anchor="right"
-        open={mobileInspectorOpen}
-        onClose={() => setMobileInspectorOpen(false)}
-        slotProps={{ paper: { sx: { width: { xs: '85vw', sm: 380 }, p: 2.5 } } }}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            Flag Inspector & Companion
-          </Typography>
-          <IconButton onClick={() => setMobileInspectorOpen(false)} aria-label="Close inspector drawer">
-            <CloseIcon />
-          </IconButton>
-        </Box>
-        <FlagInspectorRail
-          scenarioTitle={title}
-          scenarioDescription={scenarioDescription}
-          messages={messages}
-          highlightedMessageIds={highlightedMessageIds}
-          tagAssignments={tagAssignments}
-          selectedMessageId={selectedMessageId}
-          selectedElementKey={selectedElementKey}
-          onSelectMessage={setSelectedMessageId}
-          companionNotice={companionNotice}
-          onAskCompanion={handleAskCompanionInternal}
-          onSubmitAttempt={onSubmitAttempt}
-          pendingAttempt={pendingAttempt}
-          lastAttempt={lastAttempt}
-          validatedFindings={validatedFindings}
-          isExplaining={isExplaining}
-        />
+          <CaregiverCommentSection
+            comments={caregiverComments}
+            elementKey={selectedElementKey}
+            canAddComment={canAddComment}
+            onSubmitComment={onSubmitComment}
+            isSubmitting={isSubmittingComment}
+          />
+        </Stack>
       </Drawer>
 
       {/* 4. Instructions & How to Play Guide Modal */}

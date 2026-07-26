@@ -54,8 +54,22 @@ import {
   useDeleteScenarioMutation,
   useDuplicateScenarioMutation,
 } from '@/store/api';
-import type { ScenarioDefinition } from '@/types';
+import type { DifficultyModifier, FamilyScene, ScenarioDefinition } from '@/types';
 import { AppShell } from '@/components/common/AppShell';
+import { SkinChooser } from '@/components/admin/SkinChooserCard';
+import { AdminSkinPreviewPanel } from '@/components/admin/AdminSkinPreviewPanel';
+import { ScenarioValidationSummary } from '@/components/admin/ScenarioValidationSummary';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import PaletteIcon from '@mui/icons-material/Palette';
+
+const DEFAULT_DIFFICULTY_MODIFIERS: Record<"Easy" | "Medium" | "Hard", DifficultyModifier> = {
+  Easy: { trust_delta_multiplier: 0.6, escalation_speed: "slow", red_flag_visibility: "high" },
+  Medium: { trust_delta_multiplier: 1, escalation_speed: "medium", red_flag_visibility: "medium" },
+  Hard: { trust_delta_multiplier: 1.2, escalation_speed: "medium", red_flag_visibility: "low" },
+};
+
+const normaliseDifficultyModifiers = (modifiers: Record<string, DifficultyModifier>) =>
+  ({ ...DEFAULT_DIFFICULTY_MODIFIERS, ...modifiers });
 
 const EMPTY_SCENARIO: ScenarioDefinition = {
   id: '',
@@ -67,7 +81,7 @@ const EMPTY_SCENARIO: ScenarioDefinition = {
   tags: [],
   learning_objectives: [],
   stage_sequence: [],
-  difficulty_modifiers: {},
+  difficulty_modifiers: DEFAULT_DIFFICULTY_MODIFIERS,
   category: 'grooming',
   render_skin: 'chat',
   generation_mode: 'dual_agent',
@@ -403,8 +417,9 @@ export function ScenarioEditor() {
 
             <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Tab label="Properties" icon={<CodeIcon fontSize="small" />} iconPosition="start" />
+              <Tab label="Skin & Live Preview" icon={<PaletteIcon fontSize="small" />} iconPosition="start" />
               <Tab label="Stage Graph" icon={<AccountTreeIcon fontSize="small" />} iconPosition="start" />
-              <Tab label="JSON Preview" />
+              <Tab label="Validation & JSON" icon={<VisibilityIcon fontSize="small" />} iconPosition="start" />
             </Tabs>
 
             {tab === 0 && (
@@ -502,22 +517,47 @@ export function ScenarioEditor() {
                       onChange={(e) => setSelected({ ...selected, version: e.target.value })}
                     />
                   </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Difficulty modifiers (JSON)"
-                      value={JSON.stringify(selected.difficulty_modifiers)}
-                      onChange={(e) => {
-                        try {
-                          setSelected({ ...selected, difficulty_modifiers: JSON.parse(e.target.value) });
-                        } catch {
-                          /* retain last valid object */
-                        }
-                      }}
-                      helperText="Trust, escalation speed, and red-flag visibility modifiers."
-                    />
+                  <Grid size={{ xs: 12 }}>
+                    <Typography variant="subtitle1">Difficulty modifiers</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Each difficulty has a bounded trust multiplier (0.25–2.00 in 0.05 steps), escalation pace, and red-flag visibility.
+                    </Typography>
                   </Grid>
+                  {(["Easy", "Medium", "Hard"] as const).map((difficultyKey) => {
+                    const modifiers = normaliseDifficultyModifiers(selected.difficulty_modifiers)[difficultyKey];
+                    const updateModifier = (change: Partial<DifficultyModifier>) =>
+                      setSelected({
+                        ...selected,
+                        difficulty_modifiers: {
+                          ...normaliseDifficultyModifiers(selected.difficulty_modifiers),
+                          [difficultyKey]: { ...modifiers, ...change },
+                        },
+                      });
+                    return (
+                      <Grid key={difficultyKey} size={{ xs: 12, md: 4 }}>
+                        <Paper variant="outlined" sx={{ p: 1.5 }}>
+                          <Typography variant="subtitle2">{difficultyKey}</Typography>
+                          <TextField
+                            fullWidth size="small" type="number" label="Trust multiplier" value={modifiers.trust_delta_multiplier}
+                            slotProps={{ htmlInput: { min: 0.25, max: 2, step: 0.05 } }} sx={{ mt: 1 }}
+                            onChange={(event) => updateModifier({ trust_delta_multiplier: Number(event.target.value) })}
+                          />
+                          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                            <InputLabel>Escalation</InputLabel>
+                            <Select label="Escalation" value={modifiers.escalation_speed} onChange={(event) => updateModifier({ escalation_speed: event.target.value as DifficultyModifier["escalation_speed"] })}>
+                              <MenuItem value="slow">Slow</MenuItem><MenuItem value="medium">Medium</MenuItem><MenuItem value="fast">Fast</MenuItem>
+                            </Select>
+                          </FormControl>
+                          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                            <InputLabel>Red-flag visibility</InputLabel>
+                            <Select label="Red-flag visibility" value={modifiers.red_flag_visibility} onChange={(event) => updateModifier({ red_flag_visibility: event.target.value as DifficultyModifier["red_flag_visibility"] })}>
+                              <MenuItem value="high">High</MenuItem><MenuItem value="medium">Medium</MenuItem><MenuItem value="low">Low</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Paper>
+                      </Grid>
+                    );
+                  })}
                   <Grid size={{ xs: 12, md: 6 }}>
                     <Autocomplete
                       multiple
@@ -682,6 +722,61 @@ export function ScenarioEditor() {
             )}
 
             {tab === 1 && (
+              <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                <Stack spacing={3}>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>
+                      Render Skin Selection & Capabilities
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Select a production skin to view its capability bounds and live player rendering.
+                    </Typography>
+                    <SkinChooser
+                      selectedSkin={selected.render_skin}
+                      onSelectSkin={(skin) => setSelected({ ...selected, render_skin: skin })}
+                    />
+                  </Box>
+
+                  <AdminSkinPreviewPanel
+                    renderSkin={selected.render_skin}
+                    scene={{
+                      scene_schema_version: 1,
+                      skin_version: '1.0',
+                      render_skin: selected.render_skin,
+                      elements: [
+                        {
+                          element_key: 'preview-welcome-1',
+                          element_type: selected.render_skin === 'email' ? 'email_header' : 'message',
+                          parent_element_key: null,
+                          source_message_id: 1,
+                          sequence: 0,
+                          content: `Welcome to the ${selected.display_name} simulation.`,
+                          presentation: { display_label: 'Initiator' },
+                          selectable: false,
+                          accessible_label: 'Scenario greeting',
+                          semantic_role: 'article',
+                        },
+                        {
+                          element_key: 'preview-target-2',
+                          element_type: selected.render_skin === 'email' ? 'email_message' : selected.render_skin === 'social_feed' ? 'post' : 'message',
+                          parent_element_key: null,
+                          source_message_id: 2,
+                          sequence: 1,
+                          content: 'Hey, send over your password or private photos right away!',
+                          presentation: { display_label: 'Boundary Request' },
+                          selectable: true,
+                          accessible_label: 'Selectable Red Flag Target',
+                          semantic_role: 'article',
+                        },
+                      ],
+                      messages: [],
+                    }}
+                  />
+                </Stack>
+              </Box>
+            )}
+
+            {tab === 2 && (
               <Box sx={{ flex: 1, position: 'relative' }}>
                 <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} fitView>
                   <Background color="#30363d" />
@@ -691,16 +786,26 @@ export function ScenarioEditor() {
               </Box>
             )}
 
-            {tab === 2 && (
+            {tab === 3 && (
               <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography
-                    component="pre"
-                    sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
-                  >
-                    {JSON.stringify(selected, null, 2)}
-                  </Typography>
-                </Paper>
+                <Stack spacing={2.5}>
+                  <ScenarioValidationSummary
+                    scenario={selected}
+                    bindingIssues={bindingIssues}
+                  />
+
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
+                      Raw Scenario Definition (Read-Only)
+                    </Typography>
+                    <Typography
+                      component="pre"
+                      sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                    >
+                      {JSON.stringify(selected, null, 2)}
+                    </Typography>
+                  </Paper>
+                </Stack>
               </Box>
             )}
           </Box>

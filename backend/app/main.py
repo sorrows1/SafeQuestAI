@@ -21,7 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.llm.llm_service import LLMService
-from app.models.orm import SessionLocal, User, get_db
+from app.config.rollout import rollout_status
+from app.models.orm import CuratedTranscript, SessionLocal, SimulationRun, User, get_db
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -71,7 +72,7 @@ def _seed_admin() -> None:
         db.close()
 
 
-EXPECTED_SCHEMA_REVISION = "20260725_phase1_contracts"
+EXPECTED_SCHEMA_REVISION = "20260726_p8_multiplayer"
 
 def _init_db() -> None:
     """Verify the database has been migrated; startup never changes schema."""
@@ -193,7 +194,15 @@ from app.auth.security import require_admin
 @app.get("/api/admin/config/summary", tags=["Admin - Health"])
 def config_summary(db=Depends(get_db), _: User = Depends(require_admin)):
     """Admin dashboard summary."""
+    from app.api.validation import validate_all
     from app.repositories import content_repo
+
+    # This summary intentionally uses authoring/publication data only. Family sessions,
+    # participants, and private companion exchanges are never queried here.
+    validation = validate_all(db, None)
+    recently_published = db.query(CuratedTranscript).filter(
+        CuratedTranscript.is_published.is_(True)
+    ).order_by(CuratedTranscript.published_at.desc()).limit(5).all()
     return {
         "scenarios": [
             {"id": s.id, "display_name": s.display_name, "difficulty": s.difficulty}
@@ -204,6 +213,21 @@ def config_summary(db=Depends(get_db), _: User = Depends(require_admin)):
         "objectives": [o.id for o in content_repo.list_objectives(db)],
         "constraints": [c.id for c in content_repo.list_constraints(db)],
         "prompt_templates": [t.name for t in content_repo.list_prompts(db)],
+        "rollout_flags": rollout_status(),
+        "observability": {
+            "review_ready_count": db.query(SimulationRun).filter(SimulationRun.status == "ready_for_review").count(),
+            "unpublished_approved_transcript_count": db.query(CuratedTranscript).filter(CuratedTranscript.is_published.is_(False)).count(),
+            "active_run_count": db.query(SimulationRun).filter(SimulationRun.status.in_(["running", "paused", "awaiting_admin"])).count(),
+            "failed_run_count": db.query(SimulationRun).filter(SimulationRun.status == "failed").count(),
+            "limited_run_count": db.query(SimulationRun).filter(SimulationRun.status == "limit_reached").count(),
+            "validation_blocker_count": len(validation.errors),
+            "recently_published": [
+                {"id": item.id, "scenario_id": item.source_scenario_id, "category": item.category,
+                 "published_at": item.published_at.isoformat() if item.published_at else None}
+                for item in recently_published
+            ],
+            "system_health": {"database": "available", "llm": "available" if llm_service is not None else "unavailable"},
+        },
     }
 
 
@@ -223,3 +247,7 @@ if STATIC_DIR.exists():
         return FileResponse(str(STATIC_DIR / "index.html"))
 else:
     logger.info("Frontend dist not found — API-only mode.")
+
+
+if __name__ == "__main__":
+    _seed_admin()
