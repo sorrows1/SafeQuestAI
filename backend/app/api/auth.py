@@ -1,6 +1,8 @@
 """Auth endpoints — register, login, refresh, OAuth."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
@@ -35,6 +37,9 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         hashed_password=hash_password(body.password),
         display_name=body.display_name,
         role="user",
+        age_band=body.age_band,
+        age_adaptation_consent_at=datetime.now(timezone.utc) if body.age_band and body.age_adaptation_consent else None,
+        caregiver_consent_at=datetime.now(timezone.utc) if body.age_band and body.caregiver_consent_confirmed else None,
     )
     db.add(user); db.commit(); db.refresh(user)
     return _make_tokens(user)

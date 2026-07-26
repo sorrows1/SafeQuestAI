@@ -7,6 +7,8 @@ export interface AuthUser {
   display_name: string;
   avatar_url: string | null;
   role: 'user' | 'admin';
+  age_band?: string | null;
+  age_adaptation_consent_at?: string | null;
 }
 
 interface AuthState {

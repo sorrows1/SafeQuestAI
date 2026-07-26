@@ -166,6 +166,15 @@ export interface SimulationRun {
   revisions?: SimulationRevision[];
 }
 
+export interface DiagnosticWarning { code: string; message: string; severity: "info" | "warning" | "error"; }
+export interface SimulationProgression { current_stage: string | null; next_stage: string | null; completed_objectives: string[]; }
+export interface SimulationObjectiveState { completed: string[]; pending: string[]; }
+export interface SimulationSafetyFinding { code: string; message: string; severity: "info" | "warning" | "error"; }
+export interface PromptProvenance { name: string; version: string | null; role_scope: string | null; }
+export interface ResourceUsage { llm_calls: number; prompt_tokens: number; completion_tokens: number; }
+export interface WorkerLease { worker_id: string | null; leased_until: string | null; state: string | null; }
+export interface SimulationDiagnostics { progression: SimulationProgression; objectives: SimulationObjectiveState; warnings: DiagnosticWarning[]; safety_findings: SimulationSafetyFinding[]; prompt_provenance: PromptProvenance[]; }
+
 // ── Validation types ───────────────────────────────────────────────────────
 
 export interface ValidationError {
@@ -201,8 +210,101 @@ export interface ConfigSummary {
 
 // ── Family scenario player ────────────────────────────────────────────────
 
-export type RenderSkin = 'chat' | 'email' | 'social_feed';
+export type RenderSkin = 'chat' | 'email' | 'social_feed' | 'game_chat' | 'forum' | 'marketplace';
 export type ParticipantRole = 'child' | 'parent' | 'ai_companion';
+
+export type FamilySessionState = "waiting_for_participants" | "in_progress" | "checkpoint" | "completion_review" | "help_and_resources" | "completed" | "paused_for_support" | "abandoned" | "expired";
+export type FamilySessionCommandType = "start" | "reveal_next" | "continue_checkpoint" | "enter_completion_review" | "acknowledge_completion" | "open_help" | "complete" | "reset";
+export type FamilyRole = "learner" | "caregiver";
+export type ElementType = "conversation" | "message" | "email" | "email_thread" | "email_message" | "email_header" | "feed" | "post" | "comment" | "profile" | "profile_field" | "attachment" | "link_preview" | "game_profile" | "game_stat" | "game_badge" | "server" | "channel" | "member" | "listing" | "seller" | "price" | "forum_thread" | "forum_post" | "site_section" | "listing_field" | "system_event" | "action";
+export type SceneElementType = ElementType;
+export type ElementRelationship = "root" | "parent_child" | "reference";
+export type TimestampSemantic = "exact" | "relative" | "none";
+export interface PresentationToken {
+  alignment?: "start" | "end" | "center";
+  emphasis?: "normal" | "muted" | "strong";
+  tone?: "neutral" | "info" | "caution" | "success";
+  display_label?: string; timestamp_label?: string; alt_text?: string; local_media_id?: string;
+  /** Always inert and application-relative; never use for browser navigation. */
+  href?: string;
+  app_name?: string; surface_label?: string; channel_name?: string; member_summary?: string; presence_summary?: string;
+  sender_address?: string; recipient_summary?: string; subject?: string; security_notice?: string;
+  audience_label?: string; location_label?: string; routine_label?: string; profile_handle?: string;
+  account_age_label?: string; trade_link_label?: string; badges?: string[]; stats?: string[]; bio?: string;
+  panel_kind?: "profile" | "attachment" | "linked_site" | "listing" | "thread";
+}
+export interface SceneActor { actor_key: string; display_name: string; avatar_label?: string | null; }
+export interface ElementRelationshipTarget { relationship: ElementRelationship; target_element_key: string; }
+export type FlagValidationResult = "pending" | "validated" | "not_a_flag" | "needs_support";
+export type FindingVisibility = "private" | "shared";
+
+export interface SceneElement {
+  element_key: string;
+  element_type: SceneElementType;
+  parent_element_key: string | null;
+  source_message_id: number | null;
+  sequence: number;
+  content: string | null;
+  actor_key?: string | null;
+  timestamp_semantics?: TimestampSemantic;
+  timestamp?: string | null;
+  relationships?: ElementRelationshipTarget[];
+  presentation: PresentationToken;
+  selectable: boolean;
+  accessible_label: string;
+  semantic_role: string;
+}
+
+export interface SessionProgress {
+  reviewed_element_count: number;
+  validated_finding_count: number;
+  eligible_target_count: number;
+  required_finding_count: number;
+  checkpoint_progress: number;
+  content_progress: number;
+  completion_ready: boolean;
+}
+
+export interface FamilySessionParticipant {
+  member_ref: string;
+  display_name: string;
+  avatar_url: string | null;
+  role: FamilyRole;
+  joined_at: string;
+  last_seen_at: string | null;
+  left_at?: string | null;
+}
+
+export interface FamilyRelationshipInvitation {
+  invitation_ref: string;
+  status: 'pending' | 'accepted' | 'declined' | 'revoked';
+  expires_at: string;
+  created_at: string;
+  delivery_label?: string | null;
+  token?: string | null;
+  short_code?: string | null;
+}
+
+export interface FamilyRelationship {
+  relationship_ref: string;
+  role: FamilyRole;
+  member_ref: string;
+  member_display_name: string;
+  member_avatar_url?: string | null;
+  accepted_at: string;
+  status: 'active' | 'revoked' | 'blocked';
+  historical_sessions_remain_available: boolean;
+}
+
+export interface FamilyAuthorizedSession {
+  session_ref: string;
+  transcript_id: number;
+  state: FamilySessionState;
+  role: FamilyRole;
+  owner_ref: string;
+  started_at: string;
+  completed_at: string | null;
+}
 
 export interface PublishedFamilyScenario {
   id: number;
@@ -238,12 +340,23 @@ export interface FamilyScenarioQuery {
 
 export interface FamilySession {
   id: number;
+  public_id?: string | null;
+  owner_ref?: string | null;
   transcript_id: number;
   parent_user_id: number | null;
   companion_mode: boolean;
   detective_mode: boolean;
   started_at: string;
   completed_at: string | null;
+  state?: FamilySessionState;
+  state_version?: number;
+  revealed_up_to?: number;
+  active_checkpoint_element_key?: string | null;
+  participation_turn_user_id?: number | null;
+  completion_acknowledged_at?: string | null;
+  attempt_number?: number;
+  previous_session_id?: number | null;
+  updated_at?: string | null;
 }
 
 export interface FamilyMessage {
@@ -255,6 +368,93 @@ export interface FamilyMessage {
   is_checkpoint: boolean;
   checkpoint_prompt: string | null;
 }
+
+export interface SceneDefinition {
+  scene_schema_version: 1;
+  skin_version: string;
+  render_skin: RenderSkin;
+  layout_mode?: "default" | "compact";
+  actors?: SceneActor[];
+  elements: SceneElement[];
+  supported_actions?: Array<"select" | "request_hint">;
+}
+
+export interface FamilyScene extends SceneDefinition {
+  messages: FamilyMessage[];
+}
+
+export interface FamilySessionCapabilities {
+  can_reveal_next: boolean;
+  can_continue_checkpoint: boolean;
+  can_enter_completion_review: boolean;
+  can_acknowledge_completion: boolean;
+  can_open_help: boolean;
+  can_complete: boolean;
+  can_reset: boolean;
+  can_submit_flag_attempt: boolean;
+  can_request_hint: boolean;
+  can_use_private_companion: boolean;
+  can_join_or_observe: boolean;
+  can_contribute_shared_prompts: boolean;
+  can_review_shared_results: boolean;
+  can_invite_before_start: boolean;
+  can_remove_before_start: boolean;
+  can_leave: boolean;
+}
+
+export interface FamilySessionCommandRequest {
+  command: FamilySessionCommandType;
+  expected_state_version: number;
+  client_command_id: string;
+}
+
+export interface FamilySessionDetail {
+  session_schema_version: 2;
+  session: FamilySession & {
+    state: FamilySessionState;
+    state_version: number;
+    revealed_up_to: number;
+    active_checkpoint_element_key: string | null;
+    participation_turn_user_id: number | null;
+    updated_at: string | null;
+  };
+  scene: FamilyScene;
+  progress: SessionProgress;
+  participants: FamilySessionParticipant[];
+  participant_role: FamilyRole;
+  capabilities: FamilySessionCapabilities;
+  findings: ValidatedFinding[];
+}
+
+export interface FlagAttemptRequest {
+  element_key: string;
+  reasoning: string;
+  claim: "red_flag" | "not_red_flag" | "unsure";
+  client_command_id: string;
+}
+
+export interface ValidatedFinding {
+  element_key: string;
+  annotation_id: number;
+  tactic_tag: string;
+  explanation: string | null;
+  discovered_at: string;
+  visibility: FindingVisibility;
+}
+
+export interface FlagAttempt {
+  id: number;
+  element_key: string;
+  claim: "red_flag" | "not_red_flag" | "unsure";
+  validation_result: FlagValidationResult;
+  feedback: Record<string, unknown>;
+  disclosure_triggered: boolean;
+  created_at: string;
+  findings: ValidatedFinding[];
+  progress: SessionProgress;
+}
+
+export interface HintResponse { element_key: string; hint_level: number; hint: string; }
 
 export interface CheckpointResponse {
   id: number;

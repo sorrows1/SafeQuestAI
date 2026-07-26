@@ -71,7 +71,7 @@ def _seed_admin() -> None:
         db.close()
 
 
-EXPECTED_SCHEMA_REVISION = "20260725_baseline_current"
+EXPECTED_SCHEMA_REVISION = "20260725_phase1_contracts"
 
 def _init_db() -> None:
     """Verify the database has been migrated; startup never changes schema."""
@@ -161,6 +161,7 @@ from app.api.validation   import router as validation_router
 from app.api.admin_users  import router as admin_users_router
 from app.api.admin_simulations import router as admin_simulations_router
 from app.api.family_sessions import router as family_sessions_router
+from app.api.family_links import router as family_links_router
 from app.api.companion import router as companion_router
 
 app.include_router(auth_router)
@@ -174,6 +175,7 @@ app.include_router(validation_router)
 app.include_router(admin_users_router)
 app.include_router(admin_simulations_router)
 app.include_router(family_sessions_router)
+app.include_router(family_links_router)
 app.include_router(companion_router)
 
 

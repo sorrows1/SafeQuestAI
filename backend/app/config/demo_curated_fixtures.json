@@ -6,15 +6,26 @@
     "render_skin": "chat",
     "difficulty": "Medium",
     "reviewed_at": "2026-07-25T00:00:00Z",
-    "tactic_tags": ["direct_request", "escalating_pressure"],
+    "tactic_tags": [
+      "direct_request",
+      "escalating_pressure"
+    ],
     "public_metadata": {
       "display_name": "Gaming Chat Boundary Pressure",
       "description": "A reviewed gaming chat about noticing pressure and choosing support.",
       "category": "image_request",
       "render_skin": "chat",
       "difficulty": "Medium",
-      "tags": ["gaming", "boundaries", "help-seeking"],
-      "learning_objectives": ["Notice pressure", "Pause before agreeing", "Ask a trusted adult for help"]
+      "tags": [
+        "gaming",
+        "boundaries",
+        "help-seeking"
+      ],
+      "learning_objectives": [
+        "Notice pressure",
+        "Pause before agreeing",
+        "Ask a trusted adult for help"
+      ]
     },
     "messages": [
       {
@@ -62,15 +73,27 @@
     "render_skin": "social_feed",
     "difficulty": "Easy",
     "reviewed_at": "2026-07-25T00:00:00Z",
-    "tactic_tags": ["location_disclosure", "school_or_routine_disclosure", "public_audience_mismatch"],
+    "tactic_tags": [
+      "location_disclosure",
+      "school_or_routine_disclosure",
+      "public_audience_mismatch"
+    ],
     "public_metadata": {
       "display_name": "Pause Before Posting",
       "description": "A reviewed post draft about checking routine and audience details.",
       "category": "oversharing",
       "render_skin": "social_feed",
       "difficulty": "Easy",
-      "tags": ["social-post", "privacy", "pause-and-check"],
-      "learning_objectives": ["Notice routine clues", "Check the audience", "Pause and ask for help"]
+      "tags": [
+        "social-post",
+        "privacy",
+        "pause-and-check"
+      ],
+      "learning_objectives": [
+        "Notice routine clues",
+        "Check the audience",
+        "Pause and ask for help"
+      ]
     },
     "messages": [
       {
@@ -100,6 +123,661 @@
       {
         "message_sequence": 0,
         "tactic_tag": "public_audience_mismatch"
+      }
+    ]
+  },
+  {
+    "id": "phase6_chat_profile_fixture",
+    "source_scenario_id": "gaming_chat_boundary_pressure",
+    "category": "image_request",
+    "render_skin": "chat",
+    "difficulty": "Medium",
+    "reviewed_at": "2026-07-26T00:00:00Z",
+    "tactic_tags": [
+      "direct_request",
+      "escalating_pressure"
+    ],
+    "public_metadata": {
+      "display_name": "Phase 6 Chat",
+      "description": "A reviewed fictional chat scene for safe inspection.",
+      "category": "image_request",
+      "render_skin": "chat",
+      "difficulty": "Medium",
+      "tags": [
+        "phase-6",
+        "chat"
+      ],
+      "learning_objectives": [
+        "Inspect context before acting",
+        "Ask a trusted adult for support"
+      ]
+    },
+    "messages": [
+      {
+        "sequence": 0,
+        "speaker_label": "Nova",
+        "content": "I can trade you a rare item if you use my private trade page.",
+        "pace": "normal",
+        "is_checkpoint": true,
+        "checkpoint_prompt": "What detail would you pause to inspect, and who could help?"
+      },
+      {
+        "sequence": 1,
+        "speaker_label": "Riley",
+        "content": "I will check with an adult before I open anything.",
+        "pace": "normal"
+      }
+    ],
+    "scene_elements": [
+      {
+        "element_key": "chat-message",
+        "element_type": "message",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "I can trade you a rare item if you use my private trade page.",
+        "presentation": {
+          "app_name": "LumaChat",
+          "channel_name": "game-night",
+          "member_summary": "3 members",
+          "presence_summary": "Nova is online"
+        },
+        "selectable": true,
+        "accessible_label": "Message from Nova",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "game-profile",
+        "element_type": "profile",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Nova\u2019s public game profile",
+        "presentation": {
+          "panel_kind": "profile",
+          "profile_handle": "@NovaPlays",
+          "account_age_label": "Account opened recently",
+          "trade_link_label": "Private trade page",
+          "badges": [
+            "Top trader"
+          ],
+          "stats": [
+            "12 trades"
+          ],
+          "bio": "Competitive player looking for teammates."
+        },
+        "selectable": true,
+        "accessible_label": "Nova game profile",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "trade-link",
+        "element_type": "link_preview",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "parent_element_key": "game-profile",
+        "presentation": {
+          "panel_kind": "linked_site",
+          "href": "/practice/trade",
+          "display_label": "Private trade page"
+        },
+        "selectable": true,
+        "accessible_label": "Private trade page link",
+        "semantic_role": "article"
+      }
+    ],
+    "red_flag_spans": [
+      {
+        "element_key": "chat-message",
+        "message_sequence": 0,
+        "tactic_tag": "direct_request"
+      },
+      {
+        "element_key": "trade-link",
+        "message_sequence": 0,
+        "tactic_tag": "escalating_pressure"
+      }
+    ]
+  },
+  {
+    "id": "phase6_email_fixture",
+    "source_scenario_id": "gaming_chat_boundary_pressure",
+    "category": "scam",
+    "render_skin": "email",
+    "difficulty": "Medium",
+    "reviewed_at": "2026-07-26T00:00:00Z",
+    "tactic_tags": [
+      "urgency_pressure",
+      "suspicious_link"
+    ],
+    "public_metadata": {
+      "display_name": "Phase 6 Email",
+      "description": "A reviewed fictional email scene for safe inspection.",
+      "category": "scam",
+      "render_skin": "email",
+      "difficulty": "Medium",
+      "tags": [
+        "phase-6",
+        "email"
+      ],
+      "learning_objectives": [
+        "Inspect context before acting",
+        "Ask a trusted adult for support"
+      ]
+    },
+    "messages": [
+      {
+        "sequence": 0,
+        "speaker_label": "Luma Account Team",
+        "content": "Your account will close today. Confirm your details using the attached form.",
+        "pace": "normal",
+        "is_checkpoint": true,
+        "checkpoint_prompt": "What detail would you pause to inspect, and who could help?"
+      },
+      {
+        "sequence": 1,
+        "speaker_label": "Riley",
+        "content": "I will use the official app settings instead.",
+        "pace": "normal"
+      }
+    ],
+    "scene_elements": [
+      {
+        "element_key": "email-subject",
+        "element_type": "email_header",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Action required: account review",
+        "presentation": {
+          "app_name": "Postbird Mail",
+          "surface_label": "Inbox",
+          "subject": "Action required: account review",
+          "security_notice": "Sender details deserve a careful check."
+        },
+        "selectable": true,
+        "accessible_label": "Email subject",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "email-message",
+        "element_type": "email_message",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Your account will close today. Confirm your details using the attached form.",
+        "presentation": {
+          "sender_address": "accounts@luma-check.example",
+          "recipient_summary": "To: Riley",
+          "timestamp_label": "Today, 4:30 PM"
+        },
+        "selectable": true,
+        "accessible_label": "Email from Luma Account Team",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "email-attachment",
+        "element_type": "attachment",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "parent_element_key": "email-message",
+        "presentation": {
+          "panel_kind": "attachment",
+          "display_label": "account-review.pdf",
+          "alt_text": "Document attachment placeholder"
+        },
+        "selectable": true,
+        "accessible_label": "Account review attachment",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "email-link",
+        "element_type": "link_preview",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "parent_element_key": "email-message",
+        "presentation": {
+          "panel_kind": "linked_site",
+          "href": "/practice/account-check",
+          "display_label": "Confirm account"
+        },
+        "selectable": true,
+        "accessible_label": "Account confirmation link",
+        "semantic_role": "article"
+      }
+    ],
+    "red_flag_spans": [
+      {
+        "element_key": "email-message",
+        "message_sequence": 0,
+        "tactic_tag": "urgency_pressure"
+      },
+      {
+        "element_key": "email-link",
+        "message_sequence": 0,
+        "tactic_tag": "suspicious_link"
+      }
+    ]
+  },
+  {
+    "id": "phase6_social_fixture",
+    "source_scenario_id": "pause_before_posting",
+    "category": "oversharing",
+    "render_skin": "social_feed",
+    "difficulty": "Medium",
+    "reviewed_at": "2026-07-26T00:00:00Z",
+    "tactic_tags": [
+      "public_audience_mismatch",
+      "location_disclosure"
+    ],
+    "public_metadata": {
+      "display_name": "Phase 6 Social Feed",
+      "description": "A reviewed fictional social feed scene for safe inspection.",
+      "category": "oversharing",
+      "render_skin": "social_feed",
+      "difficulty": "Medium",
+      "tags": [
+        "phase-6",
+        "social_feed"
+      ],
+      "learning_objectives": [
+        "Inspect context before acting",
+        "Ask a trusted adult for support"
+      ]
+    },
+    "messages": [
+      {
+        "sequence": 0,
+        "speaker_label": "Riley",
+        "content": "Friday practice again at the community centre after school \u2014 come say hi!",
+        "pace": "normal",
+        "is_checkpoint": true,
+        "checkpoint_prompt": "What detail would you pause to inspect, and who could help?"
+      },
+      {
+        "sequence": 1,
+        "speaker_label": "Jordan",
+        "content": "Maybe share after practice instead.",
+        "pace": "normal"
+      }
+    ],
+    "scene_elements": [
+      {
+        "element_key": "social-post",
+        "element_type": "post",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Friday practice again at the community centre after school \u2014 come say hi!",
+        "presentation": {
+          "app_name": "Dayline",
+          "audience_label": "Public",
+          "location_label": "Community centre",
+          "routine_label": "Friday after school"
+        },
+        "selectable": true,
+        "accessible_label": "Riley post",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "social-profile",
+        "element_type": "profile",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Riley\u2019s profile",
+        "presentation": {
+          "panel_kind": "profile",
+          "profile_handle": "@riley.moves",
+          "bio": "Posts about clubs and games."
+        },
+        "selectable": true,
+        "accessible_label": "Riley profile",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "audience-field",
+        "element_type": "profile_field",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Public",
+        "parent_element_key": "social-profile",
+        "presentation": {
+          "audience_label": "Public"
+        },
+        "selectable": true,
+        "accessible_label": "Audience: Public",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "location-field",
+        "element_type": "profile_field",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Community centre",
+        "parent_element_key": "social-profile",
+        "presentation": {
+          "location_label": "Community centre"
+        },
+        "selectable": true,
+        "accessible_label": "Location: Community centre",
+        "semantic_role": "article"
+      }
+    ],
+    "red_flag_spans": [
+      {
+        "element_key": "audience-field",
+        "message_sequence": 0,
+        "tactic_tag": "public_audience_mismatch"
+      },
+      {
+        "element_key": "location-field",
+        "message_sequence": 0,
+        "tactic_tag": "location_disclosure"
+      }
+    ]
+  },
+  {
+    "id": "phase6_game_chat_fixture",
+    "source_scenario_id": "gaming_chat_boundary_pressure",
+    "category": "image_request",
+    "render_skin": "game_chat",
+    "difficulty": "Medium",
+    "reviewed_at": "2026-07-26T00:00:00Z",
+    "tactic_tags": [
+      "isolation_request",
+      "trust_signal_mismatch"
+    ],
+    "public_metadata": {
+      "display_name": "Phase 6 Game Chat",
+      "description": "A reviewed fictional game chat scene for safe inspection.",
+      "category": "image_request",
+      "render_skin": "game_chat",
+      "difficulty": "Medium",
+      "tags": [
+        "phase-6",
+        "game_chat"
+      ],
+      "learning_objectives": [
+        "Inspect context before acting",
+        "Ask a trusted adult for support"
+      ]
+    },
+    "messages": [
+      {
+        "sequence": 0,
+        "speaker_label": "Nova",
+        "content": "Join the private server to claim your reward.",
+        "pace": "normal",
+        "is_checkpoint": true,
+        "checkpoint_prompt": "What detail would you pause to inspect, and who could help?"
+      },
+      {
+        "sequence": 1,
+        "speaker_label": "Riley",
+        "content": "I will stay in the public lobby.",
+        "pace": "normal"
+      }
+    ],
+    "scene_elements": [
+      {
+        "element_key": "server-invite",
+        "element_type": "server",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Join the private server to claim your reward.",
+        "presentation": {
+          "app_name": "PixelPort",
+          "channel_name": "#lobby",
+          "member_summary": "18 members",
+          "presence_summary": "Public lobby"
+        },
+        "selectable": true,
+        "accessible_label": "Private server invite",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "gamer-profile",
+        "element_type": "game_profile",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "presentation": {
+          "panel_kind": "profile",
+          "profile_handle": "NovaPlays",
+          "account_age_label": "New account",
+          "trade_link_label": "Reward claim link",
+          "badges": [
+            "Season starter"
+          ],
+          "stats": [
+            "2 public matches"
+          ],
+          "bio": "Looking for quick trades."
+        },
+        "selectable": true,
+        "accessible_label": "Nova profile",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "gamer-badge",
+        "element_type": "game_badge",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Season starter",
+        "parent_element_key": "gamer-profile",
+        "presentation": {},
+        "selectable": true,
+        "accessible_label": "Season starter badge",
+        "semantic_role": "article"
+      }
+    ],
+    "red_flag_spans": [
+      {
+        "element_key": "server-invite",
+        "message_sequence": 0,
+        "tactic_tag": "isolation_request"
+      },
+      {
+        "element_key": "gamer-profile",
+        "message_sequence": 0,
+        "tactic_tag": "trust_signal_mismatch"
+      }
+    ]
+  },
+  {
+    "id": "phase6_forum_fixture",
+    "source_scenario_id": "pause_before_posting",
+    "category": "oversharing",
+    "render_skin": "forum",
+    "difficulty": "Medium",
+    "reviewed_at": "2026-07-26T00:00:00Z",
+    "tactic_tags": [
+      "routine_disclosure",
+      "oversharing_prompt"
+    ],
+    "public_metadata": {
+      "display_name": "Phase 6 Forum",
+      "description": "A reviewed fictional forum scene for safe inspection.",
+      "category": "oversharing",
+      "render_skin": "forum",
+      "difficulty": "Medium",
+      "tags": [
+        "phase-6",
+        "forum"
+      ],
+      "learning_objectives": [
+        "Inspect context before acting",
+        "Ask a trusted adult for support"
+      ]
+    },
+    "messages": [
+      {
+        "sequence": 0,
+        "speaker_label": "HelpfulGuide",
+        "content": "Post your full schedule so people can plan around you.",
+        "pace": "normal",
+        "is_checkpoint": true,
+        "checkpoint_prompt": "What detail would you pause to inspect, and who could help?"
+      },
+      {
+        "sequence": 1,
+        "speaker_label": "Riley",
+        "content": "I will keep the details general.",
+        "pace": "normal"
+      }
+    ],
+    "scene_elements": [
+      {
+        "element_key": "forum-thread",
+        "element_type": "forum_thread",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Post your full schedule so people can plan around you.",
+        "presentation": {
+          "panel_kind": "thread",
+          "app_name": "LoopForum",
+          "surface_label": "Weekend plans"
+        },
+        "selectable": true,
+        "accessible_label": "Weekend plans forum thread",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "forum-post",
+        "element_type": "forum_post",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Post your full schedule so people can plan around you.",
+        "parent_element_key": "forum-thread",
+        "presentation": {},
+        "selectable": true,
+        "accessible_label": "Post by HelpfulGuide",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "linked-site-section",
+        "element_type": "site_section",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Share routine details",
+        "parent_element_key": "forum-thread",
+        "presentation": {
+          "panel_kind": "linked_site",
+          "href": "/practice/schedule",
+          "display_label": "Schedule form"
+        },
+        "selectable": true,
+        "accessible_label": "Schedule form section",
+        "semantic_role": "article"
+      }
+    ],
+    "red_flag_spans": [
+      {
+        "element_key": "forum-post",
+        "message_sequence": 0,
+        "tactic_tag": "routine_disclosure"
+      },
+      {
+        "element_key": "linked-site-section",
+        "message_sequence": 0,
+        "tactic_tag": "oversharing_prompt"
+      }
+    ]
+  },
+  {
+    "id": "phase6_marketplace_fixture",
+    "source_scenario_id": "gaming_chat_boundary_pressure",
+    "category": "scam",
+    "render_skin": "marketplace",
+    "difficulty": "Medium",
+    "reviewed_at": "2026-07-26T00:00:00Z",
+    "tactic_tags": [
+      "off_platform_payment",
+      "new_account_signal"
+    ],
+    "public_metadata": {
+      "display_name": "Phase 6 Marketplace",
+      "description": "A reviewed fictional marketplace scene for safe inspection.",
+      "category": "scam",
+      "render_skin": "marketplace",
+      "difficulty": "Medium",
+      "tags": [
+        "phase-6",
+        "marketplace"
+      ],
+      "learning_objectives": [
+        "Inspect context before acting",
+        "Ask a trusted adult for support"
+      ]
+    },
+    "messages": [
+      {
+        "sequence": 0,
+        "speaker_label": "QuickTrade",
+        "content": "Pay outside the marketplace and I can hold it for you.",
+        "pace": "normal",
+        "is_checkpoint": true,
+        "checkpoint_prompt": "What detail would you pause to inspect, and who could help?"
+      },
+      {
+        "sequence": 1,
+        "speaker_label": "Riley",
+        "content": "I will keep payment inside the marketplace.",
+        "pace": "normal"
+      }
+    ],
+    "scene_elements": [
+      {
+        "element_key": "market-listing",
+        "element_type": "listing",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Pay outside the marketplace and I can hold it for you.",
+        "presentation": {
+          "panel_kind": "listing",
+          "app_name": "SwapSquare",
+          "surface_label": "Rare item listing"
+        },
+        "selectable": true,
+        "accessible_label": "Rare item listing",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "seller-profile",
+        "element_type": "seller",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "QuickTrade",
+        "parent_element_key": "market-listing",
+        "presentation": {
+          "panel_kind": "profile",
+          "profile_handle": "QuickTrade",
+          "account_age_label": "Joined this week",
+          "bio": "Fast private deals."
+        },
+        "selectable": true,
+        "accessible_label": "QuickTrade seller profile",
+        "semantic_role": "article"
+      },
+      {
+        "element_key": "payment-field",
+        "element_type": "listing_field",
+        "source_message_sequence": 0,
+        "sequence": 0,
+        "content": "Pay outside the marketplace",
+        "parent_element_key": "market-listing",
+        "presentation": {
+          "display_label": "Payment instructions"
+        },
+        "selectable": true,
+        "accessible_label": "Payment instructions",
+        "semantic_role": "article"
+      }
+    ],
+    "red_flag_spans": [
+      {
+        "element_key": "payment-field",
+        "message_sequence": 0,
+        "tactic_tag": "off_platform_payment"
+      },
+      {
+        "element_key": "seller-profile",
+        "message_sequence": 0,
+        "tactic_tag": "new_account_signal"
       }
     ]
   }

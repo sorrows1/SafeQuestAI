@@ -8,6 +8,10 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     display_name: str
+    # Optional and coarse: no exact date of birth is accepted.
+    age_band: Optional[str] = None
+    age_adaptation_consent: bool = False
+    caregiver_consent_confirmed: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -32,5 +36,7 @@ class UserOut(BaseModel):
     avatar_url: Optional[str]
     role: str
     google_id: Optional[str]
+    age_band: Optional[str] = None
+    age_adaptation_consent_at: Optional[str] = None
 
     model_config = {"from_attributes": True}

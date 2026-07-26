@@ -19,7 +19,7 @@ from typing import Any, Optional
 
 from sqlalchemy import (
     String, DateTime, JSON, Integer, ForeignKey, Text,
-    Boolean, create_engine,
+    Boolean, UniqueConstraint, CheckConstraint, create_engine,
 )
 from sqlalchemy.orm import (
     declarative_base, sessionmaker, Mapped,
@@ -71,6 +71,10 @@ class User(Base):
         String(255), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False)
+    # Optional coarse band only; exact birth dates are never collected or retained.
+    age_band: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    age_adaptation_consent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    caregiver_consent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -161,6 +165,9 @@ class CuratedTranscript(Base):
     red_flag_spans: Mapped[list[RedFlagSpan]] = relationship(
         "RedFlagSpan", back_populates="transcript", cascade="all, delete-orphan"
     )
+    scene_elements: Mapped[list[CuratedSceneElement]] = relationship(
+        "CuratedSceneElement", back_populates="transcript", cascade="all, delete-orphan"
+    )
 
 
 class CuratedMessage(Base):
@@ -182,6 +189,31 @@ class CuratedMessage(Base):
     )
 
 
+class CuratedSceneElement(Base):
+    """Skin-neutral, selectable content authored alongside curated messages."""
+    __tablename__ = "curated_scene_elements"
+    __table_args__ = (UniqueConstraint("transcript_id", "element_key", name="uq_scene_element_transcript_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    transcript_id: Mapped[int] = mapped_column(Integer, ForeignKey("curated_transcripts.id"), index=True, nullable=False)
+    element_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    element_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    parent_element_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    source_message_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("curated_messages.id"), nullable=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    actor_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    timestamp_semantics: Mapped[str] = mapped_column(String(20), default="none", nullable=False)
+    timestamp: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    relationships: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    presentation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    selectable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    accessible_label: Mapped[str] = mapped_column(String(500), nullable=False)
+    semantic_role: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    transcript: Mapped[CuratedTranscript] = relationship("CuratedTranscript", back_populates="scene_elements")
+
+
 class RedFlagSpan(Base):
     """Reviewer-confirmed or automatic red-flag annotations for curated content."""
     __tablename__ = "red_flag_spans"
@@ -195,6 +227,9 @@ class RedFlagSpan(Base):
     end_offset: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     tactic_tag: Mapped[str] = mapped_column(String(100), nullable=False)
     source: Mapped[str] = mapped_column(String(20), default="auto", nullable=False)
+    scene_element_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("curated_scene_elements.id"), nullable=True, index=True)
+    child_safe_explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tiered_hints: Mapped[list[str]] = mapped_column(JSON, default=list)
 
     transcript: Mapped[CuratedTranscript] = relationship(
         "CuratedTranscript", back_populates="red_flag_spans"
@@ -206,6 +241,9 @@ class FamilySession(Base):
     __tablename__ = "family_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Public references are deliberately opaque; numeric IDs remain internal.
+    public_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    owner_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     transcript_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("curated_transcripts.id"), nullable=False
     )
@@ -220,12 +258,150 @@ class FamilySession(Base):
     # Internal safety signal only. Never expose this through player or parent schemas.
     disclosure_flagged: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     revealed_up_to: Mapped[int] = mapped_column(Integer, default=0)
+    state: Mapped[str] = mapped_column(String(40), default="in_progress", nullable=False)
+    state_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    active_checkpoint_element_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    participation_turn_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    # Acknowledging the completion review is distinct from reaching the end.
+    completion_acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completion_acknowledged_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    attempt_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    previous_session_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("family_sessions.id"), nullable=True)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class FamilySessionCommand(Base):
+    """Durable idempotency ledger for family-session state transitions."""
+    __tablename__ = "family_session_commands"
+    __table_args__ = (UniqueConstraint("family_session_id", "client_command_id", name="uq_family_session_command_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    family_session_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_sessions.id"), nullable=False, index=True)
+    client_command_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    command: Mapped[str] = mapped_column(String(50), nullable=False)
+    expected_state_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    resulting_session_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_sessions.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class FamilyRelationshipInvitation(Base):
+    __tablename__ = "family_relationship_invitations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    public_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    caregiver_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    learner_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    short_code_hash: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    delivery_label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    failed_lookup_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    accept_attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class FamilyRelationship(Base):
+    __tablename__ = "family_relationships"
+    __table_args__ = (
+        UniqueConstraint("user_low_id", "user_high_id", name="uq_family_relationship_unordered_pair"),
+        CheckConstraint("user_low_id < user_high_id", name="ck_family_relationship_distinct_users"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    public_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    caregiver_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    learner_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_low_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    user_high_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    invitation_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("family_relationship_invitations.id"), nullable=True)
+    source: Mapped[str] = mapped_column(String(40), default="invitation", nullable=False)
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    blocked_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class FamilySessionParticipant(Base):
+    __tablename__ = "family_session_participants"
+    __table_args__ = (UniqueConstraint("family_session_id", "user_id", name="uq_family_session_participant"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    family_session_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_sessions.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    left_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class FamilyRelationshipAuditEvent(Base):
+    """Security audit trail; payloads never contain invitation secrets."""
+    __tablename__ = "family_relationship_audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    relationship_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("family_relationships.id"), nullable=True, index=True)
+    invitation_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("family_relationship_invitations.id"), nullable=True, index=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+class SessionProgress(Base):
+    __tablename__ = "session_progress"
+
+    family_session_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_sessions.id"), primary_key=True)
+    reviewed_element_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    validated_finding_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    eligible_target_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    required_finding_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    checkpoint_progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    content_progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_ready: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class FlagAttempt(Base):
+    __tablename__ = "flag_attempts"
+    __table_args__ = (UniqueConstraint("family_session_id", "client_command_id", name="uq_flag_attempt_command_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    family_session_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_sessions.id"), nullable=False, index=True)
+    participant_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("family_session_participants.id"), nullable=True, index=True)
+    element_id: Mapped[int] = mapped_column(Integer, ForeignKey("curated_scene_elements.id"), nullable=False, index=True)
+    sanitized_reasoning: Mapped[str] = mapped_column(Text, nullable=False)
+    claimed_red_flag: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    claim: Mapped[str] = mapped_column(String(20), default="red_flag", nullable=False)
+    client_command_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    validation_result: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    feedback_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    disclosure_state: Mapped[str] = mapped_column(String(30), default="none", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ValidatedFinding(Base):
+    __tablename__ = "validated_findings"
+    __table_args__ = (UniqueConstraint("family_session_id", "element_id", "red_flag_span_id", name="uq_validated_finding_annotation"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    family_session_id: Mapped[int] = mapped_column(Integer, ForeignKey("family_sessions.id"), nullable=False, index=True)
+    participant_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("family_session_participants.id"), nullable=True, index=True)
+    element_id: Mapped[int] = mapped_column(Integer, ForeignKey("curated_scene_elements.id"), nullable=False, index=True)
+    red_flag_span_id: Mapped[int] = mapped_column(Integer, ForeignKey("red_flag_spans.id"), nullable=False, index=True)
+    visibility: Mapped[str] = mapped_column(String(20), default="shared", nullable=False)
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class CheckpointResponse(Base):

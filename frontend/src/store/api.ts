@@ -13,12 +13,20 @@ import type {
   PublishedFamilyScenarioPage,
   FamilyScenarioQuery,
   FamilySession,
+  FamilySessionDetail,
+  FamilySessionCommandRequest,
+  FamilyRelationshipInvitation,
+  FamilyRelationship,
+  FamilyAuthorizedSession,
   FamilyMessage,
   CheckpointResponse,
   ConversationGuide,
   ParticipantRole,
   CompanionCheckpointResult,
   SupportResource,
+  FlagAttempt,
+  FlagAttemptRequest,
+  HintResponse,
   SimulationRun,
   SimulationMode,
 } from '@/types';
@@ -36,6 +44,8 @@ export interface UserOut {
   avatar_url: string | null;
   role: string;
   google_id: string | null;
+  age_band?: string | null;
+  age_adaptation_consent_at?: string | null;
 }
 export interface UserAdminOut {
   id: number;
@@ -44,6 +54,8 @@ export interface UserAdminOut {
   role: string;
   is_active: boolean;
   google_id: string | null;
+  age_band?: string | null;
+  age_adaptation_consent_at?: string | null;
 }
 
 export const safeQuestApi = createApi({
@@ -56,7 +68,7 @@ export const safeQuestApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Scenario', 'Persona', 'Stage', 'Objective', 'Constraint', 'Prompt', 'User', 'Simulation', 'FamilySession'],
+  tagTypes: ['Scenario', 'Persona', 'Stage', 'Objective', 'Constraint', 'Prompt', 'User', 'Simulation', 'FamilySession', 'FamilyLink'],
 
   endpoints: (build) => ({
     // ── Auth ────────────────────────────────────────────────────────────────
@@ -87,9 +99,26 @@ export const safeQuestApi = createApi({
     getFamilyScenario: build.query<PublishedFamilyScenario, number>({
       query: (transcriptId) => '/family/scenarios/' + transcriptId,
     }),
-    createFamilySession: build.mutation<FamilySession, { transcriptId: number; parent_user_id?: number; detective_mode: boolean }>({
+    createFamilySession: build.mutation<FamilySession, { transcriptId: number; relationship_ref?: string }>({
       query: ({ transcriptId, ...body }) => ({ url: '/family/scenarios/' + transcriptId + '/sessions', method: 'POST', body }),
-      invalidatesTags: ['FamilySession'],
+      invalidatesTags: ['FamilySession', 'FamilyLink'],
+    }),
+    createFamilyInvitation: build.mutation<FamilyRelationshipInvitation, { learner_email: string; delivery_label?: string }>({ query: (body) => ({ url: '/family/invitations', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
+    getFamilyInvitations: build.query<FamilyRelationshipInvitation[], void>({ query: () => '/family/invitations', providesTags: ['FamilyLink'] }),
+    previewFamilyInvitation: build.query<{ invitation_ref: string; inviter_display_name: string; expires_at: string; sharing_summary: string }, string>({ query: (secret) => '/family/invitations/preview?secret=' + encodeURIComponent(secret) }),
+    acceptFamilyInvitation: build.mutation<FamilyRelationship, { secret: string }>({ query: (body) => ({ url: '/family/invitations/accept', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
+    declineFamilyInvitation: build.mutation<void, { secret: string }>({ query: (body) => ({ url: '/family/invitations/decline', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
+    revokeFamilyInvitation: build.mutation<void, string>({ query: (ref) => ({ url: '/family/invitations/' + ref + '/revoke', method: 'POST' }), invalidatesTags: ['FamilyLink'] }),
+    getFamilyRelationships: build.query<FamilyRelationship[], void>({ query: () => '/family/relationships', providesTags: ['FamilyLink'] }),
+    updateFamilyRelationship: build.mutation<FamilyRelationship, { relationship_ref: string; action: 'unlink' | 'block' }>({ query: ({ relationship_ref, ...body }) => ({ url: '/family/relationships/' + relationship_ref, method: 'PATCH', body }), invalidatesTags: ['FamilyLink', 'FamilySession'] }),
+    getAuthorizedFamilySessions: build.query<FamilyAuthorizedSession[], void>({ query: () => '/family/sessions', providesTags: ['FamilySession'] }),
+    getFamilySession: build.query<FamilySessionDetail, number>({
+      query: (sessionId) => "/family/sessions/" + sessionId,
+      providesTags: (_result, _error, sessionId) => [{ type: "FamilySession", id: sessionId }],
+    }),
+    commandFamilySession: build.mutation<FamilySessionDetail, { sessionId: number } & FamilySessionCommandRequest>({
+      query: ({ sessionId, ...body }) => ({ url: "/family/sessions/" + sessionId + "/commands", method: "POST", body }),
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
     }),
     getFamilyMessages: build.query<FamilyMessage[], { sessionId: number; upTo: number }>({
       query: ({ sessionId, upTo }) => '/family/sessions/' + sessionId + '/messages?up_to=' + upTo,
@@ -120,6 +149,13 @@ export const safeQuestApi = createApi({
     >({
       query: ({ sessionId, ...body }) => ({ url: '/companion/sessions/' + sessionId + '/checkpoint', method: 'POST', body }),
       invalidatesTags: (_result, _error, { sessionId }) => [{ type: 'FamilySession', id: sessionId }],
+    }),
+    submitFlagAttempt: build.mutation<FlagAttempt, { sessionId: number } & FlagAttemptRequest>({
+      query: ({ sessionId, ...body }) => ({ url: "/companion/sessions/" + sessionId + "/flag-attempts", method: "POST", body }),
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
+    }),
+    requestCompanionHint: build.mutation<HintResponse, { sessionId: number; element_key: string; client_command_id: string }>({
+      query: ({ sessionId, ...body }) => ({ url: "/companion/sessions/" + sessionId + "/hints", method: "POST", body }),
     }),
     explainWithCompanion: build.mutation<
       { response_text: string; disclosure_triggered: boolean; support_resources: SupportResource[] },
@@ -373,10 +409,23 @@ export const {
   useGetMeQuery,
   useGetFamilyScenariosQuery,
   useGetFamilyScenarioQuery,
+  useCreateFamilyInvitationMutation,
+  useGetFamilyInvitationsQuery,
+  usePreviewFamilyInvitationQuery,
+  useAcceptFamilyInvitationMutation,
+  useDeclineFamilyInvitationMutation,
+  useRevokeFamilyInvitationMutation,
+  useGetFamilyRelationshipsQuery,
+  useUpdateFamilyRelationshipMutation,
+  useGetAuthorizedFamilySessionsQuery,
+  useGetFamilySessionQuery,
+  useCommandFamilySessionMutation,
   useCreateFamilySessionMutation,
   useGetFamilyMessagesQuery,
   useSubmitCheckpointResponseMutation,
   useSubmitCompanionCheckpointMutation,
+  useSubmitFlagAttemptMutation,
+  useRequestCompanionHintMutation,
   useExplainWithCompanionMutation,
   useCompleteFamilySessionMutation,
   useGetConversationGuideQuery,

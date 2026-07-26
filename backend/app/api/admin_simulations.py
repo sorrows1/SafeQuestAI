@@ -10,9 +10,9 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 from app.auth.security import require_admin
 from app.generation.scorer import score_transcript
-from app.models.orm import (ConversationMessage, ConversationSession, CuratedMessage, CuratedTranscript,
+from app.models.orm import (ConversationMessage, ConversationSession, CuratedMessage, CuratedSceneElement, CuratedTranscript,
                             RedFlagSpan, SimulationEvent, SimulationMessage, SimulationMessageRevision, SimulationRun, User, get_db)
-from app.models.schemas import ScenarioDefinition
+from app.models.schemas import RenderSkin, SceneDefinition, SceneElement, ScenarioDefinition, validate_scene_for_skin
 from app.repositories import content_repo
 from app.simulation.runtime import SimulationRuntime
 
@@ -196,11 +196,30 @@ def promote(db: Session, run: SimulationRun, reviewer: User, notes: str | None) 
     labels["authored_moment"] = scenario.get("display_name", "Scenario")
     for item in active:
         meta = item.metadata_json or {}
-        db.add(CuratedMessage(transcript_id=transcript.id, sequence=item.sequence, speaker_label=labels.get(item.sender, item.sender), content=item.content,
-               pace=meta.get("pace", "normal"), is_checkpoint=bool(meta.get("is_checkpoint", False)), checkpoint_prompt=meta.get("checkpoint_prompt")))
+        message = CuratedMessage(transcript_id=transcript.id, sequence=item.sequence, speaker_label=labels.get(item.sender, item.sender), content=item.content,
+               pace=meta.get("pace", "normal"), is_checkpoint=bool(meta.get("is_checkpoint", False)), checkpoint_prompt=meta.get("checkpoint_prompt"))
+        db.add(message)
+        db.flush()
+        element = CuratedSceneElement(transcript_id=transcript.id, element_key=f"message-{message.id}", element_type="message",
+            source_message_id=message.id, sequence=item.sequence, content=item.content, actor_key=item.sender,
+            timestamp_semantics="exact", timestamp=item.created_at.isoformat(), relationships=[], presentation={}, selectable=True,
+            accessible_label=f"Message from {message.speaker_label}", semantic_role="article")
+        db.add(element)
+        db.flush()
         for tag in meta.get("tactic_tags", []):
-            db.add(RedFlagSpan(transcript_id=transcript.id,
-                   message_sequence=item.sequence, tactic_tag=str(tag), source="auto"))
+            db.add(RedFlagSpan(transcript_id=transcript.id, message_sequence=item.sequence, scene_element_id=element.id, tactic_tag=str(tag), source="auto", tiered_hints=[]))
+    persisted_elements = db.query(CuratedSceneElement).filter(CuratedSceneElement.transcript_id == transcript.id).all()
+    validate_scene_for_skin(SceneDefinition(
+        render_skin=RenderSkin(transcript.render_skin),
+        elements=[SceneElement(
+            element_key=element.element_key, element_type=element.element_type,
+            parent_element_key=element.parent_element_key, source_message_id=element.source_message_id,
+            sequence=element.sequence, content=element.content, actor_key=element.actor_key,
+            timestamp_semantics=element.timestamp_semantics, timestamp=element.timestamp,
+            relationships=element.relationships or [], presentation=element.presentation or {},
+            selectable=element.selectable, accessible_label=element.accessible_label, semantic_role=element.semantic_role,
+        ) for element in persisted_elements],
+    ), require_selectable=True)
     return transcript
 
 

@@ -10,7 +10,7 @@ from app.models.schemas import (
 
 def test_all_categories_and_skins_are_representable() -> None:
     assert set(ScenarioCategory) == set(TACTIC_TAGS_BY_CATEGORY)
-    assert set(RenderSkin) == {RenderSkin.CHAT, RenderSkin.EMAIL, RenderSkin.SOCIAL_FEED}
+    assert set(RenderSkin) == {RenderSkin.CHAT, RenderSkin.EMAIL, RenderSkin.SOCIAL_FEED, RenderSkin.GAME_CHAT, RenderSkin.FORUM, RenderSkin.MARKETPLACE}
 
     scenario = ScenarioDefinition(
         id="oversharing-test",

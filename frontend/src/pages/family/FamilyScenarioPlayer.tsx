@@ -1,242 +1,349 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Link, TextField, Typography } from '@mui/material';
-import { useLocation, useParams } from 'react-router-dom';
-import { CheckpointPause } from '@/components/family/CheckpointPause';
-import { ConversationGuideView } from '@/components/family/ConversationGuideView';
-import { HelpSeekingBeat } from '@/components/family/HelpSeekingBeat';
-import { SkinRouter } from '@/components/scenario-render/SkinRouter';
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { Alert, Box, Button, Chip, Container, Grid, Skeleton, Typography } from "@mui/material";
+import { useParams } from "react-router-dom";
+import { CheckpointPause } from "@/components/family/CheckpointPause";
+import { ConversationGuideView } from "@/components/family/ConversationGuideView";
+import { HelpSeekingBeat } from "@/components/family/HelpSeekingBeat";
+import { FamilyGameplayView } from "./FamilyGameplayView";
 import {
-  checkpointActivated,
-  checkpointCleared,
   checkpointResponseRecorded,
-  familyMessagesLoaded,
-  familySessionStarted,
+  familySessionHydrated,
+  familySessionReconciled,
+  flagAttemptPending,
+  flagAttemptReceived,
+  targetSelected,
   highlightedMessageToggled,
-  participantTurnSet,
-  revealThrough,
   selectActiveCheckpoint,
-  selectFamilyDetectiveMode,
+  selectFamilyCapabilities,
+  selectFamilyFindings,
   selectFamilyMessages,
   selectFamilySession,
+  selectFlagAttemptPending,
   selectHighlightedMessageIds,
-  selectParticipantTurn,
+  selectLastFlagAttempt,
   selectTagAssignments,
   selectVisibleFamilyMessages,
   tagAssignmentSet,
-} from '@/features/family/familySessionSlice';
-import { useAppDispatch, useAppSelector } from '@/store';
+} from "@/features/family/familySessionSlice";
+import { useAppDispatch, useAppSelector } from "@/store";
 import {
-  useCompleteFamilySessionMutation,
-  useGetFamilyMessagesQuery,
-  useGetFamilyScenarioQuery,
+  useCommandFamilySessionMutation,
+  useExplainWithCompanionMutation,
+  useRequestCompanionHintMutation,
+  useSubmitFlagAttemptMutation,
+  useGetFamilySessionQuery,
   useSubmitCheckpointResponseMutation,
   useSubmitCompanionCheckpointMutation,
-  useExplainWithCompanionMutation,
-} from '@/store/api';
-import type { FamilySession, ParticipantRole } from '@/types';
-function paceDelay(pace: string) {
-  return pace === 'slow' ? 900 : pace === 'quick' ? 220 : 520;
-}
+} from "@/store/api";
+import type { FamilySessionCommandType, ParticipantRole } from "@/types";
+import type { ScenePanelNavigation } from "@/components/scenario-render/types";
+import type { ClaimType } from "@/components/family/FlagInspectorRail";
+
+const commandId = () => globalThis.crypto?.randomUUID?.() ?? `command-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 export function FamilyScenarioPlayer() {
-  const { transcriptId: transcriptIdParam, sessionId: sessionIdParam } = useParams();
-  const transcriptId = Number(transcriptIdParam);
+  const { sessionId: sessionIdParam } = useParams();
   const sessionId = Number(sessionIdParam);
-  const location = useLocation();
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
-  const locationSession = (location.state as { session?: FamilySession; } | null)?.session;
-  const session = locationSession?.id === sessionId && locationSession.transcript_id === transcriptId ? locationSession : {
-    id: sessionId,
-    transcript_id: transcriptId,
-    parent_user_id: null,
-    companion_mode: true,
-    detective_mode: false,
-    started_at: '',
-    completed_at: null,
-  };
-  const { data: scenario, isLoading: scenariosLoading } = useGetFamilyScenarioQuery(transcriptId, { skip: !transcriptId });
-  const {
-    data: replay = [],
-    isLoading: messagesLoading,
-    isError: messagesError,
-  } = useGetFamilyMessagesQuery({ sessionId, upTo: scenario?.message_count ?? 0 }, { skip: !sessionId || !scenario });
+  const { data: detail, isLoading, isError, refetch } = useGetFamilySessionQuery(sessionId, { skip: !sessionId });
+  const [command, { isLoading: commandLoading }] = useCommandFamilySessionMutation();
   const [submitCheckpoint, { isLoading: submitting }] = useSubmitCheckpointResponseMutation();
   const [submitCompanionCheckpoint, { isLoading: companionSubmitting }] = useSubmitCompanionCheckpointMutation();
   const [explainWithCompanion, { isLoading: explaining }] = useExplainWithCompanionMutation();
-  const [completeSession] = useCompleteFamilySessionMutation();
+  const [submitFlagAttempt, { isLoading: attemptSubmitting }] = useSubmitFlagAttemptMutation();
+  const [requestCompanionHint] = useRequestCompanionHintMutation();
+  const session = useAppSelector(selectFamilySession);
+  const capabilities = useAppSelector(selectFamilyCapabilities);
   const allMessages = useAppSelector(selectFamilyMessages);
-  const activeSession = useAppSelector(selectFamilySession);
   const visibleMessages = useAppSelector(selectVisibleFamilyMessages);
-  const detectiveMode = useAppSelector(selectFamilyDetectiveMode);
   const highlightedMessageIds = useAppSelector(selectHighlightedMessageIds);
   const tagAssignments = useAppSelector(selectTagAssignments);
   const activeCheckpoint = useAppSelector(selectActiveCheckpoint);
-  const participantTurn = useAppSelector(selectParticipantTurn);
-  const [phase, setPhase] = useState<'play' | 'help' | 'guide' | 'support'>('play');
-  const [explanation, setExplanation] = useState('');
-  const [companionNotice, setCompanionNotice] = useState<{
-    text: string;
-    disclosure: boolean;
-    resources: Array<{ label: string; href: string; }>;
-  } | null>(null);
-  const responderRole: ParticipantRole = session.companion_mode ? 'child' : currentUser?.id === session.parent_user_id ? 'parent' : 'child';
+  const lastAttempt = useAppSelector(selectLastFlagAttempt);
+  const pendingAttempt = useAppSelector(selectFlagAttemptPending);
+  const validatedFindings = useAppSelector(selectFamilyFindings);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [hintNotice, setHintNotice] = useState<string | null>(null);
+  const [hintLevel, setHintLevel] = useState(0);
+  const [companionNotice, setCompanionNotice] = useState<{ text: string; disclosure: boolean; resources: Array<{ label: string; href: string }> } | null>(null);
+  const [showNewContent, setShowNewContent] = useState(false);
+  const [selectedElementKey, setSelectedElementKey] = useState<string | null>(null);
+  const [selectedElementKeys, setSelectedElementKeys] = useState<string[]>([]);
+  // This UI-only history intentionally never enters the session state machine.
+  const [panelHistory, setPanelHistory] = useState<string[]>([]);
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const atBottom = useRef(true);
+  const priorVisibleCount = useRef(0);
+
   useEffect(() => {
-    dispatch(familySessionStarted(session));
-    setPhase('play');
-    setExplanation('');
-    setCompanionNotice(null);
-  }, [dispatch, session.id]);
-  useEffect(() => {
-    if (replay.length) dispatch(familyMessagesLoaded({ sessionId, messages: replay }));
-  }, [dispatch, replay, sessionId]);
-  useEffect(() => {
-    dispatch(participantTurnSet(responderRole));
-  }, [dispatch, responderRole]);
-  useEffect(() => {
-    // A route transition can render once with the previous session's Redux
-    // messages still present. Do not let those messages complete the new
-    // session before familySessionStarted has cleared the old state.
-    if (activeSession?.id !== session.id || phase !== 'play' || activeCheckpoint || !allMessages.length) return;
-    const lastSequence = visibleMessages.length ? visibleMessages[visibleMessages.length - 1].sequence : -1;
-    const next = allMessages.find((message) => message.sequence > lastSequence);
-    if (!next) {
-      setPhase('help');
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      dispatch(revealThrough(next.sequence));
-      if (next.is_checkpoint)
-        dispatch(checkpointActivated({ messageId: next.id, prompt: next.checkpoint_prompt ?? 'What would you like to talk about?' }));
-    }, paceDelay(next.pace));
-    return () => window.clearTimeout(timer);
-  }, [activeCheckpoint, activeSession?.id, allMessages, dispatch, phase, session.id, visibleMessages]);
-  const submit = async (responseText: string, tacticTagGuess: string) => {
-    if (!activeCheckpoint) return;
-    if (session.companion_mode) {
-      const result = await submitCompanionCheckpoint({
-        sessionId,
-        checkpoint_message_id: activeCheckpoint.messageId,
-        child_response_text: responseText,
-        flagged_message_ids: detectiveMode ? highlightedMessageIds : [],
-        tactic_tag_guess: detectiveMode ? tacticTagGuess || null : null,
+    if (detail) dispatch(familySessionHydrated(detail));
+  }, [detail, dispatch]);
+
+  const sendCommand = useCallback(async (kind: FamilySessionCommandType) => {
+    if (!session) return;
+    setActionError(null);
+    try {
+      const next = await command({
+        sessionId: session.id,
+        command: kind,
+        expected_state_version: session.state_version ?? 1,
+        client_command_id: commandId(),
       }).unwrap();
-      dispatch(checkpointResponseRecorded(result.child_response));
-      dispatch(checkpointResponseRecorded(result.checkpoint_response));
-      setCompanionNotice({ text: result.response_text, disclosure: result.disclosure_triggered, resources: result.support_resources });
-      dispatch(checkpointCleared());
-      if (result.disclosure_triggered) setPhase('support');
+      dispatch(familySessionReconciled(next));
+    } catch {
+      setActionError("This activity changed or could not be saved. Refreshing its current state lets you retry.");
+      void refetch();
+    }
+  }, [command, dispatch, refetch, session]);
+
+  useEffect(() => {
+    if (!session || commandLoading || activeCheckpoint) return;
+    if (capabilities?.can_reveal_next) {
+      const timer = window.setTimeout(() => void sendCommand("reveal_next"), 520);
+      return () => window.clearTimeout(timer);
+    }
+    if (capabilities?.can_enter_completion_review) {
+      const timer = window.setTimeout(() => void sendCommand("enter_completion_review"), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [activeCheckpoint, capabilities, commandLoading, sendCommand, session]);
+
+  useEffect(() => {
+    if (visibleMessages.length <= priorVisibleCount.current) {
+      priorVisibleCount.current = visibleMessages.length;
       return;
     }
-    const response = await submitCheckpoint({
-      sessionId,
-      checkpoint_message_id: activeCheckpoint.messageId,
-      responder_role: participantTurn,
-      response_text: responseText,
-      flagged_message_ids: detectiveMode ? highlightedMessageIds : [],
-      tactic_tag_guess: detectiveMode ? tacticTagGuess || null : null,
-    }).unwrap();
-    dispatch(checkpointResponseRecorded(response));
-    dispatch(checkpointCleared());
+    priorVisibleCount.current = visibleMessages.length;
+    if (atBottom.current) requestAnimationFrame(() => sceneRef.current?.scrollTo({ top: sceneRef.current.scrollHeight, behavior: "smooth" }));
+    else setShowNewContent(true);
+  }, [visibleMessages.length]);
+
+  const onSceneScroll = (event: UIEvent<HTMLDivElement>) => {
+    const node = event.currentTarget;
+    atBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 32;
+    if (atBottom.current) setShowNewContent(false);
   };
+  const jumpToNewest = () => {
+    sceneRef.current?.scrollTo({ top: sceneRef.current.scrollHeight, behavior: "smooth" });
+    setShowNewContent(false);
+  };
+
+  const submit = async (responseText: string, tacticTagGuess: string) => {
+    if (!session || !activeCheckpoint) return;
+    setActionError(null);
+    try {
+      if (session.companion_mode) {
+        const result = await submitCompanionCheckpoint({
+          sessionId: session.id,
+          checkpoint_message_id: activeCheckpoint.messageId,
+          child_response_text: responseText,
+          flagged_message_ids: highlightedMessageIds,
+          tactic_tag_guess: tacticTagGuess || null,
+        }).unwrap();
+        dispatch(checkpointResponseRecorded(result.child_response));
+        dispatch(checkpointResponseRecorded(result.checkpoint_response));
+        setCompanionNotice({ text: result.response_text, disclosure: result.disclosure_triggered, resources: result.support_resources });
+      } else {
+        const response = await submitCheckpoint({
+          sessionId: session.id,
+          checkpoint_message_id: activeCheckpoint.messageId,
+          responder_role: responderRole,
+          response_text: responseText,
+          flagged_message_ids: highlightedMessageIds,
+          tactic_tag_guess: tacticTagGuess || null,
+        }).unwrap();
+        dispatch(checkpointResponseRecorded(response));
+      }
+      await sendCommand("continue_checkpoint");
+    } catch {
+      setActionError("Your reflection could not be saved. It is still here so you can retry.");
+      void refetch();
+    }
+  };
+
+  const handleSubmitAttempt = async ({ element_key, claim, reasoning }: { element_key: string; claim: ClaimType; reasoning: string }) => {
+    if (!session) return;
+    setActionError(null);
+    dispatch(flagAttemptPending(true));
+    try {
+      const result = await submitFlagAttempt({
+        sessionId: session.id,
+        element_key,
+        reasoning,
+        claim,
+        client_command_id: commandId(),
+      }).unwrap();
+      dispatch(flagAttemptReceived(result));
+      void refetch();
+    } catch {
+      dispatch(flagAttemptPending(false));
+      setActionError("Your evaluation could not be checked right now. You can retry your submission.");
+    }
+  };
+
+  const handleAskCompanion = async (text: string) => {
+    if (!session || !text.trim()) return;
+    setActionError(null);
+    try {
+      if (selectedElementKey && capabilities?.can_submit_flag_attempt) {
+        await handleSubmitAttempt({ element_key: selectedElementKey, claim: "unsure", reasoning: text.trim() });
+      } else {
+        const result = await explainWithCompanion({ sessionId: session.id, message: text.trim() }).unwrap();
+        setCompanionNotice({ text: result.response_text, disclosure: result.disclosure_triggered, resources: result.support_resources });
+      }
+      void refetch();
+    } catch {
+      dispatch(flagAttemptPending(false));
+      setActionError("The guide could not reply just now. You can retry your message.");
+    }
+  };
+
+  const handleHint = async () => {
+    if (!session || !selectedElementKey || !capabilities?.can_request_hint) {
+      setHintNotice("Select an item first, then ask for a hint.");
+      return;
+    }
+    try {
+      const result = await requestCompanionHint({ sessionId: session.id, element_key: selectedElementKey, client_command_id: commandId() }).unwrap();
+      setHintNotice(result.hint);
+      if (typeof result.hint_level === 'number') {
+        setHintLevel(result.hint_level);
+      } else {
+        setHintLevel((prev) => prev + 1);
+      }
+    } catch {
+      setHintNotice("A hint is unavailable right now. Keep looking closely at the item.");
+    }
+  };
+
+  const handleReset = () => {
+    void sendCommand("reset");
+  };
+
   const updateTag = (tag: string) => highlightedMessageIds.forEach((messageId) => dispatch(tagAssignmentSet({ messageId, tag })));
-  const askCompanion = async () => {
-    if (!explanation.trim()) return;
-    const result = await explainWithCompanion({ sessionId, message: explanation.trim() }).unwrap();
-    setExplanation('');
-    setCompanionNotice({ text: result.response_text, disclosure: result.disclosure_triggered, resources: result.support_resources });
-    if (result.disclosure_triggered) setPhase('support');
+  const selectedTag = useMemo(() => Object.values(tagAssignments).find(Boolean) ?? "", [tagAssignments]);
+  const responderRole: ParticipantRole = session?.companion_mode ? "child" : currentUser?.id === session?.parent_user_id ? "parent" : "child";
+  const panelNavigation: ScenePanelNavigation = {
+    activeElementKey: panelHistory[panelHistory.length - 1] ?? null,
+    canGoBack: panelHistory.length > 1,
+    openPanel: (elementKey) => setPanelHistory((current) => current[current.length - 1] === elementKey ? current : [...current, elementKey]),
+    closePanel: () => setPanelHistory([]),
+    goBack: () => setPanelHistory((current) => current.slice(0, -1)),
   };
-  const finishHelpBeat = async () => {
-    await completeSession(sessionId).unwrap();
-    setPhase('guide');
-  };
-  const selectedTag = useMemo(() => Object.values(tagAssignments).find(Boolean) ?? '', [tagAssignments]);
-  if (!sessionId || !transcriptId) return <Alert severity="error">This scenario link is incomplete.</Alert>;
-  if (scenariosLoading || messagesLoading)
+
+  if (!sessionId) return <Alert severity="error">This scenario link is incomplete.</Alert>;
+  if (isLoading || !session || session.id !== sessionId) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}>
-        <CircularProgress />
-      </Box>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Skeleton variant="rounded" height={80} sx={{ mb: 3, borderRadius: 3 }} />
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: 3 }}>
+          <Skeleton variant="rounded" height={420} sx={{ borderRadius: 3 }} />
+          <Skeleton variant="rounded" height={420} sx={{ borderRadius: 3 }} />
+        </Box>
+      </Container>
     );
-  if (!scenario || messagesError)
-    return <Alert severity="error">This family session could not be loaded. Return to the scenario list and try again.</Alert>;
-  if (phase === 'support' && companionNotice)
+  }
+  if (isError) return <Alert severity="error" sx={{ m: 3 }} action={<Button color="inherit" size="small" onClick={() => void refetch()}>Retry</Button>}>This family session could not be loaded. Please retry.</Alert>;
+  if (session.state === "completed") return <ConversationGuideView sessionId={session.id} />;
+  if (session.state === "help_and_resources") return <HelpSeekingBeat category="oversharing" onContinue={() => void sendCommand("complete")} />;
+  if (session.state === "paused_for_support") {
     return (
-      <Box sx={{ maxWidth: 720, mx: 'auto', mt: 4, p: { xs: 2, sm: 4 } }} aria-live="assertive">
-        <Alert severity="warning">
-          {companionNotice.text}
-          {companionNotice.resources.map((resource) => (
-            <Link key={resource.href} href={resource.href} target="_blank" rel="noreferrer" sx={{ display: 'block', mt: 1 }}>
-              {resource.label}
-            </Link>
-          ))}
-        </Alert>
-        <Typography sx={{ mt: 2 }}>This activity is paused. Take the time and support you need; it will not continue automatically.</Typography>
-      </Box>
-    );
-  if (phase === 'guide') return <ConversationGuideView sessionId={sessionId} />;
-  if (phase === 'help') return <HelpSeekingBeat category={scenario.category} onContinue={finishHelpBeat} />;
-  return (
-    <Box sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, sm: 3 } }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Box>
-          <Typography variant="h4" sx={{ textTransform: 'capitalize' }}>
-            {scenario.category.replace('_', ' ')}
+      <Container maxWidth="md" sx={{ py: 6 }}>
+        <Alert severity="warning" sx={{ p: 3, borderRadius: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>Activity Paused for Support</Typography>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            This activity is paused to give you and your family space and privacy. Take all the time and support you need; it will not resume automatically without your decision.
           </Typography>
-          <Typography color="text.secondary">Discuss, pause, and decide who could help. There is no score.</Typography>
-        </Box>
-        {detectiveMode && <Chip color="warning" label="Detective mode: select messages to discuss" />}
-      </Box>
-      <SkinRouter
-        renderSkin={scenario.render_skin}
-        messages={visibleMessages}
-        detectiveMode={detectiveMode}
-        highlightedMessageIds={highlightedMessageIds}
-        onToggleMessage={(messageId) => dispatch(highlightedMessageToggled(messageId))}
-      />
-      {activeCheckpoint && (
-        <CheckpointPause
-          prompt={activeCheckpoint.prompt}
-          detectiveMode={detectiveMode}
-          selectedCount={highlightedMessageIds.length}
-          companionMode={session.companion_mode}
-          submitting={submitting || companionSubmitting}
-          onSubmit={submit}
-          onTagChange={updateTag}
-        />
-      )}
-      {currentUser?.id !== session.parent_user_id && (
-        <Box component="section" aria-label="Explain your reasoning" sx={{ mt: 3 }}>
-          <Typography variant="h6">Want to explain your thinking?</Typography>
-          <TextField
-            label="What did you notice or what would you do?"
-            value={explanation}
-            onChange={(event) => setExplanation(event.target.value)}
-            fullWidth
-            multiline
-            minRows={2}
-            sx={{ mt: 1 }}
-          />
-          <Button onClick={askCompanion} disabled={!explanation.trim() || explaining} sx={{ mt: 1 }}>
-            Talk it through with the guide
-          </Button>
-        </Box>
-      )}
-      {companionNotice && (
-        <Alert severity={companionNotice.disclosure ? 'warning' : 'info'} sx={{ mt: 2 }}>
-          {companionNotice.text}
-          {companionNotice.resources.map((resource) => (
-            <Link key={resource.href} href={resource.href} target="_blank" rel="noreferrer" sx={{ display: 'block', mt: 1 }}>
-              {resource.label}
-            </Link>
-          ))}
+        </Alert>
+      </Container>
+    );
+  }
+
+  const checkpoint = activeCheckpoint ? <CheckpointPause prompt={activeCheckpoint.prompt} selectedCount={highlightedMessageIds.length} companionMode={session.companion_mode} submitting={submitting || companionSubmitting || commandLoading || attemptSubmitting} onSubmit={submit} onTagChange={updateTag} /> : null;
+
+  return (
+    <FamilyGameplayView
+      renderSkin={detail?.scene.render_skin ?? "chat"}
+      scene={detail?.scene ?? { scene_schema_version: 1, skin_version: "1.0", render_skin: "chat", elements: [], messages: [] }}
+      messages={visibleMessages}
+      highlightedMessageIds={highlightedMessageIds}
+      selectedElementKeys={selectedElementKeys}
+      panelNavigation={panelNavigation}
+      tagAssignments={tagAssignments}
+      onSelectElement={(key) => {
+        const element = detail?.scene.elements.find((item) => item.element_key === key);
+        if (!element?.selectable) return;
+        setSelectedElementKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+        setSelectedElementKey(key);
+        dispatch(targetSelected(key));
+        if (element.source_message_id) dispatch(highlightedMessageToggled(element.source_message_id));
+      }}
+      onToggleMessage={(messageId) => {
+        dispatch(highlightedMessageToggled(messageId));
+        const key = detail?.scene.elements.find((item) => item.source_message_id === messageId && item.selectable)?.element_key ?? "legacy-" + messageId;
+        setSelectedElementKey(key);
+        dispatch(targetSelected(key));
+      }}
+      onSceneScroll={onSceneScroll}
+      sceneRef={sceneRef}
+      showNewContent={showNewContent}
+      onJumpToNewest={jumpToNewest}
+      checkpoint={checkpoint}
+      title="Family Safety Scenario"
+      state={session.state}
+      totalCount={allMessages.length}
+      hintLevel={hintLevel}
+      onHint={handleHint}
+      onReset={handleReset}
+      isResetting={commandLoading}
+      selectedElementKey={selectedElementKey}
+      companionNotice={companionNotice}
+      onAskCompanion={handleAskCompanion}
+      onSubmitAttempt={handleSubmitAttempt}
+      pendingAttempt={pendingAttempt || attemptSubmitting}
+      lastAttempt={lastAttempt}
+      validatedFindings={validatedFindings}
+      isExplaining={explaining}
+      completionModalOpen={session.state === "completion_review"}
+      completionAcknowledged={Boolean(session.completion_acknowledged_at)}
+      commandLoading={commandLoading}
+      actionError={actionError}
+      onAcknowledgeCompletion={() => void sendCommand("acknowledge_completion")}
+      onOpenHelp={() => void sendCommand("open_help")}
+      onFinishCompletion={() => void sendCommand("complete")}
+      onRetryAction={() => void refetch()}
+    >
+      {hintNotice && (
+        <Alert severity="info" onClose={() => setHintNotice(null)} sx={{ mt: 2, borderRadius: 2 }}>
+          {hintNotice}
         </Alert>
       )}
-      {detectiveMode && selectedTag && (
-        <Typography variant="caption" color="text.secondary">
+
+      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center", flexWrap: "wrap", mt: 2 }}>
+        <Typography color="text.secondary" variant="body2">
+          Discuss, pause, and decide who could help together. There is no score or timer.
+        </Typography>
+        <Chip color="primary" size="small" label="Select items to discuss" />
+      </Box>
+
+      {selectedTag && (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
           Current discussion tag: {selectedTag}
         </Typography>
       )}
-    </Box>
+
+      {actionError && (
+        <Alert severity="error" sx={{ mt: 2 }} action={<Button color="inherit" size="small" onClick={() => void refetch()}>Retry</Button>}>
+          {actionError}
+        </Alert>
+      )}
+
+      {responderRole === "parent" && (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+          It is your turn to add a shared reflection.
+        </Typography>
+      )}
+    </FamilyGameplayView>
   );
 }

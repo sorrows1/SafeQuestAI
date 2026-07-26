@@ -1,46 +1,99 @@
-import { createEntityAdapter, createSelector, createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { RootState } from '@/store';
-import type { CheckpointResponse, FamilyMessage, FamilySession, ParticipantRole } from '@/types';
+import { createEntityAdapter, createSelector, createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import type { RootState } from "@/store";
+import type {
+  CheckpointResponse,
+  FamilyMessage,
+  FamilyRole,
+  FamilyScene,
+  FamilySession,
+  FamilySessionCapabilities,
+  FamilySessionDetail,
+  ParticipantRole,
+  SceneElement,
+  SessionProgress,
+  ValidatedFinding,
+} from "@/types";
+
 const messagesAdapter = createEntityAdapter<FamilyMessage>({ sortComparer: (a, b) => a.sequence - b.sequence });
+const elementsAdapter = createEntityAdapter<SceneElement, string>({ selectId: (element) => element.element_key, sortComparer: (a, b) => a.sequence - b.sequence });
+const findingsAdapter = createEntityAdapter<ValidatedFinding, string>({ selectId: (finding) => `${finding.element_key}:${finding.annotation_id}` });
+
 export interface ActiveCheckpoint {
   messageId: number;
   prompt: string;
 }
-const initialState = messagesAdapter.getInitialState({
+
+const initialState = {
+  detail: null as FamilySessionDetail | null,
   session: null as FamilySession | null,
-  detectiveMode: false,
+  scene: null as FamilyScene | null,
+  progress: null as SessionProgress | null,
+  participantRole: null as FamilyRole | null,
+  capabilities: null as FamilySessionCapabilities | null,
+  detectiveMode: true,
   highlightedMessageIds: [] as number[],
+  selectedElementKey: null as string | null,
+  pendingAttempt: false,
+  lastAttempt: null as import("@/types").FlagAttempt | null,
   tagAssignments: {} as Record<number, string>,
   activeCheckpoint: null as ActiveCheckpoint | null,
   checkpointResponses: [] as CheckpointResponse[],
-  participantTurn: 'child' as ParticipantRole,
+  participantTurn: "child" as ParticipantRole,
+  // Display-only state may move optimistically; authoritative hydration wins.
   revealedThrough: -1,
-});
+};
+
+function hydrate(state: any, detail: FamilySessionDetail) {
+  const current = state.session;
+  if (current?.id === detail.session.id && current.state_version && current.state_version > detail.session.state_version) return;
+  const changedSession = current?.id !== detail.session.id;
+  state.detail = detail;
+  state.session = detail.session;
+  state.scene = detail.scene;
+  state.progress = detail.progress;
+  state.participantRole = detail.participant_role;
+  state.capabilities = detail.capabilities;
+  state.detectiveMode = true;
+  messagesAdapter.setAll(state, detail.scene.messages);
+  elementsAdapter.setAll(state.elements, detail.scene.elements);
+  findingsAdapter.setAll(state.findings, detail.findings);
+  state.revealedThrough = detail.session.revealed_up_to;
+  const checkpointElement = detail.session.active_checkpoint_element_key
+    ? detail.scene.elements.find((element) => element.element_key === detail.session.active_checkpoint_element_key)
+    : undefined;
+  const checkpointMessage = checkpointElement?.source_message_id
+    ? detail.scene.messages.find((message) => message.id === checkpointElement.source_message_id)
+    : undefined;
+  state.activeCheckpoint = checkpointMessage
+    ? { messageId: checkpointMessage.id, prompt: checkpointMessage.checkpoint_prompt ?? "What would you like to talk about?" }
+    : null;
+  if (changedSession) {
+    state.highlightedMessageIds = [];
+    state.tagAssignments = {};
+    state.checkpointResponses = [];
+  }
+}
+
 const familySessionSlice = createSlice({
-  name: 'familySession',
-  initialState,
+  name: "familySession",
+  initialState: messagesAdapter.getInitialState({ ...initialState, elements: elementsAdapter.getInitialState(), findings: findingsAdapter.getInitialState() }),
   reducers: {
-    familySessionStarted(state, action: PayloadAction<FamilySession>) {
-      messagesAdapter.removeAll(state);
-      state.session = action.payload;
-      state.detectiveMode = action.payload.detective_mode;
-      state.highlightedMessageIds = [];
-      state.tagAssignments = {};
-      state.activeCheckpoint = null;
-      state.checkpointResponses = [];
-      state.participantTurn = 'child';
-      state.revealedThrough = -1;
+    familySessionHydrated(state, action: PayloadAction<FamilySessionDetail>) {
+      hydrate(state, action.payload);
     },
-    familyMessagesLoaded(
-      state,
-      action: PayloadAction<FamilyMessage[] | { sessionId: number; messages: FamilyMessage[] }>
-    ) {
-      if (Array.isArray(action.payload)) {
-        messagesAdapter.setAll(state, action.payload);
-      } else {
-        if (state.session?.id !== action.payload.sessionId) return;
-        messagesAdapter.setAll(state, action.payload.messages);
-      }
+    familySessionReconciled(state, action: PayloadAction<FamilySessionDetail>) {
+      hydrate(state, action.payload);
+    },
+    // Compatibility actions remain display-only for currently mounted legacy views.
+    familySessionStarted(state, action: PayloadAction<FamilySession>) {
+      state.session = action.payload;
+      state.detectiveMode = true;
+        state.revealedThrough = action.payload.revealed_up_to ?? -1;
+    },
+    familyMessagesLoaded(state, action: PayloadAction<FamilyMessage[] | { sessionId: number; messages: FamilyMessage[] }>) {
+      const payload = Array.isArray(action.payload) ? action.payload : action.payload.messages;
+      if (!Array.isArray(action.payload) && state.session?.id !== action.payload.sessionId) return;
+      messagesAdapter.setAll(state, payload);
     },
     revealThrough(state, action: PayloadAction<number>) {
       state.revealedThrough = Math.max(state.revealedThrough, action.payload);
@@ -60,37 +113,63 @@ const familySessionSlice = createSlice({
       state.participantTurn = action.payload;
     },
     highlightedMessageToggled(state, action: PayloadAction<number>) {
-      if (!state.detectiveMode) return;
       const index = state.highlightedMessageIds.indexOf(action.payload);
       if (index >= 0) state.highlightedMessageIds.splice(index, 1);
       else state.highlightedMessageIds.push(action.payload);
     },
     tagAssignmentSet(state, action: PayloadAction<{ messageId: number; tag: string }>) {
-      if (!state.detectiveMode) return;
       if (action.payload.tag.trim()) state.tagAssignments[action.payload.messageId] = action.payload.tag.trim();
       else delete state.tagAssignments[action.payload.messageId];
     },
+    targetSelected(state, action: PayloadAction<string | null>) {
+      state.selectedElementKey = action.payload;
+    },
+    flagAttemptReceived(state, action: PayloadAction<import("@/types").FlagAttempt>) {
+      state.lastAttempt = action.payload;
+      state.progress = action.payload.progress;
+      findingsAdapter.upsertMany(state.findings, action.payload.findings);
+      state.pendingAttempt = false;
+    },
+    flagAttemptPending(state, action: PayloadAction<boolean>) {
+      state.pendingAttempt = action.payload;
+    },
   },
 });
+
 export const {
   checkpointActivated,
   checkpointCleared,
   checkpointResponseRecorded,
   familyMessagesLoaded,
+  familySessionHydrated,
+  familySessionReconciled,
   familySessionStarted,
+  flagAttemptPending,
+  flagAttemptReceived,
+  targetSelected,
   highlightedMessageToggled,
   participantTurnSet,
   revealThrough,
   tagAssignmentSet,
 } = familySessionSlice.actions;
-const selectors = messagesAdapter.getSelectors<RootState>((state) => state.familySession);
-export const selectFamilyMessages = selectors.selectAll;
+
+const messageSelectors = messagesAdapter.getSelectors<RootState>((state) => state.familySession);
+const elementSelectors = elementsAdapter.getSelectors<RootState>((state) => state.familySession.elements);
+const findingSelectors = findingsAdapter.getSelectors<RootState>((state) => state.familySession.findings);
+export const selectFamilyMessages = messageSelectors.selectAll;
+export const selectFamilySceneElements = elementSelectors.selectAll;
+export const selectFamilyFindings = findingSelectors.selectAll;
 export const selectVisibleFamilyMessages = createSelector(
   [selectFamilyMessages, (state: RootState) => state.familySession.revealedThrough],
-  (messages, revealedThrough) => messages.filter((message) => message.sequence <= revealedThrough)
+  (messages, revealedThrough) => messages.filter((message) => message.sequence <= revealedThrough),
 );
 export const selectFamilySession = (state: RootState) => state.familySession.session;
+export const selectFamilySessionDetail = (state: RootState) => state.familySession.detail;
+export const selectFamilyCapabilities = (state: RootState) => state.familySession.capabilities;
 export const selectFamilyDetectiveMode = (state: RootState) => state.familySession.detectiveMode;
+export const selectSelectedElementKey = (state: RootState) => state.familySession.selectedElementKey;
+export const selectLastFlagAttempt = (state: RootState) => state.familySession.lastAttempt;
+export const selectFlagAttemptPending = (state: RootState) => state.familySession.pendingAttempt;
 export const selectHighlightedMessageIds = (state: RootState) => state.familySession.highlightedMessageIds;
 export const selectTagAssignments = (state: RootState) => state.familySession.tagAssignments;
 export const selectActiveCheckpoint = (state: RootState) => state.familySession.activeCheckpoint;

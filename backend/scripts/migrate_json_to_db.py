@@ -23,9 +23,11 @@ from app.models.content_schemas import (
     ConstraintDefinition, ObjectiveDefinition, PersonaDefinition, PromptTemplate,
     ScenarioDefinition, StageDefinition,
 )
+from app.generation.taxonomy import TACTIC_TAGS_BY_CATEGORY
+from app.models.schemas import ElementType, ScenarioCategory, SceneDefinition as SceneContractDefinition, SceneElement, validate_scene_for_skin
 from app.models.orm import (
     ContentConstraint, ContentObjective, ContentPersona, ContentPrompt, ContentScenario, ContentStage,
-    ConversationMessage, ConversationSession, CuratedMessage, CuratedTranscript, RedFlagSpan, User,
+    ConversationMessage, ConversationSession, CuratedMessage, CuratedSceneElement, CuratedTranscript, RedFlagSpan, User,
     SessionLocal,
 )
 from app.repositories import content_repo
@@ -106,6 +108,58 @@ def _write_or_count(db, kind: str, item, getter, upserter, dry_run: bool, counts
                 upserter(db, item)
 
 
+def _fixture_scene_elements(fixture: dict) -> list[dict]:
+    """Return explicit scene elements or legacy-compatible message elements."""
+    if "scene_elements" in fixture:
+        return fixture["scene_elements"]
+    return [{
+        "element_key": f"message-{message['sequence']}",
+        "element_type": "message",
+        "source_message_sequence": message["sequence"],
+        "sequence": message["sequence"],
+        "content": message["content"],
+        "presentation": {},
+        "selectable": True,
+        "accessible_label": f"Message from {message['speaker_label']}",
+        "semantic_role": "article",
+    } for message in fixture.get("messages", [])]
+
+
+def _validate_fixture_scene(fixture: dict, errors: list[str]) -> None:
+    fixture_id = fixture.get("id", "<unknown>")
+    messages = fixture.get("messages", [])
+    sequences = [message.get("sequence") for message in messages]
+    if len(sequences) != len(set(sequences)):
+        errors.append(f"fixture {fixture_id!r} has duplicate message sequences")
+    elements = _fixture_scene_elements(fixture)
+    keys = [element.get("element_key") for element in elements]
+    if not keys or any(not isinstance(key, str) or not key for key in keys):
+        errors.append(f"fixture {fixture_id!r} must give every scene element a non-empty element_key")
+    if len(keys) != len(set(keys)):
+        errors.append(f"fixture {fixture_id!r} has duplicate scene element keys")
+    valid_types = {item.value for item in ElementType}
+    for element in elements:
+        if element.get("element_type") not in valid_types:
+            errors.append(f"fixture {fixture_id!r} has an unsupported element type")
+        parent = element.get("parent_element_key")
+        if parent is not None and parent not in keys:
+            errors.append(f"fixture {fixture_id!r} references an unknown parent element")
+        source_sequence = element.get("source_message_sequence")
+        if source_sequence is not None and source_sequence not in sequences:
+            errors.append(f"fixture {fixture_id!r} element references an unknown message sequence")
+    try:
+        validate_scene_for_skin(SceneContractDefinition(render_skin=fixture.get("render_skin", "chat"), elements=[SceneElement(**{key: value for key, value in element.items() if key != "source_message_sequence"}) for element in elements]), require_selectable=True)
+    except (ValueError, TypeError) as exc:
+        errors.append(f"fixture {fixture_id!r} has an invalid scene contract: {exc}")
+    for annotation in fixture.get("red_flag_spans", []):
+        key = annotation.get("element_key")
+        if key is None:
+            sequence = annotation.get("message_sequence")
+            key = next((element.get("element_key") for element in elements if element.get("source_message_sequence") == sequence), None)
+        if key not in keys:
+            errors.append(f"fixture {fixture_id!r} annotation references an unknown scene element")
+
+
 def _validate_seed_references(content: SeedContent) -> None:
     personas = {item.id for item in content.personas}
     stages = {item.id for item in content.stages}
@@ -150,6 +204,22 @@ def _validate_seed_references(content: SeedContent) -> None:
             errors.append(f"fixture '{fixture_id}' references an unknown scenario")
         if not fixture.get("messages"):
             errors.append(f"fixture '{fixture_id}' must include messages")
+        try:
+            category = ScenarioCategory(fixture["category"])
+            allowed_tags = set(TACTIC_TAGS_BY_CATEGORY[category])
+            errors.extend(
+                f"fixture '{fixture_id}' uses tactic tag '{tag}' outside the {category.value} taxonomy"
+                for tag in fixture.get("tactic_tags", [])
+                if tag not in allowed_tags
+            )
+            errors.extend(
+                f"fixture '{fixture_id}' red-flag span uses tactic tag '{span.get('tactic_tag')}' outside the {category.value} taxonomy"
+                for span in fixture.get("red_flag_spans", [])
+                if span.get("tactic_tag") not in allowed_tags
+            )
+        except (KeyError, ValueError):
+            errors.append(f"fixture '{fixture_id}' has an invalid scenario category")
+        _validate_fixture_scene(fixture, errors)
     if errors:
         raise ValueError("; ".join(errors))
 
@@ -193,15 +263,35 @@ def _seed_demo_fixtures(db, fixtures: list[dict], *, dry_run: bool, publish: boo
             transcript.public_metadata_snapshot = snapshot
             transcript.is_published = publish
         if not dry_run:
-            db.query(ConversationMessage).filter(ConversationMessage.session_id == transcript.source_session_id).delete()
-            db.query(CuratedMessage).filter(CuratedMessage.transcript_id == transcript.id).delete()
             db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == transcript.id).delete()
+            db.query(CuratedSceneElement).filter(CuratedSceneElement.transcript_id == transcript.id).delete()
+            db.query(CuratedMessage).filter(CuratedMessage.transcript_id == transcript.id).delete()
+            db.query(ConversationMessage).filter(ConversationMessage.session_id == transcript.source_session_id).delete()
             for message in fixture["messages"]:
                 metadata = {"is_checkpoint": message.get("is_checkpoint", False)}
                 db.add(ConversationMessage(session_id=transcript.source_session_id, sequence=message["sequence"], sender=message["speaker_label"], content=message["content"], metadata_json=metadata))
                 db.add(CuratedMessage(transcript_id=transcript.id, sequence=message["sequence"], speaker_label=message["speaker_label"], content=message["content"], pace=message.get("pace", "normal"), is_checkpoint=message.get("is_checkpoint", False), checkpoint_prompt=message.get("checkpoint_prompt")))
+            db.flush()
+            message_ids = {item.sequence: item.id for item in db.query(CuratedMessage).filter(CuratedMessage.transcript_id == transcript.id).all()}
+            elements_by_key = {}
+            for element in _fixture_scene_elements(fixture):
+                row = CuratedSceneElement(
+                    transcript_id=transcript.id, element_key=element["element_key"],
+                    element_type=element["element_type"], parent_element_key=element.get("parent_element_key"),
+                    source_message_id=message_ids.get(element.get("source_message_sequence")),
+                    sequence=element.get("sequence", 0), content=element.get("content"),
+                    actor_key=element.get("actor_key"), timestamp_semantics=element.get("timestamp_semantics", "none"),
+                    timestamp=element.get("timestamp"), relationships=element.get("relationships", []),
+                    presentation=element.get("presentation", {}), selectable=element.get("selectable", True),
+                    accessible_label=element.get("accessible_label", element["element_key"]),
+                    semantic_role=element.get("semantic_role", "article"),
+                )
+                db.add(row)
+                db.flush()
+                elements_by_key[row.element_key] = row.id
             for span in fixture.get("red_flag_spans", []):
-                db.add(RedFlagSpan(transcript_id=transcript.id, message_sequence=span["message_sequence"], tactic_tag=span["tactic_tag"], source="human_reviewed"))
+                key = span.get("element_key") or next((element["element_key"] for element in _fixture_scene_elements(fixture) if element.get("source_message_sequence") == span.get("message_sequence")), None)
+                db.add(RedFlagSpan(transcript_id=transcript.id, message_sequence=span.get("message_sequence"), scene_element_id=elements_by_key.get(key), tactic_tag=span["tactic_tag"], source="human_reviewed", child_safe_explanation=span.get("child_safe_explanation"), tiered_hints=span.get("tiered_hints", [])))
     return counts
 
 
