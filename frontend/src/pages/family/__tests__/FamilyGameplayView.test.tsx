@@ -191,4 +191,30 @@ describe('FamilyGameplayView', () => {
     fireEvent.click(screen.getByText('Finish & View Guide'));
     expect(onFinish).toHaveBeenCalled();
   });
+
+  it("shows controlled session guidance and an anchored hint announcement", () => {
+    const onCloseGuide = vi.fn();
+    const sceneRef = createRef<HTMLDivElement>();
+    render(
+      <ThemeProvider theme={theme}>
+        <FamilyGameplayView
+          renderSkin="chat"
+          messages={sampleMessages}
+          highlightedMessageIds={[]}
+          onToggleMessage={vi.fn()}
+          onSceneScroll={vi.fn()}
+          sceneRef={sceneRef}
+          showNewContent={false}
+          onJumpToNewest={vi.fn()}
+          infoGuideOpen
+          onInfoGuideClose={onCloseGuide}
+          hintMessage="Look for pressure or secrecy in the selected item."
+        />
+      </ThemeProvider>
+    );
+    expect(screen.getByRole("dialog", { name: /how to play safequest/i })).toBeTruthy();
+    expect(screen.getByText("Look for pressure or secrecy in the selected item.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /close guide/i }));
+    expect(onCloseGuide).toHaveBeenCalled();
+  });
 });

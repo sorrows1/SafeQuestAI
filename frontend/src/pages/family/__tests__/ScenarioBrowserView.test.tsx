@@ -18,6 +18,8 @@ const mockScenario: PublishedFamilyScenario = {
   checkpoint_count: 2,
   published_at: '2026-07-25T00:00:00Z',
   supported_participation_modes: ['with_parent', 'with_companion'],
+  lifecycle: 'not_started' as const,
+  session_ref: null,
 };
 
 const defaultProps = {
@@ -63,7 +65,7 @@ describe('ScenarioBrowserView Presenter & Edge Cases', () => {
     expect(screen.getByRole('heading', { level: 1, name: /explore together/i })).toBeTruthy();
     expect(screen.getByText(/featured scenario/i)).toBeTruthy();
     expect(screen.getAllByText('Online Gaming Squad Pressure').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: /learn more about online gaming squad pressure/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /start scenario for online gaming squad pressure/i })).toBeTruthy();
   });
 
   it('hides featured scenario banner when filters are active', () => {
@@ -136,7 +138,7 @@ describe('ScenarioBrowserView Presenter & Edge Cases', () => {
     expect(nextBtn.hasAttribute('disabled')).toBe(true);
   });
 
-  it('renders scenario setup modal with participation mode choices and launches solo activity', () => {
+  it('renders scenario setup modal with participation mode choices and launches practice activity with neutral wording', () => {
     const onStartSolo = vi.fn();
     const onSelectScenario = vi.fn();
 
@@ -147,7 +149,7 @@ describe('ScenarioBrowserView Presenter & Edge Cases', () => {
     });
 
     expect(screen.getByRole('dialog')).toBeTruthy();
-    expect(screen.getByText(/solo activity with ai companion/i)).toBeTruthy();
+    expect(screen.getByText(/practice with ai companion/i)).toBeTruthy();
     expect(screen.getByText(/invite family member/i)).toBeTruthy();
     expect(screen.getByText(/join active session/i)).toBeTruthy();
 
@@ -155,8 +157,8 @@ describe('ScenarioBrowserView Presenter & Edge Cases', () => {
     fireEvent.click(screen.getByText(/invite family member/i));
     fireEvent.click(screen.getByText(/join active session/i));
 
-    // Click start solo activity
-    fireEvent.click(screen.getByRole('button', { name: /start solo activity/i }));
+    // Click start practice button with neutral non-contradictory wording
+    fireEvent.click(screen.getByRole('button', { name: /start practice/i }));
     expect(onStartSolo).toHaveBeenCalled();
   });
 
@@ -166,7 +168,7 @@ describe('ScenarioBrowserView Presenter & Edge Cases', () => {
       createError: true,
     });
 
-    expect(screen.getByText(/the solo session could not be started/i)).toBeTruthy();
+    expect(screen.getByText(/the session could not be started/i)).toBeTruthy();
   });
 
   it('renders loading skeletons when isLoading is true', () => {
@@ -181,7 +183,7 @@ describe('ScenarioBrowserView Presenter & Edge Cases', () => {
 
     expect(screen.getByText(/you appear to be offline/i)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    fireEvent.click(screen.getByRole('button', { name: /retry connection/i }));
     expect(onRefetch).toHaveBeenCalled();
 
     rerender(
@@ -196,6 +198,6 @@ describe('ScenarioBrowserView Presenter & Edge Cases', () => {
   it('renders empty library state alert when total is 0', () => {
     renderBrowser({ items: [], total: 0, filtered: false });
 
-    expect(screen.getByText(/reviewed scenarios are being prepared/i)).toBeTruthy();
+    expect(screen.getByText(/reviewed scenarios coming soon/i)).toBeTruthy();
   });
 });

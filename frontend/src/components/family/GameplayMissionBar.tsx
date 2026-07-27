@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -32,6 +34,7 @@ interface Props {
   turnRole?: 'learner' | 'caregiver' | 'shared';
   turnLabel?: string;
   onHint: () => void;
+  hintMessage?: string | null;
   onReset: () => void;
   onOpenGuide: () => void;
   onToggleMobileInspector?: () => void;
@@ -50,6 +53,7 @@ export function GameplayMissionBar({
   turnRole,
   turnLabel,
   onHint,
+  hintMessage = null,
   onReset,
   onOpenGuide,
   onToggleMobileInspector,
@@ -59,10 +63,16 @@ export function GameplayMissionBar({
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const progressPercent = totalCount > 0 ? Math.min(100, Math.round((revealedCount / totalCount) * 100)) : 0;
+  const hintNoticeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (hintMessage) hintNoticeRef.current?.focus();
+  }, [hintMessage]);
 
   const getStatusChip = () => {
     switch (state) {
       case 'active':
+      case 'in_progress':
         return (
           <Chip
             size="small"
@@ -74,6 +84,7 @@ export function GameplayMissionBar({
           />
         );
       case 'paused_for_checkpoint':
+      case 'checkpoint':
         return (
           <Chip
             size="small"
@@ -111,13 +122,13 @@ export function GameplayMissionBar({
       component="header"
       aria-label="Scenario gameplay mission bar"
       sx={{
-        p: { xs: 1.5, sm: 2 },
+        p: { xs: 1.25, sm: 1.75 },
         borderRadius: 3,
         border: '1px solid',
         borderColor: 'divider',
         bgcolor: 'background.paper',
-        backdropFilter: 'blur(12px)',
-        mb: 2.5,
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+        mb: { xs: 1.5, sm: 2 },
       }}
     >
       <Stack spacing={1.5}>
@@ -207,6 +218,12 @@ export function GameplayMissionBar({
           </Stack>
         </Box>
 
+        {hintMessage && (
+          <Alert ref={hintNoticeRef} tabIndex={-1} role="status" aria-live="polite" severity="info" sx={{ outline: "none" }}>
+            {hintMessage}
+          </Alert>
+        )}
+
         {/* Bottom Row: Progress Bar & Discovered Findings Counter */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {/* Discovered Findings Counter */}
@@ -216,7 +233,14 @@ export function GameplayMissionBar({
             label={`Findings: ${highlightedCount}`}
             color={highlightedCount > 0 ? 'primary' : 'default'}
             variant={highlightedCount > 0 ? 'filled' : 'outlined'}
-            sx={{ fontWeight: 700, fontSize: '0.75rem', px: 0.5 }}
+            sx={{
+              fontWeight: 800,
+              fontSize: '0.75rem',
+              px: 0.5,
+              transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              boxShadow: highlightedCount > 0 ? '0 2px 8px rgba(25, 118, 210, 0.25)' : 'none',
+              transform: highlightedCount > 0 ? 'scale(1.02)' : 'none',
+            }}
           />
 
           {/* Progress Bar */}
@@ -225,10 +249,18 @@ export function GameplayMissionBar({
               <LinearProgress
                 variant="determinate"
                 value={progressPercent}
-                sx={{ height: 8, borderRadius: 4, bgcolor: 'action.hover' }}
+                sx={{
+                  height: 8,
+                  borderRadius: 4,
+                  bgcolor: 'action.hover',
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 4,
+                    backgroundImage: 'linear-gradient(90deg, #1976d2, #42a5f5)',
+                  },
+                }}
               />
             </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, minWidth: 40, textAlign: 'right' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, minWidth: 40, textAlign: 'right' }}>
               {progressPercent}%
             </Typography>
           </Box>

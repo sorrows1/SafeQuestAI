@@ -78,7 +78,7 @@ export const safeQuestApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Scenario', 'Persona', 'Stage', 'Objective', 'Constraint', 'Prompt', 'User', 'Simulation', 'FamilySession', 'FamilyLink'],
+  tagTypes: ['Scenario', 'Persona', 'Stage', 'Objective', 'Constraint', 'Prompt', 'User', 'Simulation', 'FamilySession', 'FamilyLink', 'FamilyCatalog'],
 
   endpoints: (build) => ({
     // ── Auth ────────────────────────────────────────────────────────────────
@@ -105,17 +105,23 @@ export const safeQuestApi = createApi({
         if (filters.limit) params.set('limit', String(filters.limit));
         return '/family/scenarios?' + params.toString();
       },
+      providesTags: ['FamilyCatalog'],
     }),
     getFamilyScenario: build.query<PublishedFamilyScenario, number>({
       query: (transcriptId) => '/family/scenarios/' + transcriptId,
+      providesTags: (_result, _error, transcriptId) => [{ type: 'FamilyCatalog', id: transcriptId }],
     }),
     createFamilySession: build.mutation<FamilySession, { transcriptId: number; relationship_ref?: string }>({
       query: ({ transcriptId, ...body }) => ({ url: '/family/scenarios/' + transcriptId + '/sessions', method: 'POST', body }),
-      invalidatesTags: ['FamilySession', 'FamilyLink'],
+      invalidatesTags: ['FamilySession', 'FamilyLink', 'FamilyCatalog'],
+    }),
+    restartFamilySession: build.mutation<FamilySession, { transcriptId: number; prior_session_ref: string }>({
+      query: ({ transcriptId, ...body }) => ({ url: '/family/scenarios/' + transcriptId + '/sessions/restart', method: 'POST', body }),
+      invalidatesTags: ['FamilySession', 'FamilyCatalog'],
     }),
     createFamilyInvitation: build.mutation<FamilyRelationshipInvitation, { learner_email: string; delivery_label?: string }>({ query: (body) => ({ url: '/family/invitations', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
     getFamilyInvitations: build.query<FamilyRelationshipInvitation[], void>({ query: () => '/family/invitations', providesTags: ['FamilyLink'] }),
-    previewFamilyInvitation: build.query<{ invitation_ref: string; inviter_display_name: string; expires_at: string; sharing_summary: string }, string>({ query: (secret) => '/family/invitations/preview?secret=' + encodeURIComponent(secret) }),
+    previewFamilyInvitation: build.query<{ invitation_ref: string; inviter_display_name: string; intended_role: 'learner'; expires_at: string; sharing_summary: string }, string>({ query: (secret) => '/family/invitations/preview?secret=' + encodeURIComponent(secret) }),
     acceptFamilyInvitation: build.mutation<FamilyRelationship, { secret: string }>({ query: (body) => ({ url: '/family/invitations/accept', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
     declineFamilyInvitation: build.mutation<void, { secret: string }>({ query: (body) => ({ url: '/family/invitations/decline', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
     revokeFamilyInvitation: build.mutation<void, string>({ query: (ref) => ({ url: '/family/invitations/' + ref + '/revoke', method: 'POST' }), invalidatesTags: ['FamilyLink'] }),
@@ -128,7 +134,7 @@ export const safeQuestApi = createApi({
     }),
     commandFamilySession: build.mutation<FamilySessionDetail, { sessionId: number | string } & FamilySessionCommandRequest>({
       query: ({ sessionId, ...body }) => ({ url: "/family/sessions/" + sessionId + "/commands", method: "POST", body }),
-      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }, 'FamilyCatalog'],
     }),
     heartbeatFamilySession: build.mutation<FamilySessionParticipant, { sessionId: number | string } & FamilyPresenceHeartbeatRequest>({
       query: ({ sessionId, ...body }) => ({ url: '/family/sessions/' + sessionId + '/presence', method: "POST", body }),
@@ -202,7 +208,7 @@ export const safeQuestApi = createApi({
     }),
     completeFamilySession: build.mutation<ConversationGuide, number | string>({
       query: (sessionId) => ({ url: '/family/sessions/' + sessionId + '/complete', method: 'POST' }),
-      invalidatesTags: (_result, _error, sessionId) => [{ type: 'FamilySession', id: sessionId }],
+      invalidatesTags: (_result, _error, sessionId) => [{ type: 'FamilySession', id: sessionId }, 'FamilyCatalog'],
     }),
     getConversationGuide: build.query<ConversationGuide, number | string>({
       query: (sessionId) => '/family/sessions/' + sessionId + '/conversation-guide',
@@ -504,6 +510,7 @@ export const {
   useCreateCaregiverCommentMutation,
   useUpdateCaregiverCommentMutation,
   useCreateFamilySessionMutation,
+  useRestartFamilySessionMutation,
   useGetFamilyMessagesQuery,
   useSubmitCheckpointResponseMutation,
   useSubmitCompanionCheckpointMutation,

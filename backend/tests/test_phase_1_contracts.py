@@ -1,4 +1,9 @@
+from datetime import datetime, timezone
+
 import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect, text
 from pydantic import ValidationError
 
 from app.models.schemas import GenerationMode, ScenarioCategory, ScenarioDefinition
@@ -59,7 +64,7 @@ def test_scene_contract_is_versioned_and_cannot_carry_answer_key_fields() -> Non
 
 
 def test_session_detail_uses_server_state_not_client_message_exhaustion() -> None:
-    detail = FamilySessionDetailOut(session=FamilySessionOut(id=1, transcript_id=2, parent_user_id=None, companion_mode=True, detective_mode=True, started_at="now", completed_at=None, state=FamilySessionState.COMPLETION_REVIEW), scene=FamilySceneOut(render_skin=RenderSkin.CHAT), progress=SessionProgressOut(completion_ready=False))
+    detail = FamilySessionDetailOut(session=FamilySessionOut(id=1, transcript_id=2, companion_mode=True, detective_mode=True, started_at="now", completed_at=None, state=FamilySessionState.COMPLETION_REVIEW), scene=FamilySceneOut(render_skin=RenderSkin.CHAT), progress=SessionProgressOut(completion_ready=False))
     assert detail.session.state is FamilySessionState.COMPLETION_REVIEW
     assert detail.progress.completion_ready is False
 
@@ -114,3 +119,54 @@ def test_phase_6_presentation_metadata_is_bounded_and_inert():
         pass
     else:
         raise AssertionError("blank metadata labels must remain rejected")
+
+
+
+def test_phase_one_migration_backfills_legacy_content_and_is_reversible(tmp_path) -> None:
+    database = tmp_path / "phase_one.sqlite"
+    engine = create_engine(f"sqlite:///{database}")
+    config = Config("alembic.ini")
+    connection = engine.connect()
+    config.attributes["connection"] = connection
+    try:
+        command.upgrade(config, "20260725_baseline_current")
+        now = datetime.now(timezone.utc)
+        connection.execute(text(
+            "INSERT INTO users (id, email, hashed_password, display_name, avatar_url, role, google_id, is_active, created_at, updated_at) "
+            "VALUES (1, 'reviewer@example.test', NULL, 'Reviewer', NULL, 'admin', NULL, 1, :now, :now), "
+            "(2, 'learner@example.test', NULL, 'Learner', NULL, 'user', NULL, 1, :now, :now), "
+            "(3, 'caregiver@example.test', NULL, 'Caregiver', NULL, 'user', NULL, 1, :now, :now)"
+        ), {"now": now})
+        connection.execute(text(
+            "INSERT INTO conversation_sessions (id, scenario_id, difficulty, created_at, updated_at, state) "
+            "VALUES (1, 'legacy', 'Medium', :now, :now, '{}')"
+        ), {"now": now})
+        connection.execute(text(
+            "INSERT INTO curated_transcripts (id, source_session_id, is_concerning_example, difficulty, tactic_tags, reviewed_by, reviewed_at, is_published, category, render_skin, public_metadata_snapshot) "
+            "VALUES (1, 1, 1, 'Medium', '[]', 1, :now, 0, 'scam', 'chat', '{}')"
+        ), {"now": now})
+        connection.execute(text(
+            "INSERT INTO curated_messages (id, transcript_id, sequence, speaker_label, content, pace, is_checkpoint) "
+            "VALUES (1, 1, 1, 'Nova', 'Keep this private.', 'normal', 0)"
+        ))
+        connection.execute(text(
+            "INSERT INTO red_flag_spans (id, transcript_id, message_sequence, start_offset, end_offset, tactic_tag, source) "
+            "VALUES (1, 1, 1, 0, 4, 'secrecy_request', 'human_reviewed')"
+        ))
+        connection.execute(text(
+            "INSERT INTO family_sessions (id, transcript_id, child_user_id, parent_user_id, companion_mode, detective_mode, disclosure_flagged, revealed_up_to, started_at, completed_at) "
+            "VALUES (1, 1, 2, 3, 0, 0, 0, 0, :now, NULL)"
+        ), {"now": now})
+        connection.commit()
+
+        command.upgrade(config, "20260725_phase1_contracts")
+        assert {"curated_scene_elements", "session_progress", "flag_attempts", "validated_findings", "family_relationships"}.issubset(inspect(connection).get_table_names())
+        assert connection.execute(text("SELECT element_key FROM curated_scene_elements WHERE source_message_id = 1")).scalar_one() == "message-1"
+        assert connection.execute(text("SELECT scene_element_id FROM red_flag_spans WHERE id = 1")).scalar_one() is not None
+
+        command.downgrade(config, "20260725_baseline_current")
+        command.upgrade(config, "20260725_phase1_contracts")
+        assert inspect(connection).has_table("validated_findings")
+    finally:
+        connection.close()
+        engine.dispose()

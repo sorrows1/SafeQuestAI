@@ -3,23 +3,14 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import { ActorAvatar, ElementAttachment, ElementLinkPreview, ElementTimestamp, InspectableElement, SafeMediaPlaceholder } from "./SelectableMessage";
-import { isSelected, type ScenarioSkinProps } from "./types";
-import { panelTargetFor } from "./SceneArtifactPanel";
+import { isCompleted, isSelected, type ScenarioSkinProps } from "./types";
 
-export function MarketplaceSkin({ scene, selection, onSelect, readOnly, panelNavigation, testId }: ScenarioSkinProps) {
+export function MarketplaceSkin({ scene, selection, onSelect, readOnly, testId }: ScenarioSkinProps) {
   const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor.display_name]));
 
   const firstElement = scene.elements[0];
   const appName = firstElement?.presentation.app_name || "SwapSquare";
   const surfaceLabel = firstElement?.presentation.surface_label || "Peer-to-Peer Marketplace";
-
-  const handleElementSelect = (elementKey: string) => {
-    onSelect(elementKey);
-    if (panelNavigation) {
-      const target = panelTargetFor(scene, elementKey);
-      if (target) panelNavigation.openPanel(target);
-    }
-  };
 
   return (
     <Paper
@@ -119,7 +110,8 @@ export function MarketplaceSkin({ scene, selection, onSelect, readOnly, panelNav
                 key={element.element_key}
                 element={element}
                 selected={isSelected(element, selection)}
-                onSelect={handleElementSelect}
+                completed={isCompleted(element, selection)}
+                onSelect={onSelect}
                 readOnly={readOnly}
               >
                 <Paper
@@ -139,6 +131,7 @@ export function MarketplaceSkin({ scene, selection, onSelect, readOnly, panelNav
                           {seller}
                         </Typography>
                         <Chip label="Seller / Trader" size="small" variant="outlined" sx={{ height: 18, fontSize: "0.65rem", fontWeight: 700 }} />
+                        <Chip label="★ 4.9 (28 sales)" size="small" sx={{ height: 18, fontSize: "0.65rem", fontWeight: 700, bgcolor: "action.hover" }} />
                       </Box>
                       <ElementTimestamp presentation={element.presentation} timestamp={element.timestamp} />
                     </Box>

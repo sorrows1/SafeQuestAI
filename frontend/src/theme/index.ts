@@ -69,6 +69,18 @@ export const darkTheme = createTheme({
           scrollbarWidth: 'thin',
           scrollbarColor: `${alpha(TEXT_PRIMARY_DARK, 0.2)} transparent`,
         },
+        '*:focus-visible': {
+          outline: `2px solid ${ACCENT_BLUE}`,
+          outlineOffset: '2px',
+        },
+        '@media (prefers-reduced-motion: reduce)': {
+          '*, *::before, *::after': {
+            animationDuration: '0.01ms !important',
+            animationIterationCount: '1 !important',
+            transitionDuration: '0.01ms !important',
+            scrollBehavior: 'auto !important',
+          },
+        },
       },
     },
     MuiPaper: {
@@ -248,6 +260,18 @@ export const lightTheme = createTheme({
         body: {
           backgroundColor: LIGHT_BG_DEFAULT,
           color: TEXT_PRIMARY_LIGHT,
+        },
+        '*:focus-visible': {
+          outline: `2px solid ${LIGHT_PRIMARY}`,
+          outlineOffset: '2px',
+        },
+        '@media (prefers-reduced-motion: reduce)': {
+          '*, *::before, *::after': {
+            animationDuration: '0.01ms !important',
+            animationIterationCount: '1 !important',
+            transitionDuration: '0.01ms !important',
+            scrollBehavior: 'auto !important',
+          },
         },
       },
     },

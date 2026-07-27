@@ -157,7 +157,7 @@ export function CompletionReviewModal({
                     ))}
                   </Stack>
                 ) : (
-                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'action.hover', textStyle: 'italic', textAlign: 'center' }}>
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'action.hover', fontStyle: 'italic', textAlign: 'center' }}>
                     <Typography variant="body2" color="text.secondary">
                       No specific red flags were highlighted in this attempt, but discussing the scenario log together helps build awareness.
                     </Typography>

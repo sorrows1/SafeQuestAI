@@ -2,11 +2,13 @@ import { Box, Button, Chip, Container, Paper, Stack, Typography, useTheme, alpha
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
-import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
 import { Link as RouterLink } from 'react-router-dom';
+import { SkinRouter } from '@/components/scenario-render/SkinRouter';
+import { authenticCoreFixtures } from '@/components/scenario-render/fixtures/authenticCoreFixtures';
 
 export function HeroSection() {
   const theme = useTheme();
+  const heroFixture = authenticCoreFixtures.chat;
 
   return (
     <Box sx={{ pt: { xs: 6, md: 10 }, pb: { xs: 8, md: 12 }, position: 'relative', overflow: 'hidden' }}>
@@ -104,7 +106,7 @@ export function HeroSection() {
               elevation={0}
               variant="outlined"
               sx={{
-                p: { xs: 2.5, sm: 4 },
+                p: { xs: 2, sm: 3 },
                 borderRadius: 4,
                 textAlign: 'left',
                 bgcolor: theme.palette.mode === 'dark' ? alpha('#151d2a', 0.9) : '#ffffff',
@@ -117,45 +119,20 @@ export function HeroSection() {
                 <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
                   <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'success.main' }} />
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    Scenario Preview: Gaming Chat Boundary Pressure
+                    Live Skin Preview: Gaming Chat Boundary Pressure
                   </Typography>
                 </Stack>
-                <Chip icon={<LockOutlinedIcon sx={{ fontSize: 14 }} />} label="Privacy Protected" size="small" variant="outlined" />
+                <Chip icon={<LockOutlinedIcon sx={{ fontSize: 14 }} />} label="Interactive Skin" size="small" variant="outlined" />
               </Stack>
 
-              <Stack spacing={2}>
-                <Box sx={{ p: 2, borderRadius: 3, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', maxWidth: '85%' }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                    Player in Game Chat
-                  </Typography>
-                  <Typography variant="body2">
-                    "Hey, you played great in that last match! Can you send me your private Discord tag so I can add you to our secret VIP squad?"
-                  </Typography>
-                </Box>
-
-                <Box sx={{ p: 2, borderRadius: 3, bgcolor: theme.palette.mode === 'dark' ? alpha('#60a5fa', 0.12) : alpha('#2563eb', 0.08), maxWidth: '85%', ml: 'auto' }}>
-                  <Typography variant="caption" color="primary.main" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                    Child Reflection Choice
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                    "Thanks! But I only chat in public game channels with people I don't know IRL."
-                  </Typography>
-                </Box>
-
-                <Box sx={{ p: 2, borderRadius: 3, border: `1px dashed ${theme.palette.primary.main}`, bgcolor: theme.palette.mode === 'dark' ? alpha('#34d399', 0.08) : alpha('#059669', 0.05) }}>
-                  <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
-                    <ForumOutlinedIcon color="secondary" sx={{ mt: 0.2 }} />
-                    <Box>
-                      <Typography variant="subtitle2" color="secondary.main" sx={{ fontWeight: 700 }}>
-                        Family Discussion Pause
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        How did setting that boundary feel? Notice how staying in public game channels keeps gaming fun while protecting your personal information.
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </Box>
-              </Stack>
+              <SkinRouter
+                renderSkin="chat"
+                scene={heroFixture.scene}
+                selection={{ selectedElementKeys: [heroFixture.safeElementKey] }}
+                onSelect={() => {}}
+                readOnly={true}
+                testId="hero-chat-preview"
+              />
             </Paper>
           </Box>
         </Stack>

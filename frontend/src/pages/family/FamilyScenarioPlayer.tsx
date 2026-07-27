@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { Alert, Box, Button, Chip, Container, Grid, Skeleton, Typography } from "@mui/material";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { CheckpointPause } from "@/components/family/CheckpointPause";
 import { ConversationGuideView } from "@/components/family/ConversationGuideView";
 import { HelpSeekingBeat } from "@/components/family/HelpSeekingBeat";
@@ -16,7 +16,6 @@ import {
   selectActiveCheckpoint,
   selectFamilyCapabilities,
   selectFamilyFindings,
-  selectFamilyMessages,
   selectFamilySession,
   selectFamilySessionStreamStatus,
   selectFlagAttemptPending,
@@ -52,6 +51,7 @@ export function FamilyScenarioPlayer() {
     return Number.isFinite(num) && num > 0 ? num : sessionIdParam;
   }, [sessionIdParam]);
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { data: detail, isLoading, isError, refetch } = useGetFamilySessionQuery(sessionId!, { skip: !sessionId });
   const [command, { isLoading: commandLoading }] = useCommandFamilySessionMutation();
   useFamilySessionEvents(sessionId, refetch);
@@ -64,7 +64,6 @@ export function FamilyScenarioPlayer() {
   const session = useAppSelector(selectFamilySession);
   const capabilities = useAppSelector(selectFamilyCapabilities);
   const streamStatus = useAppSelector(selectFamilySessionStreamStatus);
-  const allMessages = useAppSelector(selectFamilyMessages);
   const visibleMessages = useAppSelector(selectVisibleFamilyMessages);
   const highlightedMessageIds = useAppSelector(selectHighlightedMessageIds);
   const tagAssignments = useAppSelector(selectTagAssignments);
@@ -77,6 +76,7 @@ export function FamilyScenarioPlayer() {
   const [hintLevel, setHintLevel] = useState(0);
   const [companionNotice, setCompanionNotice] = useState<{ text: string; disclosure: boolean; resources: Array<{ label: string; href: string }> } | null>(null);
   const [showNewContent, setShowNewContent] = useState(false);
+  const [sessionInfoOpen, setSessionInfoOpen] = useState(false);
   const [selectedElementKey, setSelectedElementKey] = useState<string | null>(null);
   const [selectedElementKeys, setSelectedElementKeys] = useState<string[]>([]);
   // This UI-only history intentionally never enters the session state machine.
@@ -84,6 +84,7 @@ export function FamilyScenarioPlayer() {
   const sceneRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const priorVisibleCount = useRef(0);
+  const infoDismissalKey = session ? "safe_quest_session_info_dismissed_" + (session.public_id || session.id) : null;
 
   const handleAddCaregiverComment = async (text: string, elementKey?: string | null) => {
     if (!session || !text.trim()) return;
@@ -116,14 +117,20 @@ export function FamilyScenarioPlayer() {
         client_command_id: commandId(),
       }).unwrap();
       dispatch(familySessionReconciled(next));
+      if (kind === "reset" && next.session.public_id) navigate("/family/sessions/" + next.session.public_id, { replace: true });
+      return next;
     } catch {
       setActionError("This activity changed or could not be saved. Refreshing its current state lets you retry.");
       void refetch();
     }
-  }, [command, dispatch, refetch, session]);
+  }, [command, dispatch, navigate, refetch, session]);
 
   useEffect(() => {
     if (!session || commandLoading || activeCheckpoint) return;
+    if (capabilities?.can_start) {
+      const timer = window.setTimeout(() => void sendCommand("start"), 0);
+      return () => window.clearTimeout(timer);
+    }
     if (capabilities?.can_reveal_next) {
       const timer = window.setTimeout(() => void sendCommand("reveal_next"), 520);
       return () => window.clearTimeout(timer);
@@ -133,6 +140,16 @@ export function FamilyScenarioPlayer() {
       return () => window.clearTimeout(timer);
     }
   }, [activeCheckpoint, capabilities, commandLoading, sendCommand, session]);
+
+  useEffect(() => {
+    if (!infoDismissalKey) return;
+    setSessionInfoOpen(window.localStorage.getItem(infoDismissalKey) !== "dismissed");
+  }, [infoDismissalKey]);
+
+  const dismissSessionInfo = useCallback(() => {
+    if (infoDismissalKey) window.localStorage.setItem(infoDismissalKey, "dismissed");
+    setSessionInfoOpen(false);
+  }, [infoDismissalKey]);
 
   useEffect(() => {
     if (visibleMessages.length <= priorVisibleCount.current) {
@@ -275,6 +292,9 @@ export function FamilyScenarioPlayer() {
   if (isError) return <Alert severity="error" sx={{ m: 3 }} action={<Button color="inherit" size="small" onClick={() => void refetch()}>Retry</Button>}>This family session could not be loaded. Please retry.</Alert>;
   if (session.state === "completed") return <ConversationGuideView sessionId={session.id} />;
   if (session.state === "help_and_resources") return <HelpSeekingBeat category="oversharing" onContinue={() => void sendCommand("complete")} />;
+  if (session.state === "expired" || session.state === "abandoned") {
+    return <Alert severity="info" sx={{ m: 3 }}>This session is no longer active. Return to your scenarios to start a new attempt.</Alert>;
+  }
   if (session.state === "paused_for_support") {
     return (
       <Container maxWidth="md" sx={{ py: 6 }}>
@@ -320,8 +340,13 @@ export function FamilyScenarioPlayer() {
       checkpoint={checkpoint}
       title="Family Safety Scenario"
       state={session.state}
-      totalCount={allMessages.length}
+      revealedCount={detail?.progress.content_progress ?? visibleMessages.length}
+      totalCount={detail?.progress.content_total ?? visibleMessages.length}
       hintLevel={hintLevel}
+      hintMessage={hintNotice}
+      infoGuideOpen={sessionInfoOpen}
+      onInfoGuideOpen={() => setSessionInfoOpen(true)}
+      onInfoGuideClose={dismissSessionInfo}
       onHint={handleHint}
       onReset={handleReset}
       isResetting={commandLoading}
@@ -353,12 +378,6 @@ export function FamilyScenarioPlayer() {
       checkpointResponses={detail?.session ? [] : []}
       conversationGuide={null}
     >
-      {hintNotice && (
-        <Alert severity="info" onClose={() => setHintNotice(null)} sx={{ mt: 2, borderRadius: 2 }}>
-          {hintNotice}
-        </Alert>
-      )}
-
       <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center", flexWrap: "wrap", mt: 2 }}>
         <Typography color="text.secondary" variant="body2">
           Discuss, pause, and decide who could help together. There is no score or timer.

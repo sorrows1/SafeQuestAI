@@ -6,24 +6,15 @@ import StarBorderIcon from "@mui/icons-material/StarBorder";
 import SecurityIcon from "@mui/icons-material/Security";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { ActorAvatar, ElementAttachment, ElementLinkPreview, ElementTimestamp, InspectableElement, SafeMediaPlaceholder } from "./SelectableMessage";
-import { isSelected, type ScenarioSkinProps } from "./types";
-import { panelTargetFor } from "./SceneArtifactPanel";
+import { isCompleted, isSelected, type ScenarioSkinProps } from "./types";
 
-export function EmailSkin({ scene, selection, onSelect, readOnly, panelNavigation, testId }: ScenarioSkinProps) {
+export function EmailSkin({ scene, selection, onSelect, readOnly, testId }: ScenarioSkinProps) {
   const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor.display_name]));
   
   const headerElement = scene.elements.find((el) => el.element_type === "email_header" || el.presentation.subject);
   const appName = headerElement?.presentation.app_name || "Postbird Mail";
   const subjectText = headerElement?.presentation.subject || headerElement?.presentation.display_label || "Important Message";
   const securityNotice = headerElement?.presentation.security_notice;
-
-  const handleElementSelect = (elementKey: string) => {
-    onSelect(elementKey);
-    if (panelNavigation) {
-      const target = panelTargetFor(scene, elementKey);
-      if (target) panelNavigation.openPanel(target);
-    }
-  };
 
   return (
     <Paper
@@ -89,6 +80,13 @@ export function EmailSkin({ scene, selection, onSelect, readOnly, panelNavigatio
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.75, flexWrap: "wrap" }}>
           <Chip label="Inbox" size="small" color="primary" variant="outlined" sx={{ height: 22, fontSize: "0.7rem", fontWeight: 700 }} />
           <Chip label="Simulation Thread" size="small" sx={{ height: 22, fontSize: "0.7rem" }} />
+          <Chip
+            icon={<SecurityIcon sx={{ fontSize: "12px !important", color: "success.main !important" }} />}
+            label="Standard Encryption (TLS)"
+            size="small"
+            variant="outlined"
+            sx={{ height: 22, fontSize: "0.675rem", fontWeight: 600, ml: "auto" }}
+          />
         </Box>
       </Box>
 
@@ -131,7 +129,8 @@ export function EmailSkin({ scene, selection, onSelect, readOnly, panelNavigatio
                 key={element.element_key}
                 element={element}
                 selected={isSelected(element, selection)}
-                onSelect={handleElementSelect}
+                completed={isCompleted(element, selection)}
+                onSelect={onSelect}
                 readOnly={readOnly}
               >
                 <Paper

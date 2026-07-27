@@ -3,8 +3,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 import { describe, expect, it, vi } from "vitest";
 import { FamilyGameplayView } from "@/pages/family/FamilyGameplayView";
-import { SkinRouter } from "../SkinRouter";
-import { authenticCoreFixtures, fixtureMatrix } from "../fixtures/authenticCoreFixtures";
+import { SkinRouter, skinRegistry } from "../SkinRouter";
+import { authenticCoreFixtures, fixtureMatrix, type SkinFixture } from "../fixtures/authenticCoreFixtures";
+import type { FamilyScene, RenderSkin } from "@/types";
 import type { ScenePanelNavigation } from "../types";
 
 const theme = createTheme();
@@ -13,36 +14,82 @@ function renderThemed(node: React.ReactElement) {
   return render(<ThemeProvider theme={theme}>{node}</ThemeProvider>);
 }
 
-describe("authentic core fixture contracts", () => {
-  it("covers every registered skin and its visual test matrix", () => {
-    expect(Object.keys(authenticCoreFixtures).sort()).toEqual([
-      "chat", "email", "forum", "game_chat", "marketplace", "social_feed",
-    ]);
+const fixtureEntries = Object.entries(authenticCoreFixtures) as Array<[RenderSkin, SkinFixture]>;
+
+describe("Phase 5 skin registry contract", () => {
+  it("declares a versioned, responsive fixture for every registered skin", () => {
+    expect(Object.keys(authenticCoreFixtures).sort()).toEqual(Object.keys(skinRegistry).sort());
+    for (const [skin, fixture] of fixtureEntries) {
+      expect(skinRegistry[skin].version).toBe("1.0");
+      expect(skinRegistry[skin].responsiveModes).toEqual(["default", "compact"]);
+      expect(skinRegistry[skin].previewFixture).toBeTruthy();
+      expect(fixture.id).toBeTruthy();
+    }
     expect(fixtureMatrix.themes).toEqual(["light", "dark"]);
     expect(fixtureMatrix.viewports).toEqual(["mobile", "tablet", "desktop"]);
     expect(fixtureMatrix.interactionStates).toContain("validated_concern");
   });
 
-  it("selects stable server element keys across message, header, post field, attachment, and linked-site artifacts", () => {
-    const cases = [
-      ["chat", "chat-message"],
-      ["email", "email-subject"],
-      ["social_feed", "social-audience"],
-      ["email", "email-attachment"],
-      ["email", "email-link"],
-    ] as const;
-    for (const [skin, key] of cases) {
+  it("runs selection, keyboard, completed, and read-only behavior through every registry entry", () => {
+    for (const [skin, fixture] of fixtureEntries) {
       const select = vi.fn();
-      const fixture = authenticCoreFixtures[skin];
-      const { unmount } = renderThemed(
+      const { rerender, unmount } = renderThemed(
         <SkinRouter scene={fixture.scene} renderSkin={skin} selection={{ selectedElementKeys: [] }} onSelect={select} />,
       );
-      const target = screen.getByTestId(`scene-element-${key}`);
+      const target = screen.getByTestId(`scene-element-${fixture.safeElementKey}`);
       fireEvent.keyDown(target, { key: "Enter" });
-      expect(select).toHaveBeenCalledWith(key);
+      expect(select).toHaveBeenCalledWith(fixture.safeElementKey);
       expect(target.getAttribute("role")).toBe("button");
+
+      rerender(
+        <ThemeProvider theme={theme}>
+          <SkinRouter
+            scene={fixture.scene}
+            renderSkin={skin}
+            selection={{ selectedElementKeys: [], completedElementKeys: [fixture.safeElementKey] }}
+            onSelect={select}
+          />
+        </ThemeProvider>,
+      );
+      expect(screen.getByTestId("scene-element-" + fixture.safeElementKey).getAttribute("aria-label")).toMatch(/discussion completed/i);
+      expect(screen.getByText("DISCUSSION COMPLETED")).toBeTruthy();
+
+      rerender(
+        <ThemeProvider theme={theme}>
+          <SkinRouter scene={fixture.scene} renderSkin={skin} selection={{ selectedElementKeys: [] }} onSelect={select} readOnly />
+        </ThemeProvider>,
+      );
+      const readOnlyTarget = screen.getByTestId(`scene-element-${fixture.safeElementKey}`);
+      expect(readOnlyTarget.getAttribute("role")).toBeNull();
+      fireEvent.click(readOnlyTarget);
+      expect(select).toHaveBeenCalledTimes(1);
       unmount();
     }
+  });
+
+  it("uses the accessible fallback for unsupported versions and unsafe presentation tokens", () => {
+    const fixture = authenticCoreFixtures.chat;
+    const select = vi.fn();
+    const unsupportedVersion = { ...fixture.scene, skin_version: "2.0" } as unknown as FamilyScene;
+    const { rerender } = renderThemed(
+      <SkinRouter scene={unsupportedVersion} renderSkin="chat" selection={{ selectedElementKeys: [] }} onSelect={select} />,
+    );
+    expect(screen.getByRole("region", { name: "Generic scenario view" })).toBeTruthy();
+
+    const unsafeScene = {
+      ...fixture.scene,
+      elements: fixture.scene.elements.map((element) => element.element_key === "chat-link"
+        ? { ...element, presentation: { ...element.presentation, href: "https://example.invalid" } }
+        : element),
+    };
+    rerender(
+      <ThemeProvider theme={theme}>
+        <SkinRouter scene={unsafeScene} renderSkin="chat" selection={{ selectedElementKeys: [] }} onSelect={select} />
+      </ThemeProvider>,
+    );
+    expect(screen.getByRole("region", { name: "Generic scenario view" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByTestId("scene-element-chat-link"), { key: "Enter" });
+    expect(select).toHaveBeenCalledWith("chat-link");
   });
 
   it("keeps profile, attachment, and linked-site navigation contained while preserving selection keys", () => {

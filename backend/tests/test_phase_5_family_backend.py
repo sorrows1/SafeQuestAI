@@ -41,7 +41,7 @@ def test_player_schemas_exclude_answer_key_and_scoring_fields():
     assert set(PublishedScenarioOut.model_fields) == {
         "id", "title", "summary", "category", "render_skin", "difficulty", "tags",
         "learning_objectives", "message_count", "checkpoint_count", "published_at",
-        "supported_participation_modes",
+        "supported_participation_modes", "lifecycle", "session_ref",
     }
     prohibited = {"score", "grade", "accuracy", "mistakes", "is_grooming", "tactic_tags", "red_flag_spans"}
     assert prohibited.isdisjoint(ConversationGuideOut.model_fields)

@@ -40,7 +40,7 @@ def upgrade() -> None:
     op.create_index("ix_curated_scene_elements_transcript_id", "curated_scene_elements", ["transcript_id"])
 
     with op.batch_alter_table("red_flag_spans") as batch:
-        batch.add_column(sa.Column("scene_element_id", sa.Integer(), sa.ForeignKey("curated_scene_elements.id"), nullable=True))
+        batch.add_column(sa.Column("scene_element_id", sa.Integer(), sa.ForeignKey("curated_scene_elements.id", name="fk_red_flag_spans_scene_element_id"), nullable=True))
         batch.add_column(sa.Column("child_safe_explanation", sa.Text(), nullable=True))
         batch.add_column(sa.Column("tiered_hints", sa.JSON(), nullable=True))
     op.create_index("ix_red_flag_spans_scene_element_id", "red_flag_spans", ["scene_element_id"])
@@ -49,7 +49,7 @@ def upgrade() -> None:
         batch.add_column(sa.Column("state", sa.String(length=40), nullable=False, server_default="in_progress"))
         batch.add_column(sa.Column("state_version", sa.Integer(), nullable=False, server_default="1"))
         batch.add_column(sa.Column("active_checkpoint_element_key", sa.String(length=255), nullable=True))
-        batch.add_column(sa.Column("participation_turn_user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=True))
+        batch.add_column(sa.Column("participation_turn_user_id", sa.Integer(), sa.ForeignKey("users.id", name="fk_family_sessions_participation_turn_user_id"), nullable=True))
         batch.add_column(sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True))
 
     op.create_table(

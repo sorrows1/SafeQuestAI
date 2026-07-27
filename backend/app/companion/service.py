@@ -118,7 +118,7 @@ def deterministic_attempt_feedback(*, is_concerning: bool, explanations: Sequenc
         "reasoning_assessment": "You are practicing looking for details and thinking about safe next steps.",
         "red_flag_result": is_concerning,
         "explanation": explanation,
-        "tactic_tags": list(allowed_tags) if is_concerning else [],
+        "tactic_tags": list(dict.fromkeys(allowed_tags)) if is_concerning else [],
         "next_hint_or_action": "Consider what you could say or do next, including asking a trusted adult for help.",
         "response_text": f"{result} {explanation} Consider a safe next step or a trusted adult who could help.",
         "claim": claim,
@@ -146,7 +146,7 @@ async def generate_attempt_feedback(
     # Curator facts always win, even if a provider produces conflicting JSON.
     payload = parsed.model_dump()
     payload["red_flag_result"] = is_concerning
-    payload["tactic_tags"] = [tag for tag in parsed.tactic_tags if tag in allowed_tags] if is_concerning else []
+    payload["tactic_tags"] = list(dict.fromkeys(tag for tag in parsed.tactic_tags if tag in allowed_tags)) if is_concerning else []
     payload["response_text"] = redact_personal_info(payload["response_text"].strip())
     payload["fallback"] = False
     return payload

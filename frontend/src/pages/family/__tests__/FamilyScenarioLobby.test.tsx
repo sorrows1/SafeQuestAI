@@ -11,6 +11,7 @@ vi.mock('@/store/api', () => ({
   safeQuestApi: { reducerPath: 'safeQuestApi', reducer: (s = {}) => s, middleware: () => (next: any) => (action: any) => next(action) },
   useGetFamilyScenariosQuery: (...args: unknown[]) => mocked.query(...args),
   useCreateFamilySessionMutation: () => [mocked.create, { isLoading: false, error: null }],
+  useRestartFamilySessionMutation: () => [mocked.create, { isLoading: false, error: null }],
   useGetFamilyRelationshipsQuery: () => ({ data: [], isLoading: false }),
   useCreateFamilyInvitationMutation: () => [vi.fn(), { isLoading: false, error: null }],
 }));
@@ -28,6 +29,8 @@ const scenario = {
   checkpoint_count: 1,
   published_at: '2026-07-25T00:00:00Z',
   supported_participation_modes: ['with_parent', 'with_companion'],
+  lifecycle: 'not_started' as const,
+  session_ref: null,
 };
 
 const renderLobby = (route = '/') =>
@@ -52,7 +55,7 @@ describe('FamilyScenarioLobby Container', () => {
   it('shows a retryable error and a prepared-library state', () => {
     mocked.query.mockReturnValue({ data: undefined, isLoading: false, isFetching: false, isError: true, refetch: vi.fn() });
     renderLobby();
-    expect(screen.getByRole('button', { name: /try again/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /retry connection/i })).toBeTruthy();
     mocked.query.mockReturnValue({
       data: { items: [], total: 0, page: 1, limit: 12 },
       isLoading: false,
@@ -61,7 +64,7 @@ describe('FamilyScenarioLobby Container', () => {
       refetch: vi.fn(),
     });
     renderLobby();
-    expect(screen.getByText(/being prepared/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /reviewed scenarios coming soon/i })).toBeTruthy();
   });
 
   it('restores single and multi-select filters from a shareable URL', () => {
@@ -88,9 +91,9 @@ describe('FamilyScenarioLobby Container', () => {
       refetch: vi.fn(),
     });
     renderLobby();
-    fireEvent.click(screen.getByRole('button', { name: /learn more about a private prize/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start scenario for a private prize/i }));
     expect(screen.getByRole('dialog')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /start solo activity/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /start practice/i })).toBeTruthy();
   });
 
   it('displays participation choices including solo companion, family invite, and join session', () => {
@@ -102,13 +105,49 @@ describe('FamilyScenarioLobby Container', () => {
       refetch: vi.fn(),
     });
     renderLobby();
-    fireEvent.click(screen.getByRole('button', { name: /learn more about a private prize/i }));
-    expect(screen.getByText(/solo activity with ai companion/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /start scenario for a private prize/i }));
+    expect(screen.getByText(/practice with ai companion/i)).toBeTruthy();
     expect(screen.getByText(/invite family member/i)).toBeTruthy();
     expect(screen.getByText(/join active session/i)).toBeTruthy();
   });
 
-  it('creates session and navigates to session player route when start solo is clicked', async () => {
+  it('routes Continue directly to the active opaque session reference', () => {
+    mocked.query.mockReturnValue({
+      data: { items: [{ ...scenario, lifecycle: 'active', session_ref: 'fs_active' }], total: 1, page: 1, limit: 12 },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderLobby('/family/scenarios');
+    fireEvent.click(screen.getByRole('button', { name: /continue practice for a private prize/i }));
+
+    expect(screen.getByText('Player Session View')).toBeTruthy();
+    expect(mocked.create).not.toHaveBeenCalled();
+  });
+
+  it('uses the explicit fresh-attempt endpoint for a completed scenario', async () => {
+    mocked.query.mockReturnValue({
+      data: { items: [{ ...scenario, lifecycle: 'completed', session_ref: 'fs_finished' }], total: 1, page: 1, limit: 12 },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    mocked.create.mockReturnValue({ unwrap: () => Promise.resolve({ id: 100, public_id: 'fs_restart', transcript_id: 1 }) });
+
+    renderLobby('/family/scenarios');
+    fireEvent.click(screen.getByRole('button', { name: /restart fresh attempt for a private prize/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start fresh attempt/i }));
+
+    await waitFor(() => {
+      expect(mocked.create).toHaveBeenCalledWith({ transcriptId: 1, prior_session_ref: 'fs_finished' });
+      expect(screen.getByText('Player Session View')).toBeTruthy();
+    });
+  });
+
+  it('creates session and navigates to session player route when start practice is clicked', async () => {
     mocked.query.mockReturnValue({
       data: { items: [scenario], total: 1, page: 1, limit: 12 },
       isLoading: false,
@@ -119,8 +158,8 @@ describe('FamilyScenarioLobby Container', () => {
     mocked.create.mockReturnValue({ unwrap: () => Promise.resolve({ id: 's_999', transcript_id: 1 }) });
 
     renderLobby('/family/scenarios');
-    fireEvent.click(screen.getByRole('button', { name: /learn more about a private prize/i }));
-    fireEvent.click(screen.getByRole('button', { name: /start solo activity/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start scenario for a private prize/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start practice/i }));
     fireEvent.click(screen.getByRole('button', { name: /start session/i }));
 
     await waitFor(() => {

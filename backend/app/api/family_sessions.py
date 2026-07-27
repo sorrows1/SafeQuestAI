@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 import secrets
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
@@ -41,6 +43,7 @@ from app.models.schemas import (
     CheckpointResponseRequest,
     ConversationGuideOut,
     CreateFamilySessionRequest,
+    RestartFamilySessionRequest,
     FamilyMessageOut,
     FamilyRole,
     FamilySceneOut,
@@ -67,6 +70,11 @@ from app.models.schemas import (
     PublishedScenarioPageOut,
     RenderSkin,
     ScenarioCategory,
+    ScenarioLifecycle,
+    TERMINAL_FAMILY_SESSION_STATES,
+    catalog_lifecycle_for_states,
+    is_non_terminal_family_session_state,
+    is_terminal_family_session_state,
 )
 
 router = APIRouter(prefix="/api/family", tags=["Family Sessions"])
@@ -74,6 +82,20 @@ router = APIRouter(prefix="/api/family", tags=["Family Sessions"])
 
 PRESENCE_TTL = timedelta(seconds=90)
 EPHEMERAL_EVENT_TTL = timedelta(minutes=2)
+
+# A caregiver may observe, add anchored discussion notes, and contribute a
+# shared checkpoint reflection. The learner alone advances or finishes the
+# activity, regardless of any client-provided role or capability claim.
+LEARNER_OWNED_COMMANDS = {
+    FamilySessionCommandType.START,
+    FamilySessionCommandType.REVEAL_NEXT,
+    FamilySessionCommandType.CONTINUE_CHECKPOINT,
+    FamilySessionCommandType.ENTER_COMPLETION_REVIEW,
+    FamilySessionCommandType.ACKNOWLEDGE_COMPLETION,
+    FamilySessionCommandType.OPEN_HELP,
+    FamilySessionCommandType.COMPLETE,
+    FamilySessionCommandType.RESET,
+}
 
 
 def _shared_state_payload(session: FamilySession) -> dict[str, object]:
@@ -264,7 +286,51 @@ def _load_session(session_id: int | str, current_user: User, db: Session) -> Fam
     return session
 
 
-def _published_scenario_out(transcript: CuratedTranscript, db: Session) -> PublishedScenarioOut:
+def _active_learner_session(transcript_id: int, learner_id: int, db: Session) -> FamilySession | None:
+    """The one non-terminal attempt allowed for this learner and scenario."""
+    return db.query(FamilySession).filter(
+        FamilySession.child_user_id == learner_id,
+        FamilySession.transcript_id == transcript_id,
+        FamilySession.state.notin_(TERMINAL_FAMILY_SESSION_STATES),
+    ).order_by(FamilySession.updated_at.desc(), FamilySession.id.desc()).first()
+
+
+def _latest_terminal_learner_session(transcript_id: int, learner_id: int, db: Session) -> FamilySession | None:
+    return db.query(FamilySession).filter(
+        FamilySession.child_user_id == learner_id,
+        FamilySession.transcript_id == transcript_id,
+        FamilySession.state.in_(TERMINAL_FAMILY_SESSION_STATES),
+    ).order_by(FamilySession.updated_at.desc(), FamilySession.id.desc()).first()
+
+
+def _catalog_lifecycle_by_transcript(
+    transcript_ids: list[int], current_user: User | None, db: Session,
+) -> dict[int, tuple[ScenarioLifecycle, str | None]]:
+    """Derive catalog actions from learner-owned durable attempts only."""
+    if not transcript_ids or not current_user or current_user.id is None:
+        return {transcript_id: (ScenarioLifecycle.NOT_STARTED, None) for transcript_id in transcript_ids}
+    rows = db.query(FamilySession).filter(
+        FamilySession.child_user_id == current_user.id,
+        FamilySession.transcript_id.in_(transcript_ids),
+    ).order_by(FamilySession.updated_at.desc(), FamilySession.id.desc()).all()
+    by_transcript: dict[int, list[FamilySession]] = {transcript_id: [] for transcript_id in transcript_ids}
+    for row in rows:
+        by_transcript.setdefault(row.transcript_id, []).append(row)
+    result: dict[int, tuple[ScenarioLifecycle, str | None]] = {}
+    for transcript_id, attempts in by_transcript.items():
+        active = next((attempt for attempt in attempts if is_non_terminal_family_session_state(attempt.state)), None)
+        lifecycle = ScenarioLifecycle(catalog_lifecycle_for_states(attempt.state for attempt in attempts))
+        chosen = active or (attempts[0] if attempts else None)
+        result[transcript_id] = (lifecycle, chosen.public_id if chosen else None)
+    return result
+
+
+def _published_scenario_out(
+    transcript: CuratedTranscript,
+    db: Session,
+    lifecycle: ScenarioLifecycle = ScenarioLifecycle.NOT_STARTED,
+    session_ref: str | None = None,
+) -> PublishedScenarioOut:
     """Return only frozen, reviewed metadata; never re-read authoring content."""
     snapshot = transcript.public_metadata_snapshot or {}
     category = str(snapshot.get("category") or transcript.category)
@@ -285,6 +351,7 @@ def _published_scenario_out(transcript: CuratedTranscript, db: Session) -> Publi
         checkpoint_count=checkpoint_count,
         published_at=_timestamp(transcript.published_at) or _timestamp(transcript.reviewed_at) or "",
         supported_participation_modes=["with_parent", "with_companion"],
+        lifecycle=lifecycle, session_ref=session_ref,
     )
 
 
@@ -300,11 +367,12 @@ def list_scenarios(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    # The library is intentionally assembled from curated transcript snapshots.
-    # Filtering in Python keeps JSON handling portable across SQLite/PostgreSQL.
-    items = [_published_scenario_out(item, db) for item in db.query(CuratedTranscript).filter(
-        CuratedTranscript.is_published.is_(True)
-    ).all()]
+    transcripts = db.query(CuratedTranscript).filter(CuratedTranscript.is_published.is_(True)).all()
+    lifecycle_by_transcript = _catalog_lifecycle_by_transcript([item.id for item in transcripts], _, db)
+    items = [
+        _published_scenario_out(item, db, *lifecycle_by_transcript[item.id])
+        for item in transcripts
+    ]
     normalized_search = (search or "").strip().casefold()
     if normalized_search:
         items = [item for item in items if normalized_search in f"{item.title} {item.summary}".casefold()]
@@ -342,13 +410,54 @@ def get_scenario_detail(
     ).first()
     if not transcript:
         raise HTTPException(status_code=404, detail="Published scenario not found")
-    return _published_scenario_out(transcript, db)
+    lifecycle, session_ref = _catalog_lifecycle_by_transcript([transcript.id], _, db)[transcript.id]
+    return _published_scenario_out(transcript, db, lifecycle, session_ref)
+
+
+def _new_attempt(
+    transcript: CuratedTranscript,
+    learner_id: int,
+    caregiver_id: int | None,
+    db: Session,
+    *,
+    previous_session: FamilySession | None = None,
+) -> FamilySession:
+    session = FamilySession(
+        public_id=f"fs_{secrets.token_urlsafe(18)}", owner_user_id=learner_id,
+        transcript_id=transcript.id, child_user_id=learner_id, parent_user_id=caregiver_id,
+        companion_mode=caregiver_id is None, state="waiting_for_participants" if caregiver_id else "in_progress",
+        revealed_up_to=-1, participation_turn_user_id=learner_id,
+        attempt_number=(previous_session.attempt_number + 1) if previous_session else 1,
+        previous_session_id=previous_session.id if previous_session else None,
+    )
+    db.add(session)
+    db.flush()
+    now = datetime.now(timezone.utc)
+    learner = FamilySessionParticipant(
+        family_session_id=session.id, user_id=learner_id, role="learner",
+        last_seen_at=now, last_heartbeat_at=now, presence_expires_at=now + PRESENCE_TTL, presence_status="online",
+    )
+    db.add(learner)
+    db.flush()
+    _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED, {"member_ref": member_ref(learner_id), "role": "learner"}, actor_participant=learner)
+    _emit_event(db, session, FamilySessionEventType.PARTICIPANT_PRESENCE, {"member_ref": member_ref(learner_id), "status": "online"}, actor_participant=learner)
+    if caregiver_id is not None:
+        db.add(FamilySessionParticipant(family_session_id=session.id, user_id=caregiver_id, role="caregiver", presence_status="offline"))
+    eligible = db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == transcript.id).count()
+    db.add(SessionProgress(family_session_id=session.id, eligible_target_count=eligible, required_finding_count=eligible))
+    return session
+
+
+def _resume_active_attempt(response: Response, active: FamilySession) -> FamilySessionOut:
+    response.status_code = status.HTTP_200_OK
+    return _session_out(active)
 
 
 @router.post("/scenarios/{transcript_id}/sessions", response_model=FamilySessionOut, status_code=status.HTTP_201_CREATED)
 def create_session(
     transcript_id: int,
     body: CreateFamilySessionRequest,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -357,6 +466,12 @@ def create_session(
     ).first()
     if not transcript:
         raise HTTPException(status_code=404, detail="Published scenario not found")
+    active = _active_learner_session(transcript.id, current_user.id, db)
+    if active:
+        return _resume_active_attempt(response, active)
+    prior = _latest_terminal_learner_session(transcript.id, current_user.id, db)
+    if prior:
+        raise HTTPException(status_code=409, detail={"code": "restart_required", "session_ref": prior.public_id})
     if body.relationship_ref:
         require_feature(FeatureFlag.RELATIONSHIPS)
     else:
@@ -366,33 +481,62 @@ def create_session(
     caregiver_id = relationship.caregiver_user_id if relationship else None
     if relationship and relationship.learner_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the learner may start a shared family session")
-    session = FamilySession(
-        public_id=f"fs_{secrets.token_urlsafe(18)}", owner_user_id=current_user.id,
-        transcript_id=transcript.id, child_user_id=current_user.id, parent_user_id=caregiver_id,
-        companion_mode=caregiver_id is None, state="waiting_for_participants" if caregiver_id else "in_progress",
-        participation_turn_user_id=current_user.id,
-    )
-    db.add(session)
-    db.flush()
-    now = datetime.now(timezone.utc)
-    learner = FamilySessionParticipant(
-        family_session_id=session.id, user_id=current_user.id, role="learner",
-        last_seen_at=now, last_heartbeat_at=now, presence_expires_at=now + PRESENCE_TTL, presence_status="online",
-    )
-    db.add(learner)
-    db.flush()
-    _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED, {"member_ref": member_ref(current_user.id), "role": "learner"}, actor_participant=learner)
-    _emit_event(db, session, FamilySessionEventType.PARTICIPANT_PRESENCE, {"member_ref": member_ref(current_user.id), "status": "online"}, actor_participant=learner)
-    if caregiver_id is not None:
-        db.add(FamilySessionParticipant(family_session_id=session.id, user_id=caregiver_id, role="caregiver", presence_status="offline"))
-    eligible = db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == transcript.id).count()
-    content_count = db.query(CuratedSceneElement).filter(CuratedSceneElement.transcript_id == transcript.id).count()
-    db.add(SessionProgress(family_session_id=session.id, eligible_target_count=eligible, required_finding_count=eligible, content_progress=content_count))
-    db.commit()
+    session = _new_attempt(transcript, current_user.id, caregiver_id, db)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        active = _active_learner_session(transcript.id, current_user.id, db)
+        if active:
+            return _resume_active_attempt(response, active)
+        raise
     db.refresh(session)
     telemetry_record("family.session.transition", status="created", channel="family" if caregiver_id else "solo")
     return _session_out(session)
 
+
+@router.post("/scenarios/{transcript_id}/sessions/restart", response_model=FamilySessionOut, status_code=status.HTTP_201_CREATED)
+def restart_session(
+    transcript_id: int,
+    body: RestartFamilySessionRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    transcript = db.query(CuratedTranscript).filter(
+        CuratedTranscript.id == transcript_id, CuratedTranscript.is_published.is_(True)
+    ).first()
+    if not transcript:
+        raise HTTPException(status_code=404, detail="Published scenario not found")
+    active = _active_learner_session(transcript.id, current_user.id, db)
+    if active:
+        return _resume_active_attempt(response, active)
+    prior = db.query(FamilySession).filter(
+        FamilySession.public_id == body.prior_session_ref,
+        FamilySession.transcript_id == transcript.id,
+        FamilySession.child_user_id == current_user.id,
+        FamilySession.state.in_(TERMINAL_FAMILY_SESSION_STATES),
+    ).first()
+    if not prior:
+        raise HTTPException(status_code=404, detail="Completed family session not found")
+    caregiver_member = db.query(FamilySessionParticipant).filter(
+        FamilySessionParticipant.family_session_id == prior.id,
+        FamilySessionParticipant.role == "caregiver",
+        FamilySessionParticipant.left_at.is_(None),
+    ).first()
+    caregiver_id = caregiver_member.user_id if caregiver_member else None
+    session = _new_attempt(transcript, current_user.id, caregiver_id, db, previous_session=prior)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        active = _active_learner_session(transcript.id, current_user.id, db)
+        if active:
+            return _resume_active_attempt(response, active)
+        raise
+    db.refresh(session)
+    telemetry_record("family.session.transition", command="restart", status="created")
+    return _session_out(session)
 
 
 def _completion_ready(session: FamilySession, db: Session) -> bool:
@@ -400,21 +544,52 @@ def _completion_ready(session: FamilySession, db: Session) -> bool:
     if last_sequence is None or session.revealed_up_to < last_sequence[0] or session.active_checkpoint_element_key:
         return False
     checkpoint_ids = {row[0] for row in db.query(CuratedMessage.id).filter(CuratedMessage.transcript_id == session.transcript_id, CuratedMessage.is_checkpoint.is_(True)).all()}
-    answered_ids = {row[0] for row in db.query(CheckpointResponse.checkpoint_message_id).filter(CheckpointResponse.family_session_id == session.id).all()}
+    answered_ids = {row[0] for row in db.query(CheckpointResponse.checkpoint_message_id).filter(
+        CheckpointResponse.family_session_id == session.id,
+        CheckpointResponse.responder_role == ParticipantRole.CHILD.value,
+    ).all()}
     return checkpoint_ids.issubset(answered_ids)
 
 
 def _progress_out(session: FamilySession, db: Session) -> SessionProgressOut:
+    """Derive learner-visible progress from durable scene and response state.
+
+    ``SessionProgress`` remains a denormalized record for reporting, but it is
+    never the authority for how much content a learner has actually seen.
+    """
     progress = db.get(SessionProgress, session.id)
-    ready = _completion_ready(session, db)
+    content_total = db.query(CuratedSceneElement).filter(
+        CuratedSceneElement.transcript_id == session.transcript_id,
+        CuratedSceneElement.selectable.is_(True),
+    ).count()
+    content_revealed = db.query(CuratedSceneElement).filter(
+        CuratedSceneElement.transcript_id == session.transcript_id,
+        CuratedSceneElement.selectable.is_(True),
+        CuratedSceneElement.sequence <= session.revealed_up_to,
+    ).count()
+    checkpoint_total = db.query(CuratedMessage).filter(
+        CuratedMessage.transcript_id == session.transcript_id,
+        CuratedMessage.is_checkpoint.is_(True),
+    ).count()
+    checkpoint_complete = db.query(CheckpointResponse.checkpoint_message_id).filter(
+        CheckpointResponse.family_session_id == session.id,
+        CheckpointResponse.responder_role == ParticipantRole.CHILD.value,
+    ).distinct().count()
+    if progress:
+        progress.reviewed_element_count = content_revealed
+        progress.content_progress = content_revealed
+        progress.checkpoint_progress = checkpoint_complete
+        progress.completion_ready = _completion_ready(session, db)
     return SessionProgressOut(
-        reviewed_element_count=progress.reviewed_element_count if progress else 0,
+        reviewed_element_count=content_revealed,
         validated_finding_count=progress.validated_finding_count if progress else 0,
         eligible_target_count=progress.eligible_target_count if progress else 0,
         required_finding_count=progress.required_finding_count if progress else 0,
-        checkpoint_progress=progress.checkpoint_progress if progress else 0,
-        content_progress=progress.content_progress if progress else 0,
-        completion_ready=ready,
+        checkpoint_progress=checkpoint_complete,
+        checkpoint_total=checkpoint_total,
+        content_progress=content_revealed,
+        content_total=content_total,
+        completion_ready=_completion_ready(session, db),
     )
 
 
@@ -448,11 +623,22 @@ def _findings_out(session: FamilySession, db: Session) -> list[ValidatedFindingO
     ).join(RedFlagSpan, RedFlagSpan.id == ValidatedFinding.red_flag_span_id).filter(
         ValidatedFinding.family_session_id == session.id
     ).order_by(ValidatedFinding.discovered_at, ValidatedFinding.id).all()
-    return [ValidatedFindingOut(
-        element_key=element.element_key, annotation_id=span.id, tactic_tag=span.tactic_tag,
-        explanation=span.child_safe_explanation, discovered_at=_timestamp(finding.discovered_at) or "",
-        visibility=finding.visibility,
-    ) for finding, element, span in rows]
+    grouped: dict[str, dict] = {}
+    for finding, element, span in rows:
+        explanation = " ".join((span.child_safe_explanation or "").split())
+        normalized = span.tactic_tag.strip().casefold() + "\n" + explanation.casefold()
+        insight_key = sha256(normalized.encode("utf-8")).hexdigest()[:24]
+        group = grouped.setdefault(insight_key, {
+            "element_key": element.element_key, "annotation_id": span.id,
+            "tactic_tag": span.tactic_tag, "explanation": span.child_safe_explanation,
+            "element_keys": [], "annotation_ids": [],
+            "discovered_at": _timestamp(finding.discovered_at) or "", "visibility": finding.visibility,
+        })
+        if element.element_key not in group["element_keys"]:
+            group["element_keys"].append(element.element_key)
+        if span.id not in group["annotation_ids"]:
+            group["annotation_ids"].append(span.id)
+    return [ValidatedFindingOut(insight_key=key, **item) for key, item in grouped.items()]
 
 
 def _session_detail_out(session: FamilySession, current_user: User, db: Session) -> FamilySessionDetailOut:
@@ -474,12 +660,13 @@ def _session_detail_out(session: FamilySession, current_user: User, db: Session)
     progress = _progress_out(session, db)
     review_acknowledged = session.completion_acknowledged_at is not None
     capabilities = FamilySessionCapabilitiesOut(
+        can_start=active and is_learner and owns_turn and session.state == "waiting_for_participants",
         can_reveal_next=active and is_learner and owns_turn and session.state == "in_progress" and session.active_checkpoint_element_key is None and next_element_exists,
         can_continue_checkpoint=active and is_learner and owns_turn and session.state == "checkpoint" and session.active_checkpoint_element_key is not None,
         can_enter_completion_review=active and is_learner and owns_turn and session.state == "in_progress" and progress.completion_ready,
-        can_acknowledge_completion=session.state == "completion_review" and not review_acknowledged,
-        can_open_help=session.state == "completion_review" and review_acknowledged,
-        can_complete=session.state in {"completion_review", "help_and_resources"} and review_acknowledged,
+        can_acknowledge_completion=is_learner and owns_turn and session.state == "completion_review" and not review_acknowledged,
+        can_open_help=is_learner and owns_turn and session.state == "completion_review" and review_acknowledged,
+        can_complete=is_learner and owns_turn and session.state in {"completion_review", "help_and_resources"} and review_acknowledged,
         can_reset=active and is_learner and owns_turn,
         can_submit_flag_attempt=is_enabled(FeatureFlag.FLAG_ATTEMPTS) and active and session.state in {"in_progress", "checkpoint"},
         can_request_hint=is_enabled(FeatureFlag.FLAG_ATTEMPTS) and active and is_learner and session.state in {"in_progress", "checkpoint"},
@@ -767,6 +954,9 @@ def command_session(
     current_user: User = Depends(get_current_user),
 ):
     session = _load_session(session_id, current_user, db)
+    # The version check only protects concurrent commands when paired with a
+    # row lock. The command ledger still makes retries return the first result.
+    session = db.query(FamilySession).filter(FamilySession.id == session.id).with_for_update().one()
     existing = db.query(FamilySessionCommand).filter(
         FamilySessionCommand.family_session_id == session.id,
         FamilySessionCommand.client_command_id == body.client_command_id,
@@ -785,12 +975,7 @@ def command_session(
     target = session
     now = datetime.now(timezone.utc)
     actor_participant = session_participant(session, current_user.id, db)
-    learner_turn_commands = {
-        FamilySessionCommandType.START, FamilySessionCommandType.REVEAL_NEXT,
-        FamilySessionCommandType.CONTINUE_CHECKPOINT, FamilySessionCommandType.ENTER_COMPLETION_REVIEW,
-        FamilySessionCommandType.RESET,
-    }
-    if command in learner_turn_commands and (
+    if command in LEARNER_OWNED_COMMANDS and (
         current_user.id != session.child_user_id
         or current_user.id != (session.participation_turn_user_id or session.child_user_id)
     ):
@@ -872,8 +1057,8 @@ def command_session(
             _stale_state(session, current_user, db, "Acknowledge completion review before finishing")
         _complete_session(session, db, actor_participant)
     elif command is FamilySessionCommandType.RESET:
-        if session.state in {"paused_for_support", "expired"}:
-            _stale_state(session, current_user, db, "This session cannot be reset from its current state")
+        if is_terminal_family_session_state(session.state):
+            _stale_state(session, current_user, db, "Completed attempts must be restarted from the scenario catalog")
         session.state = "abandoned"
         session.archived_at = now
         session.state_version += 1
@@ -886,6 +1071,7 @@ def command_session(
             companion_mode=session.companion_mode,
             detective_mode=session.detective_mode,
             state="in_progress",
+            revealed_up_to=-1,
             attempt_number=session.attempt_number + 1,
             previous_session_id=session.id,
         )
@@ -894,8 +1080,7 @@ def command_session(
         for member in db.query(FamilySessionParticipant).filter(FamilySessionParticipant.family_session_id == session.id).all():
             db.add(FamilySessionParticipant(family_session_id=target.id, user_id=member.user_id, role=member.role))
         eligible = db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == target.transcript_id).count()
-        content_count = db.query(CuratedSceneElement).filter(CuratedSceneElement.transcript_id == target.transcript_id).count()
-        db.add(SessionProgress(family_session_id=target.id, eligible_target_count=eligible, required_finding_count=eligible, content_progress=content_count))
+        db.add(SessionProgress(family_session_id=target.id, eligible_target_count=eligible, required_finding_count=eligible))
 
     if target is session:
         if command is FamilySessionCommandType.REVEAL_NEXT:

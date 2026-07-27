@@ -1,4 +1,4 @@
-import { AppBar, Toolbar, Box, IconButton, Typography, Tooltip, Chip } from '@mui/material';
+import { AppBar, Toolbar, Box, IconButton, Button, Typography, Tooltip, Chip } from '@mui/material';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -31,11 +31,16 @@ export function TopBar({ onReload }: Props) {
               </IconButton>
             </Tooltip>
           )}
-          <Tooltip title={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-            <IconButton size="small" onClick={() => dispatch(toggleTheme())}>
-              {themeMode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => dispatch(toggleTheme())}
+            startIcon={themeMode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+            aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} theme mode`}
+            sx={{ borderRadius: '20px', px: 1.5, py: 0.5, fontSize: '0.8125rem', fontWeight: 600 }}
+          >
+            {themeMode === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          </Button>
         </Box>
       </Toolbar>
     </AppBar>

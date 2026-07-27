@@ -14,7 +14,6 @@ describe('familySessionSlice', () => {
       familySessionStarted({
         id: 101,
         transcript_id: 2,
-        parent_user_id: null,
         companion_mode: true,
         detective_mode: false,
         started_at: '2026-07-25T00:00:00Z',

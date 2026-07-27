@@ -59,7 +59,12 @@ export interface FamilyGameplayViewProps {
   title?: string;
   category?: string;
   state?: string;
+  revealedCount?: number;
   totalCount?: number;
+  hintMessage?: string | null;
+  infoGuideOpen?: boolean;
+  onInfoGuideOpen?: () => void;
+  onInfoGuideClose?: () => void;
   scenarioDescription?: string;
   hintLevel?: number;
   onHint?: () => void;
@@ -128,7 +133,12 @@ export function FamilyGameplayView({
   title = 'Family Safety Scenario',
   category,
   state = 'active',
+  revealedCount = messages.length,
   totalCount = messages.length,
+  hintMessage = null,
+  infoGuideOpen,
+  onInfoGuideOpen,
+  onInfoGuideClose,
   scenarioDescription,
   hintLevel = 0,
   onHint,
@@ -172,7 +182,10 @@ export function FamilyGameplayView({
   const semanticScene: FamilyScene = scene ?? {
     scene_schema_version: 1, skin_version: "1.0", render_skin: renderSkin, elements: messages.map((message) => ({ element_key: "legacy-" + message.id, element_type: "message", parent_element_key: null, source_message_id: message.id, sequence: message.sequence, content: message.content, presentation: {}, selectable: true, accessible_label: "Message from " + message.speaker_label, semantic_role: "article" })), messages,
   };
-  const [guideOpen, setGuideOpen] = useState(false);
+  const [internalGuideOpen, setInternalGuideOpen] = useState(false);
+  const guideOpen = infoGuideOpen ?? internalGuideOpen;
+  const openGuide = () => { setInternalGuideOpen(true); onInfoGuideOpen?.(); };
+  const closeGuide = () => { setInternalGuideOpen(false); onInfoGuideClose?.(); };
   const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
   const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
   const [reviewSceneDismissed, setReviewSceneDismissed] = useState(false);
@@ -198,6 +211,10 @@ export function FamilyGameplayView({
       ? selectedElementKeys
       : highlightedMessageIds.map((id) => "legacy-" + id);
 
+  const completedElementKeys = validatedFindings.flatMap((finding) =>
+    finding.element_keys?.length ? finding.element_keys : [finding.element_key],
+  );
+
   const handleSelectElementInternal = (elementKey: string) => {
     onSelectElement(elementKey);
     const panelTarget = panelTargetFor(semanticScene, elementKey);
@@ -211,21 +228,22 @@ export function FamilyGameplayView({
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3 } }}>
+    <Container maxWidth="xl" sx={{ py: { xs: 1, sm: 2 }, px: { xs: 1, sm: 2.5 }, height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* 1. Top Mission Bar */}
       <GameplayMissionBar
         title={title}
         category={category}
         renderSkin={renderSkin}
         state={state}
-        revealedCount={messages.length}
+        revealedCount={revealedCount}
         totalCount={totalCount}
         highlightedCount={highlightedMessageIds.length}
         hintLevel={hintLevel}
+        hintMessage={hintMessage}
         turnRole={turnRole}
         onHint={onHint ?? (() => {})}
         onReset={onReset ?? (() => {})}
-        onOpenGuide={() => setGuideOpen(true)}
+        onOpenGuide={openGuide}
         onToggleMobileInspector={() => setMobileInspectorOpen(true)}
         isResetting={isResetting}
       />
@@ -242,18 +260,23 @@ export function FamilyGameplayView({
       />
 
       {/* 2. Main Responsive Layout (Scenario on Left, Inspector Rail on Right) */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: 3, alignItems: 'start' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: { xs: 1.5, sm: 2.5 }, alignItems: 'start', flex: 1, minHeight: 0 }}>
         {/* Left Column: Authentic Scenario Surface & Checkpoint */}
-        <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
           <Paper
             elevation={0}
             sx={{
-              p: { xs: 1.5, sm: 2.5 },
+              p: { xs: 1, sm: 2 },
               borderRadius: 3,
               border: '1px solid',
               borderColor: 'divider',
               bgcolor: 'background.paper',
               position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.03)',
             }}
           >
             {/* Scrollable Scenario Box */}
@@ -263,17 +286,17 @@ export function FamilyGameplayView({
               ref={sceneRef}
               onScroll={onSceneScroll}
               sx={{
-                maxHeight: { xs: '52vh', sm: '58vh', lg: '62vh' },
-                minHeight: 320,
+                maxHeight: { xs: '52dvh', sm: '58dvh', lg: 'calc(100dvh - 230px)' },
+                minHeight: 280,
                 overflowY: 'auto',
-                pr: { sm: 1 },
+                pr: { sm: 0.5 },
                 position: 'relative',
               }}
             >
               <SkinRouter
                 renderSkin={renderSkin}
                 scene={semanticScene}
-                selection={{ selectedElementKeys: effectiveSelectionKeys }}
+                selection={{ selectedElementKeys: effectiveSelectionKeys, completedElementKeys }}
                 onSelect={handleSelectElementInternal}
                 readOnly={false}
                 panelNavigation={panelNavigation}
@@ -283,13 +306,27 @@ export function FamilyGameplayView({
 
             {/* Floating "New Content Below" FAB / Button */}
             {showNewContent && (
-              <Box sx={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}>
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: 16,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 10,
+                  animation: 'bounceNewContent 2s infinite',
+                  '@keyframes bounceNewContent': {
+                    '0%, 20%, 50%, 80%, 100%': { transform: 'translateX(-50%) translateY(0)' },
+                    '40%': { transform: 'translateX(-50%) translateY(-6px)' },
+                    '60%': { transform: 'translateX(-50%) translateY(-3px)' },
+                  },
+                }}
+              >
                 <Fab
                   variant="extended"
                   color="primary"
                   size="small"
                   onClick={onJumpToNewest}
-                  sx={{ textTransform: 'none', fontWeight: 700, px: 2, boxShadow: 4 }}
+                  sx={{ textTransform: 'none', fontWeight: 700, px: 2, boxShadow: '0 4px 14px rgba(0,0,0,0.15)' }}
                 >
                   <KeyboardArrowDownIcon sx={{ mr: 0.5 }} /> New content below
                 </Fab>
@@ -300,7 +337,7 @@ export function FamilyGameplayView({
           {panelNavigation && (
             <SceneArtifactPanel
               scene={semanticScene}
-              selection={{ selectedElementKeys: effectiveSelectionKeys }}
+              selection={{ selectedElementKeys: effectiveSelectionKeys, completedElementKeys }}
               onSelect={handleSelectElementInternal}
               navigation={panelNavigation}
             />
@@ -315,8 +352,8 @@ export function FamilyGameplayView({
         </Box>
 
         {/* Right Column: Persistent Desktop Inspector Rail & Caregiver Comments */}
-        <Box sx={{ minWidth: 0, display: { xs: 'none', lg: 'block' } }}>
-          <Stack spacing={2.5}>
+        <Box sx={{ minWidth: 0, display: { xs: 'none', lg: 'block' }, overflowY: 'auto', maxHeight: 'calc(100vh - 160px)', pr: 0.5 }}>
+          <Stack spacing={2}>
             <FlagInspectorRail
               scenarioTitle={title}
               scenarioDescription={scenarioDescription}
@@ -351,7 +388,7 @@ export function FamilyGameplayView({
         anchor="right"
         open={mobileInspectorOpen}
         onClose={() => setMobileInspectorOpen(false)}
-        slotProps={{ paper: { sx: { width: { xs: '85vw', sm: 380 }, p: 2.5 } } }}
+        slotProps={{ paper: { sx: { width: { xs: '88vw', sm: 380 }, p: { xs: 2, sm: 2.5 } } } }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
@@ -390,7 +427,7 @@ export function FamilyGameplayView({
       </Drawer>
 
       {/* 4. Instructions & How to Play Guide Modal */}
-      <InstructionsGuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <InstructionsGuideModal open={guideOpen} onClose={closeGuide} />
 
       {/* 5. Completion Review Modal */}
       <CompletionReviewModal

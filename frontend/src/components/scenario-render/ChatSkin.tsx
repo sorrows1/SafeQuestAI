@@ -6,10 +6,9 @@ import TagIcon from "@mui/icons-material/Tag";
 import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import { MessageBubble } from "@/components/messaging/MessageBubble";
 import { ActorAvatar, ElementAttachment, ElementLinkPreview, ElementTimestamp, InspectableElement, SafeMediaPlaceholder } from "./SelectableMessage";
-import { isSelected, type ScenarioSkinProps } from "./types";
-import { panelTargetFor } from "./SceneArtifactPanel";
+import { isCompleted, isSelected, type ScenarioSkinProps } from "./types";
 
-export function ChatSkin({ scene, selection, onSelect, readOnly, panelNavigation, testId }: ScenarioSkinProps) {
+export function ChatSkin({ scene, selection, onSelect, readOnly, testId }: ScenarioSkinProps) {
   const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor.display_name]));
 
   // Extract presentation metadata if present
@@ -18,14 +17,6 @@ export function ChatSkin({ scene, selection, onSelect, readOnly, panelNavigation
   const channelName = firstElement?.presentation.channel_name || "direct-messages";
   const memberSummary = firstElement?.presentation.member_summary;
   const presenceSummary = firstElement?.presentation.presence_summary || "Encrypted simulation session";
-
-  const handleElementSelect = (elementKey: string) => {
-    onSelect(elementKey);
-    if (panelNavigation) {
-      const target = panelTargetFor(scene, elementKey);
-      if (target) panelNavigation.openPanel(target);
-    }
-  };
 
   return (
     <Paper
@@ -112,6 +103,36 @@ export function ChatSkin({ scene, selection, onSelect, readOnly, panelNavigation
           scene.elements.map((element) => {
             const label = actors.get(element.actor_key ?? "") ?? element.presentation.display_label ?? "Scenario participant";
             const isRight = element.presentation.alignment === "end";
+            const isSystem = element.semantic_role === "system" || Boolean((element.presentation as Record<string, unknown>).is_system);
+
+            if (isSystem) {
+              return (
+                <InspectableElement
+                  key={element.element_key}
+                  element={element}
+                  selected={isSelected(element, selection)}
+                  completed={isCompleted(element, selection)}
+                  onSelect={onSelect}
+                  readOnly={readOnly}
+                >
+                  <Box sx={{ display: "flex", justifyContent: "center", my: 0.5 }}>
+                    <Chip
+                      label={element.content}
+                      size="small"
+                      variant="outlined"
+                      sx={{
+                        fontSize: "0.725rem",
+                        fontWeight: 600,
+                        bgcolor: "action.hover",
+                        borderColor: "divider",
+                        color: "text.secondary",
+                        maxWidth: "90%",
+                      }}
+                    />
+                  </Box>
+                </InspectableElement>
+              );
+            }
 
             const body =
               element.element_type === "attachment" ? (
@@ -135,7 +156,8 @@ export function ChatSkin({ scene, selection, onSelect, readOnly, panelNavigation
                 key={element.element_key}
                 element={element}
                 selected={isSelected(element, selection)}
-                onSelect={handleElementSelect}
+                completed={isCompleted(element, selection)}
+                onSelect={onSelect}
                 readOnly={readOnly}
               >
                 <Box

@@ -239,6 +239,7 @@ export type ParticipantRole = 'child' | 'parent' | 'ai_companion';
 export type FamilySessionState = "waiting_for_participants" | "in_progress" | "checkpoint" | "completion_review" | "help_and_resources" | "completed" | "paused_for_support" | "abandoned" | "expired";
 export type FamilySessionCommandType = "start" | "reveal_next" | "continue_checkpoint" | "enter_completion_review" | "acknowledge_completion" | "open_help" | "complete" | "reset";
 export type FamilyRole = "learner" | "caregiver";
+export type ScenarioLifecycle = "not_started" | "active" | "completed";
 export type ParticipantPresenceStatus = "online" | "offline" | "left";
 export type FamilySessionEventType = "participant_joined" | "participant_left" | "participant_presence" | "state_changed" | "reveal" | "selection_focus" | "attempt_submitted" | "finding_validated" | "checkpoint_response" | "companion_shared_feedback" | "caregiver_comment" | "completed" | "guide_ready";
 export type ElementType = "conversation" | "message" | "email" | "email_thread" | "email_message" | "email_header" | "feed" | "post" | "comment" | "profile" | "profile_field" | "attachment" | "link_preview" | "game_profile" | "game_stat" | "game_badge" | "server" | "channel" | "member" | "listing" | "seller" | "price" | "forum_thread" | "forum_post" | "site_section" | "listing_field" | "system_event" | "action";
@@ -286,7 +287,9 @@ export interface SessionProgress {
   eligible_target_count: number;
   required_finding_count: number;
   checkpoint_progress: number;
+  checkpoint_total?: number;
   content_progress: number;
+  content_total?: number;
   completion_ready: boolean;
 }
 
@@ -331,6 +334,7 @@ export interface FamilyAuthorizedSession {
   owner_ref: string;
   started_at: string;
   completed_at: string | null;
+  lifecycle: ScenarioLifecycle;
 }
 
 export interface PublishedFamilyScenario {
@@ -346,6 +350,8 @@ export interface PublishedFamilyScenario {
   checkpoint_count: number;
   published_at: string;
   supported_participation_modes: string[];
+  lifecycle: ScenarioLifecycle;
+  session_ref: string | null;
 }
 
 export interface PublishedFamilyScenarioPage {
@@ -374,7 +380,6 @@ export interface FamilySession {
   turn_owner_ref?: string | null;
   previous_session_ref?: string | null;
   transcript_id: number;
-  parent_user_id: number | null;
   companion_mode: boolean;
   detective_mode: boolean;
   started_at: string;
@@ -383,7 +388,6 @@ export interface FamilySession {
   state_version?: number;
   revealed_up_to?: number;
   active_checkpoint_element_key?: string | null;
-  participation_turn_user_id?: number | null;
   completion_acknowledged_at?: string | null;
   attempt_number?: number;
   previous_session_id?: number | null;
@@ -451,6 +455,7 @@ export interface SkinCapabilityManifest {
 }
 
 export interface FamilySessionCapabilities {
+  can_start: boolean;
   can_reveal_next: boolean;
   can_continue_checkpoint: boolean;
   can_enter_completion_review: boolean;
@@ -488,7 +493,6 @@ export interface FamilySessionDetail {
     state_version: number;
     revealed_up_to: number;
     active_checkpoint_element_key: string | null;
-    participation_turn_user_id: number | null;
     updated_at: string | null;
   };
   scene: FamilyScene;
@@ -509,10 +513,14 @@ export interface FlagAttemptRequest {
 }
 
 export interface ValidatedFinding {
+  /** Stable key for a curator-grounded, merged safety insight. */
+  insight_key?: string;
   element_key: string;
   annotation_id: number;
   tactic_tag: string;
   explanation: string | null;
+  element_keys?: string[];
+  annotation_ids?: number[];
   discovered_at: string;
   visibility: FindingVisibility;
 }

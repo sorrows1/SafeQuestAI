@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import { memo, useMemo, type KeyboardEvent, type ReactNode } from "react";
 import { Avatar, Box, Chip, Typography, Paper } from "@mui/material";
 import FlagIcon from "@mui/icons-material/Flag";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
@@ -7,16 +7,19 @@ import ImageIcon from "@mui/icons-material/Image";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import type { PresentationToken, SceneElement } from "@/types";
 
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+
 interface InspectableElementProps {
   element: SceneElement;
   selected: boolean;
+  completed?: boolean;
   onSelect: (elementKey: string) => void;
   readOnly?: boolean;
   children: ReactNode;
 }
 
 /** Shared, keyboard-operable selection treatment for every semantic element. */
-export function InspectableElement({ element, selected, onSelect, readOnly = false, children }: InspectableElementProps) {
+export function InspectableElement({ element, selected, completed = false, onSelect, readOnly = false, children }: InspectableElementProps) {
   const interactive = element.selectable && !readOnly;
   const select = () => interactive && onSelect(element.element_key);
   const key = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -31,7 +34,7 @@ export function InspectableElement({ element, selected, onSelect, readOnly = fal
       data-testid={`scene-element-${element.element_key}`}
       role={interactive ? "button" : undefined}
       aria-pressed={interactive ? selected : undefined}
-      aria-label={interactive ? `${element.accessible_label}; select for discussion` : element.accessible_label}
+      aria-label={interactive ? element.accessible_label + "; " + (completed ? "discussion completed" : "select for discussion") : element.accessible_label}
       tabIndex={interactive ? 0 : undefined}
       onClick={select}
       onKeyDown={key}
@@ -42,14 +45,19 @@ export function InspectableElement({ element, selected, onSelect, readOnly = fal
         minHeight: 44,
         boxSizing: "border-box",
         transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-        outline: selected ? "3px solid" : "none",
-        outlineColor: "primary.main",
-        boxShadow: selected ? "0 0 16px rgba(25, 118, 210, 0.35)" : "none",
-        bgcolor: selected ? "action.selected" : "transparent",
-        p: selected ? { xs: 1, sm: 1.25 } : { xs: 0.25, sm: 0.5 },
+        border: selected ? "2px solid" : completed ? "1px dashed" : "1px solid transparent",
+        borderColor: selected ? "primary.main" : completed ? "success.main" : "transparent",
+        boxShadow: selected ? "0 0 0 3px rgba(25, 118, 210, 0.25)" : "none",
+        bgcolor: selected ? "action.selected" : completed ? "action.hover" : "transparent",
+        p: selected || completed ? { xs: 1, sm: 1.25 } : { xs: 0.25, sm: 0.5 },
+        "@media (prefers-reduced-motion: reduce)": {
+          transition: "none",
+        },
         "&:hover": interactive ? {
-          transform: "translateY(-1px)",
-          boxShadow: selected ? "0 0 18px rgba(25, 118, 210, 0.45)" : "0 4px 12px rgba(0,0,0,0.06)",
+          "@media (prefers-reduced-motion: no-preference)": {
+            transform: "translateY(-1px)",
+          },
+          boxShadow: selected ? "0 0 0 4px rgba(25, 118, 210, 0.35)" : "0 4px 12px rgba(0,0,0,0.06)",
         } : {},
         "&:focus-visible": {
           outline: "3px solid",
@@ -58,13 +66,13 @@ export function InspectableElement({ element, selected, onSelect, readOnly = fal
         },
       }}
     >
-      {selected && (
+      {(selected || completed) && (
         <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 0.75 }}>
           <Chip
             size="small"
-            color="primary"
-            icon={<FlagIcon sx={{ fontSize: "0.875rem !important" }} />}
-            label="SELECTED FOR DISCUSSION"
+            color={selected ? "primary" : "success"}
+            icon={selected ? <FlagIcon sx={{ fontSize: "0.875rem !important" }} /> : <CheckCircleIcon sx={{ fontSize: "0.875rem !important" }} />}
+            label={selected ? "SELECTED FOR DISCUSSION" : "DISCUSSION COMPLETED"}
             sx={{ fontWeight: 700, fontSize: "0.65rem", height: 22, textTransform: "uppercase", letterSpacing: 0.5 }}
           />
         </Box>
@@ -74,24 +82,27 @@ export function InspectableElement({ element, selected, onSelect, readOnly = fal
   );
 }
 
-export function ActorAvatar({ label }: { label?: string | null }) {
-  const initial = label?.trim().slice(0, 1).toUpperCase() || "?";
-  
-  const colors = [
-    "linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)",
-    "linear-gradient(135deg, #EC4899 0%, #D946EF 100%)",
-    "linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)",
-    "linear-gradient(135deg, #F59E0B 0%, #D97706 100%)",
-    "linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)",
-  ];
-  const charCode = (label || "?").charCodeAt(0);
-  const bg = colors[charCode % colors.length];
+export const ActorAvatar = memo(function ActorAvatar({ label }: { label?: string | null }) {
+  const avatar = useMemo(() => {
+    const colors = [
+      "linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)",
+      "linear-gradient(135deg, #EC4899 0%, #D946EF 100%)",
+      "linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)",
+      "linear-gradient(135deg, #F59E0B 0%, #D97706 100%)",
+      "linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)",
+    ];
+    const normalized = label?.trim() || "?";
+    return {
+      initial: normalized.slice(0, 1).toUpperCase(),
+      bg: colors[normalized.charCodeAt(0) % colors.length],
+    };
+  }, [label]);
 
   return (
     <Avatar
       aria-label={label ? `${label} avatar` : "Actor avatar"}
       sx={{
-        background: bg,
+        background: avatar.bg,
         fontWeight: 700,
         fontSize: "0.9rem",
         boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
@@ -100,10 +111,10 @@ export function ActorAvatar({ label }: { label?: string | null }) {
         flexShrink: 0,
       }}
     >
-      {initial}
+      {avatar.initial}
     </Avatar>
   );
-}
+});
 
 export function ElementTimestamp({ presentation, timestamp }: { presentation: PresentationToken; timestamp?: string | null }) {
   const label = presentation.timestamp_label ?? timestamp;

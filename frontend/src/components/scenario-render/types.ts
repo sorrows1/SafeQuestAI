@@ -2,6 +2,8 @@ import type { FamilyScene, FamilySessionCapabilities, RenderSkin, SceneElement }
 
 export interface SceneSelection {
   selectedElementKeys: readonly string[];
+  /** Elements whose discussion has been completed by the session controller. */
+  completedElementKeys?: readonly string[];
 }
 
 export interface ScenePanelNavigation {
@@ -29,4 +31,8 @@ export interface SkinRouterProps extends ScenarioSkinProps {
 
 export function isSelected(element: SceneElement, selection: SceneSelection): boolean {
   return selection.selectedElementKeys.includes(element.element_key);
+}
+
+export function isCompleted(element: SceneElement, selection: SceneSelection): boolean {
+  return selection.completedElementKeys?.includes(element.element_key) ?? false;
 }

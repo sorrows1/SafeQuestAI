@@ -3,24 +3,15 @@ import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import TagIcon from "@mui/icons-material/Tag";
 import ShieldIcon from "@mui/icons-material/Shield";
 import { ActorAvatar, ElementAttachment, ElementLinkPreview, ElementTimestamp, InspectableElement, SafeMediaPlaceholder } from "./SelectableMessage";
-import { isSelected, type ScenarioSkinProps } from "./types";
-import { panelTargetFor } from "./SceneArtifactPanel";
+import { isCompleted, isSelected, type ScenarioSkinProps } from "./types";
 
-export function GameChatSkin({ scene, selection, onSelect, readOnly, panelNavigation, testId }: ScenarioSkinProps) {
+export function GameChatSkin({ scene, selection, onSelect, readOnly, testId }: ScenarioSkinProps) {
   const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor.display_name]));
 
   const firstElement = scene.elements[0];
   const appName = firstElement?.presentation.app_name || "PixelPort";
   const channelName = firstElement?.presentation.channel_name || "general-game-chat";
   const memberSummary = firstElement?.presentation.member_summary || "Squad Lobby";
-
-  const handleElementSelect = (elementKey: string) => {
-    onSelect(elementKey);
-    if (panelNavigation) {
-      const target = panelTargetFor(scene, elementKey);
-      if (target) panelNavigation.openPanel(target);
-    }
-  };
 
   return (
     <Paper
@@ -96,13 +87,44 @@ export function GameChatSkin({ scene, selection, onSelect, readOnly, panelNaviga
           scene.elements.map((element) => {
             const label = actors.get(element.actor_key ?? "") ?? element.presentation.display_label ?? "Gamer";
             const isRight = element.presentation.alignment === "end";
+            const isSystem = element.semantic_role === "system" || Boolean((element.presentation as Record<string, unknown>).is_system);
+
+            if (isSystem) {
+              return (
+                <InspectableElement
+                  key={element.element_key}
+                  element={element}
+                  selected={isSelected(element, selection)}
+                  completed={isCompleted(element, selection)}
+                  onSelect={onSelect}
+                  readOnly={readOnly}
+                >
+                  <Box sx={{ display: "flex", justifyContent: "center", my: 0.5 }}>
+                    <Chip
+                      label={`[SYSTEM]: ${element.content}`}
+                      size="small"
+                      sx={{
+                        fontSize: "0.7rem",
+                        fontWeight: 700,
+                        fontFamily: "monospace",
+                        bgcolor: "rgba(249, 226, 175, 0.12)",
+                        color: "#F9E2AF",
+                        border: "1px dashed rgba(249, 226, 175, 0.4)",
+                        maxWidth: "95%",
+                      }}
+                    />
+                  </Box>
+                </InspectableElement>
+              );
+            }
 
             return (
               <InspectableElement
                 key={element.element_key}
                 element={element}
                 selected={isSelected(element, selection)}
-                onSelect={handleElementSelect}
+                completed={isCompleted(element, selection)}
+                onSelect={onSelect}
                 readOnly={readOnly}
               >
                 <Box sx={{ display: "flex", gap: 1.5, alignItems: "flex-start" }}>

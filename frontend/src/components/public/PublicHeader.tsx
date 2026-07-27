@@ -1,7 +1,10 @@
-import { AppBar, Box, Button, Container, Stack, Toolbar, Typography, useTheme } from '@mui/material';
+import { useState } from 'react';
+import { AppBar, Box, Button, Container, Divider, Drawer, IconButton, Stack, Toolbar, Typography, useTheme } from '@mui/material';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
+import MenuIcon from '@mui/icons-material/Menu';
+import CloseIcon from '@mui/icons-material/Close';
 import { Link as RouterLink } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { toggleTheme } from '@/store/uiSlice';
@@ -10,6 +13,15 @@ export function PublicHeader() {
   const dispatch = useAppDispatch();
   const themeMode = useAppSelector((s) => s.ui.themeMode);
   const theme = useTheme();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const navLinks = [
+    { label: 'How It Works', href: '#how-it-works' },
+    { label: 'For Families', href: '#for-families' },
+    { label: 'Safety & Privacy', href: '#safety-privacy' },
+    { label: 'Skins & Formats', href: '#gameplay-preview' },
+    { label: 'Accessibility', href: '#accessibility' },
+  ];
 
   return (
     <AppBar position="sticky" color="default" elevation={0}>
@@ -38,23 +50,15 @@ export function PublicHeader() {
 
           {/* Navigation Links (Desktop) */}
           <Stack direction="row" spacing={3} sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
-            <Typography component="a" href="#how-it-works" variant="body2" sx={{ color: 'text.secondary', textDecoration: 'none', fontWeight: 600, '&:hover': { color: 'primary.main' } }}>
-              How It Works
-            </Typography>
-            <Typography component="a" href="#for-families" variant="body2" sx={{ color: 'text.secondary', textDecoration: 'none', fontWeight: 600, '&:hover': { color: 'primary.main' } }}>
-              For Families
-            </Typography>
-            <Typography component="a" href="#safety-privacy" variant="body2" sx={{ color: 'text.secondary', textDecoration: 'none', fontWeight: 600, '&:hover': { color: 'primary.main' } }}>
-              Safety & Privacy
-            </Typography>
-            <Typography component="a" href="#gameplay-preview" variant="body2" sx={{ color: 'text.secondary', textDecoration: 'none', fontWeight: 600, '&:hover': { color: 'primary.main' } }}>
-              Skins & Formats
-            </Typography>
+            {navLinks.map((link) => (
+              <Typography key={link.href} component="a" href={link.href} variant="body2" sx={{ color: 'text.secondary', textDecoration: 'none', fontWeight: 600, '&:hover': { color: 'primary.main' } }}>
+                {link.label}
+              </Typography>
+            ))}
           </Stack>
 
-          {/* Actions & Theme Toggle */}
-          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-            {/* Obvious Labeled Theme Switcher */}
+          {/* Actions & Theme Toggle (Desktop) */}
+          <Stack direction="row" spacing={1.5} sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
             <Button
               variant="outlined"
               size="small"
@@ -73,8 +77,82 @@ export function PublicHeader() {
               Sign up free
             </Button>
           </Stack>
+
+          {/* Mobile Navigation Toggle Button */}
+          <Stack direction="row" spacing={1} sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => dispatch(toggleTheme())}
+              startIcon={themeMode === 'dark' ? <LightModeOutlinedIcon /> : <DarkModeOutlinedIcon />}
+              aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+              sx={{ borderRadius: '20px', px: 1.2, py: 0.5, fontSize: '0.75rem' }}
+            >
+              {themeMode === 'dark' ? 'Light' : 'Dark'}
+            </Button>
+
+            <IconButton color="inherit" aria-label="Open mobile menu" onClick={() => setMobileOpen(true)}>
+              <MenuIcon />
+            </IconButton>
+          </Stack>
         </Toolbar>
       </Container>
+
+      {/* Mobile Drawer */}
+      <Drawer anchor="right" open={mobileOpen} onClose={() => setMobileOpen(false)}>
+        <Box sx={{ width: 280, p: 2.5 }} role="presentation">
+          <Stack spacing={2.5}>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                <ShieldOutlinedIcon color="primary" sx={{ fontSize: 24 }} />
+                <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                  Safe Quest
+                </Typography>
+              </Stack>
+              <IconButton size="small" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+
+            <Divider />
+
+            <Stack spacing={1}>
+              {navLinks.map((link) => (
+                <Button
+                  key={link.href}
+                  component="a"
+                  href={link.href}
+                  variant="text"
+                  fullWidth
+                  onClick={() => setMobileOpen(false)}
+                  sx={{ justifyContent: 'flex-start', color: 'text.primary', fontWeight: 600, px: 2, py: 1 }}
+                >
+                  {link.label}
+                </Button>
+              ))}
+            </Stack>
+
+            <Divider />
+
+            <Button
+              variant="outlined"
+              onClick={() => dispatch(toggleTheme())}
+              startIcon={themeMode === 'dark' ? <LightModeOutlinedIcon /> : <DarkModeOutlinedIcon />}
+              fullWidth
+              sx={{ borderRadius: '10px', py: 1 }}
+            >
+              {themeMode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            </Button>
+
+            <Button component={RouterLink} to="/login" variant="outlined" fullWidth onClick={() => setMobileOpen(false)} sx={{ borderRadius: '10px', py: 1 }}>
+              Log in
+            </Button>
+            <Button component={RouterLink} to="/register" variant="contained" fullWidth onClick={() => setMobileOpen(false)} sx={{ borderRadius: '10px', py: 1 }}>
+              Sign up free
+            </Button>
+          </Stack>
+        </Box>
+      </Drawer>
     </AppBar>
   );
 }

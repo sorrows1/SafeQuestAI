@@ -163,6 +163,25 @@ describe('family scenario UI', () => {
     expect(screen.queryByText(/error|wrong|mistake|failed/i)).toBeNull();
   });
 
+  it("requires an explicit action before reopening a completed discussion", () => {
+    const completedFinding: ValidatedFinding = {
+      insight_key: "merged-secrecy", element_key: "msg-11", element_keys: ["msg-11"],
+      annotation_id: 1, annotation_ids: [1], tactic_tag: "secrecy_pressure",
+      explanation: "A saved insight.", discovered_at: new Date().toISOString(), visibility: "shared",
+    };
+    renderWithTheme(
+      <FlagInspectorRail
+        messages={messages} highlightedMessageIds={[]} tagAssignments={{}}
+        selectedMessageId={11} selectedElementKey="msg-11" onSelectMessage={vi.fn()}
+        validatedFindings={[completedFinding]}
+      />
+    );
+    expect(screen.getByText(/Discussion complete/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/Reasoning explanation input/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Discuss this item again/i }));
+    expect(screen.getByLabelText(/Reasoning explanation input/i)).toBeTruthy();
+  });
+
   it('renders validated findings list with interactive tactic chips', () => {
     const validatedFindings: ValidatedFinding[] = [
       {

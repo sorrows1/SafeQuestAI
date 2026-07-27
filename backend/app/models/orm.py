@@ -19,7 +19,7 @@ from typing import Any, Optional
 
 from sqlalchemy import (
     String, DateTime, JSON, Integer, ForeignKey, Text,
-    Boolean, UniqueConstraint, CheckConstraint, create_engine,
+    Boolean, UniqueConstraint, CheckConstraint, Index, text, create_engine,
 )
 from sqlalchemy.orm import (
     declarative_base, sessionmaker, Mapped,
@@ -239,6 +239,16 @@ class RedFlagSpan(Base):
 class FamilySession(Base):
     """A cooperative session. It intentionally stores no child-performance score."""
     __tablename__ = "family_sessions"
+    __table_args__ = (
+        Index(
+            "uq_family_sessions_active_learner_transcript",
+            "child_user_id",
+            "transcript_id",
+            unique=True,
+            sqlite_where=text("state NOT IN ('completed', 'abandoned', 'expired')"),
+            postgresql_where=text("state NOT IN ('completed', 'abandoned', 'expired')"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Public references are deliberately opaque; numeric IDs remain internal.
@@ -257,7 +267,9 @@ class FamilySession(Base):
     detective_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     # Internal safety signal only. Never expose this through player or parent schemas.
     disclosure_flagged: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    revealed_up_to: Mapped[int] = mapped_column(Integer, default=0)
+    # Scene sequences begin at zero, while -1 means that the opening beat has
+    # not yet been revealed.
+    revealed_up_to: Mapped[int] = mapped_column(Integer, default=-1)
     state: Mapped[str] = mapped_column(String(40), default="in_progress", nullable=False)
     state_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     active_checkpoint_element_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

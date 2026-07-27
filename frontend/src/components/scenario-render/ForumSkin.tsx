@@ -3,23 +3,14 @@ import ForumIcon from "@mui/icons-material/Forum";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { ActorAvatar, ElementAttachment, ElementLinkPreview, ElementTimestamp, InspectableElement, SafeMediaPlaceholder } from "./SelectableMessage";
-import { isSelected, type ScenarioSkinProps } from "./types";
-import { panelTargetFor } from "./SceneArtifactPanel";
+import { isCompleted, isSelected, type ScenarioSkinProps } from "./types";
 
-export function ForumSkin({ scene, selection, onSelect, readOnly, panelNavigation, testId }: ScenarioSkinProps) {
+export function ForumSkin({ scene, selection, onSelect, readOnly, testId }: ScenarioSkinProps) {
   const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor.display_name]));
 
   const firstElement = scene.elements[0];
   const appName = firstElement?.presentation.app_name || "LoopForum";
   const surfaceLabel = firstElement?.presentation.surface_label || "Community Discussion Thread";
-
-  const handleElementSelect = (elementKey: string) => {
-    onSelect(elementKey);
-    if (panelNavigation) {
-      const target = panelTargetFor(scene, elementKey);
-      if (target) panelNavigation.openPanel(target);
-    }
-  };
 
   return (
     <Paper
@@ -67,14 +58,14 @@ export function ForumSkin({ scene, selection, onSelect, readOnly, panelNavigatio
           <ForumIcon fontSize="small" />
         </Box>
         <Box sx={{ flexGrow: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: "block", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: 0.5 }}>
+            f/general &gt; {surfaceLabel}
+          </Typography>
           <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
             {appName}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {surfaceLabel}
-          </Typography>
         </Box>
-        <Chip label="Public Discussion" size="small" variant="outlined" color="warning" sx={{ height: 22, fontWeight: 700 }} />
+        <Chip label="Public Thread" size="small" variant="outlined" color="warning" sx={{ height: 22, fontWeight: 700 }} />
       </Box>
 
       {/* Forum Thread Content */}
@@ -93,7 +84,8 @@ export function ForumSkin({ scene, selection, onSelect, readOnly, panelNavigatio
                 key={element.element_key}
                 element={element}
                 selected={isSelected(element, selection)}
-                onSelect={handleElementSelect}
+                completed={isCompleted(element, selection)}
+                onSelect={onSelect}
                 readOnly={readOnly}
               >
                 <Paper

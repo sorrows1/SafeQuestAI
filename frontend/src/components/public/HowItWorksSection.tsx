@@ -47,7 +47,7 @@ export function HowItWorksSection() {
             Building digital resilience, step by step
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mx: 'auto' }}>
-            Safe Quest takes the fear out of internet safety discussions. Instead of rules and lectures, we provide safe sandbox experiences.
+            Each experience follows one calm loop: inspect a fictional moment, explain your thinking, ask the companion, pause at a checkpoint, continue at your pace, and review together.
           </Typography>
         </Stack>
 

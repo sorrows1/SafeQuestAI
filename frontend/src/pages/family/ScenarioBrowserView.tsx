@@ -38,6 +38,10 @@ import StarOutlinedIcon from '@mui/icons-material/StarOutlined';
 import type { FamilyScenarioQuery, PublishedFamilyScenario, RenderSkin } from '@/types';
 import { toScenarioCardViewModel } from './scenarioBrowserViewModels';
 
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import WifiOffOutlinedIcon from '@mui/icons-material/WifiOffOutlined';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+
 const categories = ['grooming', 'cyberbullying', 'scam', 'image_request', 'oversharing'];
 const difficulties = ['Easy', 'Medium', 'Hard'];
 const skins: RenderSkin[] = ['chat', 'email', 'social_feed'];
@@ -117,6 +121,17 @@ export function ScenarioBrowserView({
   const [participationChoice, setParticipationChoice] = useState<'solo_with_companion' | 'family_invite' | 'join_family'>('solo_with_companion');
 
   const featured = useMemo(() => items[0] ?? null, [items]);
+  const featuredVm = useMemo(() => (featured ? toScenarioCardViewModel(featured) : null), [featured]);
+
+  const activeFilterList = useMemo(() => {
+    const list: string[] = [];
+    if (input) list.push(`Search: "${input}"`);
+    category.forEach((c) => list.push(label(c)));
+    difficulty.forEach((d) => list.push(d));
+    renderSkin.forEach((s) => list.push(label(s)));
+    if (sort && sort !== 'newest') list.push(`Sort: ${sort}`);
+    return list;
+  }, [input, category, difficulty, renderSkin, sort]);
 
   const filterControls = (
     <Stack spacing={2.5} sx={{ p: { xs: 2.5, md: 0 } }}>
@@ -195,7 +210,7 @@ export function ScenarioBrowserView({
       </Box>
 
       {/* Featured Banner (if available & no filter active) */}
-      {!filtered && featured && !isLoading && !isError && (
+      {!filtered && featured && featuredVm && !isLoading && !isError && (
         <Paper
           elevation={0}
           variant="outlined"
@@ -206,17 +221,24 @@ export function ScenarioBrowserView({
             background: theme.palette.mode === 'dark'
               ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%)'
               : 'linear-gradient(135deg, rgba(239, 246, 255, 0.9) 0%, rgba(240, 253, 244, 0.9) 100%)',
-            borderColor: alpha(theme.palette.primary.main, 0.3),
+            borderColor: featuredVm.hasActiveSession ? theme.palette.primary.main : alpha(theme.palette.primary.main, 0.3),
             position: 'relative',
             overflow: 'hidden',
           }}
         >
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' } }}>
             <Box sx={{ maxWidth: 700 }}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5 }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5, flexWrap: 'wrap' }}>
                 <Chip icon={<StarOutlinedIcon sx={{ fontSize: 16 }} />} label="Featured Scenario" size="small" color="primary" sx={{ fontWeight: 700 }} />
-                <Chip size="small" label={label(featured.category)} variant="outlined" />
+                <Chip size="small" label={featuredVm.categoryLabel} variant="outlined" />
                 <Chip size="small" label={featured.difficulty} variant="outlined" />
+                <Chip
+                  size="small"
+                  label={featuredVm.lifecycleLabel}
+                  color={featuredVm.lifecycleColor}
+                  variant={featuredVm.hasActiveSession ? 'filled' : 'outlined'}
+                  sx={{ fontWeight: 700 }}
+                />
               </Stack>
               <Typography variant="h3" component="h2" sx={{ fontWeight: 800 }}>
                 {featured.title}
@@ -230,10 +252,10 @@ export function ScenarioBrowserView({
               size="large"
               startIcon={<PlayArrowIcon />}
               onClick={() => onSelectScenario(featured)}
-              aria-label={`Start featured activity for ${featured.title}`}
+              aria-label={`${featuredVm.featuredActionLabel} for ${featured.title}`}
               sx={{ borderRadius: 3, px: 3, py: 1.2, fontWeight: 700, whitespace: 'nowrap' }}
             >
-              Start Featured Activity
+              {featuredVm.featuredActionLabel}
             </Button>
           </Stack>
         </Paper>
@@ -316,43 +338,123 @@ export function ScenarioBrowserView({
 
       {/* States: Error, Loading, Empty, Grid */}
       {isError ? (
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" onClick={onRefetch}>
-              Try again
-            </Button>
-          }
-          sx={{ borderRadius: 3 }}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 4,
+            borderRadius: 4,
+            bgcolor: queryStatus === 401 ? alpha(theme.palette.warning.main, 0.05) : alpha(theme.palette.error.main, 0.04),
+            borderColor: queryStatus === 401 ? alpha(theme.palette.warning.main, 0.3) : alpha(theme.palette.error.main, 0.3),
+            textAlign: 'center',
+          }}
         >
-          {queryStatus === 'FETCH_ERROR'
-            ? 'You appear to be offline. Reconnect and try again.'
-            : queryStatus === 401
-            ? 'Your session has ended. Please sign in again.'
-            : 'The reviewed scenario library could not be loaded.'}
-        </Alert>
+          <Stack spacing={2} sx={{ alignItems: 'center', maxWidth: 500, mx: 'auto' }}>
+            {queryStatus === 'FETCH_ERROR' ? (
+              <WifiOffOutlinedIcon color="error" sx={{ fontSize: 44 }} />
+            ) : queryStatus === 401 ? (
+              <LockOutlinedIcon color="warning" sx={{ fontSize: 44 }} />
+            ) : (
+              <ShieldOutlinedIcon color="error" sx={{ fontSize: 44 }} />
+            )}
+            <Typography variant="h5" sx={{ fontWeight: 800, color: queryStatus === 401 ? 'warning.main' : 'error.main' }}>
+              {queryStatus === 'FETCH_ERROR'
+                ? 'Connection Offline'
+                : queryStatus === 401
+                ? 'Session Expired'
+                : 'Scenarios Unavailable'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+              {queryStatus === 'FETCH_ERROR'
+                ? 'You appear to be offline. Reconnect your internet connection and click below to try again.'
+                : queryStatus === 401
+                ? 'Your session has ended. Please sign in again to continue scenario exploration.'
+                : 'The reviewed scenario library could not be loaded. Please try again in a moment.'}
+            </Typography>
+            {queryStatus === 401 ? (
+              <Button variant="contained" color="primary" href="/login" sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}>
+                Sign In Again
+              </Button>
+            ) : (
+              <Button variant="contained" color="primary" onClick={onRefetch} startIcon={<PlayArrowIcon />} sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}>
+                Retry Connection
+              </Button>
+            )}
+          </Stack>
+        </Paper>
       ) : isLoading ? (
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 3 }}>
           {[1, 2, 3, 4, 5, 6].map((item) => (
-            <Skeleton key={item} variant="rounded" height={280} sx={{ borderRadius: 4 }} />
+            <Card key={item} variant="outlined" sx={{ height: 280, borderRadius: 4, p: 2.5, display: 'flex', flexDirection: 'column' }}>
+              <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                <Skeleton variant="rounded" width={70} height={24} sx={{ borderRadius: 2 }} />
+                <Skeleton variant="rounded" width={60} height={24} sx={{ borderRadius: 2 }} />
+                <Skeleton variant="rounded" width={80} height={24} sx={{ borderRadius: 2 }} />
+              </Stack>
+              <Skeleton variant="text" width="80%" height={32} sx={{ mb: 1 }} />
+              <Skeleton variant="text" width="100%" height={20} />
+              <Skeleton variant="text" width="90%" height={20} sx={{ mb: 2 }} />
+              <Box sx={{ mt: 'auto' }}>
+                <Skeleton variant="rounded" width="100%" height={40} sx={{ borderRadius: 2.5 }} />
+              </Box>
+            </Card>
           ))}
         </Box>
       ) : total === 0 ? (
-        <Alert
-          severity="info"
-          action={
-            filtered ? (
-              <Button color="inherit" onClick={onClearFilters}>
-                Clear filters
+        filtered ? (
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 4,
+              borderRadius: 4,
+              textAlign: 'center',
+              bgcolor: alpha(theme.palette.info.main, 0.04),
+              borderColor: alpha(theme.palette.info.main, 0.2),
+            }}
+          >
+            <Stack spacing={2} sx={{ alignItems: 'center', maxWidth: 520, mx: 'auto' }}>
+              <FilterListIcon color="primary" sx={{ fontSize: 40 }} />
+              <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                No scenarios match these filters
+              </Typography>
+              {activeFilterList.length > 0 && (
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mr: 1, alignSelf: 'center' }}>
+                    Active filters:
+                  </Typography>
+                  {activeFilterList.map((f, i) => (
+                    <Chip key={i} label={f} size="small" variant="outlined" />
+                  ))}
+                </Stack>
+              )}
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                Try adjusting your search terms or difficulty levels, or clear your current filters to view all available activities.
+              </Typography>
+              <Button variant="contained" onClick={onClearFilters} sx={{ borderRadius: 2.5, px: 3, fontWeight: 700, mt: 1 }}>
+                Clear all filters
               </Button>
-            ) : undefined
-          }
-          sx={{ borderRadius: 3 }}
-        >
-          {filtered
-            ? 'No reviewed scenarios match these filters yet.'
-            : 'Reviewed scenarios are being prepared. In the meantime, talk together about privacy, pressure, kindness, and asking a trusted adult for help.'}
-        </Alert>
+            </Stack>
+          </Paper>
+        ) : (
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 4,
+              borderRadius: 4,
+              bgcolor: alpha(theme.palette.primary.main, 0.04),
+              borderColor: alpha(theme.palette.primary.main, 0.2),
+            }}
+          >
+            <Stack spacing={2} sx={{ maxWidth: 640, mx: 'auto', textAlign: 'center', alignItems: 'center' }}>
+              <ShieldOutlinedIcon color="primary" sx={{ fontSize: 44 }} />
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                Reviewed Scenarios Coming Soon
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                Curated scenarios are being prepared for family exploration. In the meantime, start conversations around privacy, managing online pressure, kindness, and reaching out to a trusted adult when feeling uncomfortable.
+              </Typography>
+            </Stack>
+          </Paper>
+        )
       ) : (
         <>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 3 }}>
@@ -367,7 +469,11 @@ export function ScenarioBrowserView({
                     display: 'flex',
                     flexDirection: 'column',
                     borderRadius: 4,
-                    borderColor: theme.palette.divider,
+                    borderColor: vm.hasActiveSession
+                      ? theme.palette.primary.main
+                      : vm.hasCompletedSession
+                      ? alpha(theme.palette.success.main, 0.4)
+                      : theme.palette.divider,
                     transition: 'all 0.2s ease-in-out',
                     '&:hover': {
                       borderColor: theme.palette.primary.main,
@@ -381,6 +487,13 @@ export function ScenarioBrowserView({
                       <Chip size="small" label={vm.categoryLabel} color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
                       <Chip size="small" label={item.difficulty} variant="outlined" />
                       <Chip size="small" icon={getSkinIcon(item.render_skin)} label={label(item.render_skin)} variant="outlined" />
+                      <Chip
+                        size="small"
+                        label={vm.lifecycleLabel}
+                        color={vm.lifecycleColor}
+                        variant={vm.hasActiveSession ? 'filled' : 'outlined'}
+                        sx={{ fontWeight: 700 }}
+                      />
                     </Stack>
 
                     <Typography variant="h5" component="h2" sx={{ fontWeight: 700, mb: 1 }}>
@@ -410,12 +523,13 @@ export function ScenarioBrowserView({
                   <CardActions sx={{ p: 2.5, pt: 0 }}>
                     <Button
                       fullWidth
-                      variant="outlined"
+                      variant={vm.hasActiveSession ? 'contained' : 'outlined'}
+                      color={vm.hasCompletedSession ? 'success' : 'primary'}
                       onClick={() => onSelectScenario(item)}
-                      aria-label={`Learn more about ${item.title}`}
-                      sx={{ borderRadius: 2.5, fontWeight: 600 }}
+                      aria-label={`${vm.actionLabel} for ${item.title}`}
+                      sx={{ borderRadius: 2.5, fontWeight: 700 }}
                     >
-                      Learn more / start
+                      {vm.actionLabel}
                     </Button>
                   </CardActions>
                 </Card>
@@ -440,7 +554,13 @@ export function ScenarioBrowserView({
 
       {/* Scenario Setup Modal */}
       <Dialog open={Boolean(selected)} onClose={() => !creating && onSelectScenario(null)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: 800, pr: 6 }}>{selected?.title}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, pr: 6 }}>
+          {selected?.lifecycle === 'active'
+            ? `Continue Practice — ${selected?.title}`
+            : selected?.lifecycle === 'completed'
+            ? `Restart Practice — ${selected?.title}`
+            : `Practice Setup — ${selected?.title}`}
+        </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2.5}>
             <Box>
@@ -453,6 +573,14 @@ export function ScenarioBrowserView({
               {selected && <Chip label={label(selected.category)} color="primary" size="small" />}
               {selected && <Chip label={`${selected.difficulty} difficulty`} size="small" />}
               {selected && <Chip icon={getSkinIcon(selected.render_skin)} label={`${label(selected.render_skin)} skin`} size="small" />}
+              {selected && (
+                <Chip
+                  label={toScenarioCardViewModel(selected).lifecycleLabel}
+                  color={toScenarioCardViewModel(selected).lifecycleColor}
+                  size="small"
+                  variant="filled"
+                />
+              )}
             </Stack>
 
             <Box sx={{ p: 2, borderRadius: 3, bgcolor: alpha(theme.palette.primary.main, 0.06), border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}` }}>
@@ -467,7 +595,7 @@ export function ScenarioBrowserView({
             {/* Participation Choice Selector */}
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                Choose Participation Mode
+                Choose How to Practice
               </Typography>
 
               <Stack spacing={1.5}>
@@ -488,7 +616,7 @@ export function ScenarioBrowserView({
                     <SmartToyOutlinedIcon color="primary" sx={{ mt: 0.2 }} />
                     <Box>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                        Solo Activity with AI Companion (Available Now)
+                        Practice with AI Companion (Solo Guided)
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Walk through the scenario with real-time guidance from your supportive Safe Quest AI companion.
@@ -514,7 +642,7 @@ export function ScenarioBrowserView({
                     <PeopleOutlinedIcon color="action" sx={{ mt: 0.2 }} />
                     <Box>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                        Invite Family Member (Cooperative Lobby)
+                        Invite Family Member (Cooperative Practice)
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Family invitations will appear here once linked family profiles are configured.
@@ -551,7 +679,22 @@ export function ScenarioBrowserView({
               </Stack>
             </Box>
 
-            {createError && <Alert severity="error">The solo session could not be started. Please try again.</Alert>}
+            {createError && (
+              <Alert
+                severity="warning"
+                action={
+                  selected?.lifecycle === 'active' && selected.session_ref ? (
+                    <Button color="inherit" size="small" onClick={onStartSolo}>
+                      Go to Active Session
+                    </Button>
+                  ) : undefined
+                }
+              >
+                {selected?.lifecycle === 'active'
+                  ? 'An active session is already in progress for this scenario.'
+                  : 'The session could not be started. Please try again.'}
+              </Alert>
+            )}
           </Stack>
         </DialogContent>
 
@@ -566,7 +709,17 @@ export function ScenarioBrowserView({
             startIcon={creating ? undefined : <PlayArrowIcon />}
             sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}
           >
-            {creating ? 'Starting session…' : 'Start solo activity'}
+            {creating
+              ? selected?.lifecycle === 'active'
+                ? 'Continuing session…'
+                : selected?.lifecycle === 'completed'
+                ? 'Restarting session…'
+                : 'Starting session…'
+              : selected?.lifecycle === 'active'
+              ? 'Continue Practice'
+              : selected?.lifecycle === 'completed'
+              ? 'Start Fresh Attempt'
+              : 'Start Practice'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -303,6 +303,25 @@ def seed(dry_run: bool = False, publish_demo_fixtures: bool = False) -> dict[str
     counts = {kind: {"inserted": 0, "updated": 0, "unchanged": 0} for kind in (
         "scenarios", "personas", "stages", "objectives", "constraints", "prompts"
     )}
+    # A dry run is a contract and fixture validation command, not a database
+    # probe. Keeping it offline lets CI validate content before infrastructure
+    # exists and proves validation cannot mutate persisted content.
+    if dry_run:
+        for kind, definitions in (
+            ("scenarios", content.scenarios),
+            ("personas", content.personas),
+            ("stages", content.stages),
+            ("objectives", content.objectives),
+            ("constraints", content.constraints),
+            ("prompts", content.prompts),
+        ):
+            counts[kind]["unchanged"] = len(definitions)
+        counts["demo_fixtures"] = {
+            "inserted": 0,
+            "updated": 0,
+            "unchanged": len(content.demo_fixtures),
+        }
+        return counts
     db = SessionLocal()
     try:
         # Reference validation is intentionally performed only after all source

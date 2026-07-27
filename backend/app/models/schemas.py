@@ -5,6 +5,7 @@ API request/response schemas and the structured LLM output schema.
 from __future__ import annotations
 
 from enum import Enum
+from collections.abc import Iterable
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -64,6 +65,31 @@ class FamilySessionState(str, Enum):
     PAUSED_FOR_SUPPORT = "paused_for_support"
     ABANDONED = "abandoned"
     EXPIRED = "expired"
+
+
+class ScenarioLifecycle(str, Enum):
+    NOT_STARTED = "not_started"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+
+
+TERMINAL_FAMILY_SESSION_STATES = frozenset({FamilySessionState.COMPLETED.value, FamilySessionState.ABANDONED.value, FamilySessionState.EXPIRED.value})
+NON_TERMINAL_FAMILY_SESSION_STATES = frozenset(state.value for state in FamilySessionState if state.value not in TERMINAL_FAMILY_SESSION_STATES)
+
+
+def is_terminal_family_session_state(state: str | FamilySessionState) -> bool:
+    return str(getattr(state, "value", state)) in TERMINAL_FAMILY_SESSION_STATES
+
+
+def is_non_terminal_family_session_state(state: str | FamilySessionState) -> bool:
+    return str(getattr(state, "value", state)) in NON_TERMINAL_FAMILY_SESSION_STATES
+
+
+def catalog_lifecycle_for_states(states: Iterable[str | FamilySessionState]) -> str:
+    values = tuple(str(getattr(state, "value", state)) for state in states)
+    if any(is_non_terminal_family_session_state(state) for state in values):
+        return ScenarioLifecycle.ACTIVE.value
+    return ScenarioLifecycle.COMPLETED.value if values else ScenarioLifecycle.NOT_STARTED.value
 
 
 class FamilySessionCommandType(str, Enum):
@@ -306,6 +332,8 @@ class PublishedScenarioOut(BaseModel):
     checkpoint_count: int
     published_at: str
     supported_participation_modes: list[str]
+    lifecycle: ScenarioLifecycle
+    session_ref: str | None = None
 
 
 class PublishedScenarioPageOut(BaseModel):
@@ -323,13 +351,16 @@ class CreateFamilySessionRequest(BaseModel):
     detective_mode: bool = False
 
 
+class RestartFamilySessionRequest(BaseModel):
+    prior_session_ref: str = Field(min_length=12, max_length=64)
+
+
 class FamilySessionOut(BaseModel):
     id: int
     public_id: str | None = None
     session_ref: str | None = None
     owner_ref: str | None = None
     transcript_id: int
-    parent_user_id: int | None = None
     # Opaque references are authoritative for new collaboration clients.
     caregiver_ref: str | None = None
     turn_owner_ref: str | None = None
@@ -340,9 +371,10 @@ class FamilySessionOut(BaseModel):
     completed_at: str | None
     state: FamilySessionState = FamilySessionState.IN_PROGRESS
     state_version: int = Field(default=1, ge=1)
-    revealed_up_to: int = Field(default=0, ge=0)
+    # -1 means no beat has been revealed yet. Sequence zero is a real scene
+    # element, so using zero here would incorrectly expose it on a new session.
+    revealed_up_to: int = Field(default=-1, ge=-1)
     active_checkpoint_element_key: str | None = None
-    participation_turn_user_id: int | None = None
     completion_acknowledged_at: str | None = None
     attempt_number: int = Field(default=1, ge=1)
     previous_session_id: int | None = None
@@ -610,7 +642,9 @@ class SessionProgressOut(BaseModel):
     eligible_target_count: int = Field(default=0, ge=0)
     required_finding_count: int = Field(default=0, ge=0)
     checkpoint_progress: int = Field(default=0, ge=0)
+    checkpoint_total: int = Field(default=0, ge=0)
     content_progress: int = Field(default=0, ge=0)
+    content_total: int = Field(default=0, ge=0)
     completion_ready: bool = False
 
 
@@ -627,6 +661,7 @@ class FamilySessionParticipantOut(BaseModel):
 
 
 class FamilySessionCapabilitiesOut(BaseModel):
+    can_start: bool = False
     can_reveal_next: bool = False
     can_continue_checkpoint: bool = False
     can_enter_completion_review: bool = False
@@ -692,10 +727,16 @@ class HintRequest(BaseModel):
 
 
 class ValidatedFindingOut(BaseModel):
+    """A curator-grounded insight, merged when the same lesson appears in more than one place."""
+
+    insight_key: str
     element_key: str
     annotation_id: int
     tactic_tag: str
     explanation: str | None = None
+    # The singular fields retain the first supporting instance for compatibility.
+    element_keys: list[str] = Field(default_factory=list)
+    annotation_ids: list[int] = Field(default_factory=list)
     discovered_at: str
     visibility: FindingVisibility
 
@@ -833,6 +874,7 @@ class FamilyAuthorizedSessionOut(BaseModel):
     owner_ref: str
     started_at: str
     completed_at: str | None = None
+    lifecycle: ScenarioLifecycle
 
 
 # ---------------------------------------------------------------------------

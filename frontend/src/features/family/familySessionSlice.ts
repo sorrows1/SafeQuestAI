@@ -17,7 +17,9 @@ import type {
 
 const messagesAdapter = createEntityAdapter<FamilyMessage>({ sortComparer: (a, b) => a.sequence - b.sequence });
 const elementsAdapter = createEntityAdapter<SceneElement, string>({ selectId: (element) => element.element_key, sortComparer: (a, b) => a.sequence - b.sequence });
-const findingsAdapter = createEntityAdapter<ValidatedFinding, string>({ selectId: (finding) => `${finding.element_key}:${finding.annotation_id}` });
+const findingsAdapter = createEntityAdapter<ValidatedFinding, string>({
+  selectId: (finding) => finding.insight_key ?? (finding.element_key + ":" + finding.annotation_id),
+});
 
 export interface ActiveCheckpoint {
   messageId: number;
@@ -130,7 +132,16 @@ const familySessionSlice = createSlice({
     flagAttemptReceived(state, action: PayloadAction<import("@/types").FlagAttempt>) {
       state.lastAttempt = action.payload;
       state.progress = action.payload.progress;
-      findingsAdapter.upsertMany(state.findings, action.payload.findings);
+      for (const finding of action.payload.findings) {
+        const findingId = finding.insight_key ?? (finding.element_key + ":" + finding.annotation_id);
+        const existing = state.findings.entities[findingId];
+        if (existing) {
+          existing.element_keys = Array.from(new Set([...(existing.element_keys ?? [existing.element_key]), ...(finding.element_keys ?? [finding.element_key])]));
+          existing.annotation_ids = Array.from(new Set([...(existing.annotation_ids ?? [existing.annotation_id]), ...(finding.annotation_ids ?? [finding.annotation_id])]));
+        } else {
+          findingsAdapter.addOne(state.findings, finding);
+        }
+      }
       state.pendingAttempt = false;
     },
     flagAttemptPending(state, action: PayloadAction<boolean>) {

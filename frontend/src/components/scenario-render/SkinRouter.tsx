@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Box, Paper, Typography } from "@mui/material";
 import SecurityIcon from "@mui/icons-material/Security";
-import type { ElementType, RenderSkin } from "@/types";
+import type { ElementType, PresentationToken, RenderSkin, SceneElement } from "@/types";
 import { ChatSkin } from "./ChatSkin";
 import { EmailSkin } from "./EmailSkin";
 import { SocialFeedSkin } from "./SocialFeedSkin";
@@ -24,9 +24,37 @@ export interface SkinCapability {
 }
 
 const common: ElementType[] = ["conversation", "message", "profile", "profile_field", "attachment", "link_preview", "system_event", "action"];
+const ELEMENT_KEY = new RegExp("^[a-zA-Z0-9_-]{1,255}" + String.fromCharCode(36));
+const MAX_PRESENTATION_VALUES: Partial<Record<keyof PresentationToken, number>> = {
+  display_label: 160, timestamp_label: 100, alt_text: 500, app_name: 80, surface_label: 120,
+  channel_name: 120, member_summary: 240, presence_summary: 160, sender_address: 254,
+  recipient_summary: 254, subject: 240, security_notice: 300, audience_label: 120,
+  location_label: 160, routine_label: 160, profile_handle: 100, account_age_label: 120,
+  trade_link_label: 160, bio: 500,
+};
+
+function hasSafePresentation(element: SceneElement): boolean {
+  const { href, badges = [], stats = [] } = element.presentation;
+  if (href && (!href.startsWith("/") || href.startsWith("//"))) return false;
+  if (![...badges, ...stats].every((value) => Boolean(value.trim()) && value.length <= 160)) return false;
+  return Object.entries(MAX_PRESENTATION_VALUES).every(([key, max]) => {
+    const value = element.presentation[key as keyof PresentationToken];
+    return value == null || typeof value !== "string" || value.length <= max!;
+  });
+}
+
+/** Runtime guard for previews and API payloads before a skin reads presentation data. */
+export function hasSafeSceneContract({ scene }: ScenarioSkinProps): boolean {
+  const keys = new Set<string>();
+  return scene.elements.every((element) => {
+    if (!ELEMENT_KEY.test(element.element_key) || keys.has(element.element_key)) return false;
+    keys.add(element.element_key);
+    return hasSafePresentation(element);
+  });
+}
 const capability = (id: RenderSkin, supportedElementTypes: ElementType[], previewFixture: string, Renderer: React.ComponentType<ScenarioSkinProps>): SkinCapability => ({
   id, version: "1.0", supportedElementTypes, fallbackSkin: "generic", responsiveModes: ["default", "compact"], previewFixture, Renderer,
-  validate: ({ scene }) => scene.scene_schema_version === 1 && scene.skin_version === "1.0" && scene.elements.every((element) => supportedElementTypes.includes(element.element_type)),
+  validate: (props) => props.scene.scene_schema_version === 1 && props.scene.skin_version === "1.0" && hasSafeSceneContract(props) && props.scene.elements.every((element) => supportedElementTypes.includes(element.element_type)),
 });
 
 /** Single registry consumed by the player and future admin/fixture previews. */
@@ -72,6 +100,7 @@ export function GenericFallbackSkin({ scene, selection, onSelect, readOnly, test
           key={element.element_key}
           element={element}
           selected={selection.selectedElementKeys.includes(element.element_key)}
+          completed={selection.completedElementKeys?.includes(element.element_key)}
           onSelect={onSelect}
           readOnly={readOnly}
         >

@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Typography, Divider, Tooltip, alpha } from '@mui/material';
+import { Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Typography, Divider, Tooltip, Button, alpha } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import MovieIcon from '@mui/icons-material/Movie';
 import PersonIcon from '@mui/icons-material/Person';
@@ -13,6 +13,10 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import GroupIcon from '@mui/icons-material/Group';
 import ChatIcon from '@mui/icons-material/Chat';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { toggleTheme } from '@/store/uiSlice';
 
 const SIDEBAR_WIDTH = 240;
 
@@ -38,6 +42,8 @@ const bottomItems = [
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const themeMode = useAppSelector((s) => s.ui.themeMode);
 
   const isActive = (path: string) => {
     if (path === '/admin') return location.pathname === '/admin' || location.pathname === '/admin/';
@@ -121,10 +127,21 @@ export function Sidebar() {
         </List>
       </Box>
 
-      {/* Version */}
-      <Box sx={{ px: 2, py: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-        <Typography variant="caption" sx={{ opacity: 0.3 }}>
-          v2.0.0
+      {/* Theme Control & Version */}
+      <Box sx={{ px: 2, py: 1.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => dispatch(toggleTheme())}
+          startIcon={themeMode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} theme mode`}
+          fullWidth
+          sx={{ borderRadius: '10px', fontSize: '0.8125rem', py: 0.75 }}
+        >
+          {themeMode === 'dark' ? 'Light Mode' : 'Dark Mode'}
+        </Button>
+        <Typography variant="caption" sx={{ opacity: 0.4, textAlign: 'center' }}>
+          v2.0.0 · Safe Quest Authoring
         </Typography>
       </Box>
     </Drawer>

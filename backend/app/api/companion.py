@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
@@ -128,18 +129,40 @@ def _findings(session: FamilySession, db: Session, element_id: int | None = None
     )
     if element_id is not None:
         query = query.filter(ValidatedFinding.element_id == element_id)
+    grouped: dict[str, dict] = {}
+    for finding, element, span in query.order_by(ValidatedFinding.discovered_at, ValidatedFinding.id).all():
+        # Curators may annotate the same tactic and explanation on several scene
+        # instances. Learners see one durable lesson with every supporting item.
+        tactic_tag = span.tactic_tag.strip().casefold()
+        explanation = " ".join((span.child_safe_explanation or "").split())
+        normalized = f"{tactic_tag}\n{explanation.casefold()}"
+        insight_key = sha256(normalized.encode("utf-8")).hexdigest()[:24]
+        group = grouped.setdefault(insight_key, {
+            "element_key": element.element_key, "annotation_id": span.id,
+            "tactic_tag": span.tactic_tag, "explanation": span.child_safe_explanation,
+            "element_keys": [], "annotation_ids": [], "discovered_at": finding.discovered_at,
+            "visibility": FindingVisibility(finding.visibility),
+        })
+        if element.element_key not in group["element_keys"]:
+            group["element_keys"].append(element.element_key)
+        if span.id not in group["annotation_ids"]:
+            group["annotation_ids"].append(span.id)
+        if finding.discovered_at < group["discovered_at"]:
+            group["discovered_at"] = finding.discovered_at
     return [ValidatedFindingOut(
-        element_key=element.element_key, annotation_id=span.id, tactic_tag=span.tactic_tag,
-        explanation=span.child_safe_explanation, discovered_at=finding.discovered_at.isoformat(),
-        visibility=FindingVisibility(finding.visibility),
-    ) for finding, element, span in query.order_by(ValidatedFinding.discovered_at, ValidatedFinding.id).all()]
+        insight_key=key, element_key=item["element_key"], annotation_id=item["annotation_id"],
+        tactic_tag=item["tactic_tag"], explanation=item["explanation"],
+        element_keys=item["element_keys"], annotation_ids=item["annotation_ids"],
+        discovered_at=item["discovered_at"].isoformat(), visibility=item["visibility"],
+    ) for key, item in grouped.items()]
 
 
 def _progress(session: FamilySession, db: Session) -> SessionProgressOut:
     progress = db.get(SessionProgress, session.id)
+    merged_finding_count = len(_findings(session, db))
     return SessionProgressOut(
         reviewed_element_count=progress.reviewed_element_count if progress else 0,
-        validated_finding_count=progress.validated_finding_count if progress else 0,
+        validated_finding_count=merged_finding_count,
         eligible_target_count=progress.eligible_target_count if progress else 0,
         required_finding_count=progress.required_finding_count if progress else 0,
         checkpoint_progress=progress.checkpoint_progress if progress else 0,
@@ -195,6 +218,7 @@ async def submit_flag_attempt(
     annotations = _annotations(session, target, db)
     sanitized_reasoning = redact_personal_info(body.reasoning)
     disclosure = is_real_disclosure(body.reasoning)
+    explicit_content = contains_explicit_content(body.reasoning)
     is_concerning = bool(annotations)
     transcript = db.get(CuratedTranscript, session.transcript_id)
     if not transcript:
@@ -207,8 +231,20 @@ async def submit_flag_attempt(
         feedback = {
             "acknowledgment": "Thank you for telling me.", "reasoning_assessment": "You deserve support.",
             "red_flag_result": is_concerning, "explanation": "We can pause this activity and focus on support.",
-            "tactic_tags": allowed_tags if is_concerning else [], "next_hint_or_action": "Reach out to a trusted adult when it is safe.",
+            "tactic_tags": list(dict.fromkeys(allowed_tags)) if is_concerning else [], "next_hint_or_action": "Reach out to a trusted adult when it is safe.",
             "response_text": DISCLOSURE_SUPPORT_MESSAGE, "support_resources": resources_for(transcript.category), "fallback": True,
+        }
+        result = "needs_support"
+    elif explicit_content:
+        feedback = {
+            "acknowledgment": "Thanks for checking in.",
+            "reasoning_assessment": "You do not need to share private or explicit details here.",
+            "red_flag_result": is_concerning,
+            "explanation": "We can keep this discussion focused on safe next steps and support.",
+            "tactic_tags": list(dict.fromkeys(allowed_tags)) if is_concerning else [],
+            "next_hint_or_action": "Talk with a trusted adult when it is safe.",
+            "response_text": SENSITIVE_CONTENT_REDIRECT,
+            "support_resources": resources_for(transcript.category), "fallback": True,
         }
         result = "needs_support"
     elif current_user.id == session.child_user_id:
@@ -274,7 +310,8 @@ async def submit_flag_attempt(
         }, actor_participant=participant)
     progress = db.get(SessionProgress, session.id)
     if progress:
-        progress.validated_finding_count = db.query(ValidatedFinding).filter(ValidatedFinding.family_session_id == session.id).count()
+        # Learner-visible progress follows merged insights, never raw annotation rows.
+        progress.validated_finding_count = len(_findings(session, db))
     db.commit()
     db.refresh(attempt)
     return _attempt_out(attempt, target, session, db)
@@ -289,11 +326,10 @@ def request_hint(
     if current_user.id != session.child_user_id:
         raise HTTPException(403, "Private companion hints are available only to the learner")
     target = _target(session, body.element_key, db)
-    prior = db.query(CompanionExchange).filter(
+    prior_records = db.query(CompanionExchange).filter(
         CompanionExchange.family_session_id == session.id,
         CompanionExchange.exchange_type.like(f"hint:{target.element_key}:%"),
-    ).count()
-    level = prior + 1
+    ).order_by(CompanionExchange.created_at, CompanionExchange.id).all()
     annotations = _annotations(session, target, db)
     hints = [hint for span in annotations for hint in (span.tiered_hints or [])]
     generic = [
@@ -301,7 +337,12 @@ def request_hint(
         "Think about boundaries: does this leave room to say no and talk to a trusted adult?",
         "Consider what a safe next step could be if this made you uncomfortable.",
     ]
-    hint = hints[min(level - 1, len(hints) - 1)] if hints else generic[min(level - 1, len(generic) - 1)]
+    ladder = list(dict.fromkeys(hints or generic))
+    # The hint ladder is finite and durable for this revealed element.
+    if len(prior_records) >= len(ladder):
+        return HintOut(element_key=target.element_key, hint_level=len(ladder), hint=prior_records[-1].companion_text)
+    level = len(prior_records) + 1
+    hint = ladder[level - 1]
     db.add(CompanionExchange(family_session_id=session.id, exchange_type=f"hint:{target.element_key}:{level}",
         child_text="", companion_text=hint, disclosure_triggered=False))
     db.commit()

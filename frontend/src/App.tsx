@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { ThemeProvider, CssBaseline } from '@mui/material';
@@ -34,6 +34,19 @@ import { InvitationAcceptView } from '@/pages/family/InvitationAcceptView';
 import { Landing } from '@/pages/Landing';
 import { FamilyScenarioPlayer } from '@/pages/family/FamilyScenarioPlayer';
 
+export function legacyChatDestinationForRole(role?: string): '/admin' | '/family/scenarios' {
+  return role === 'admin' ? '/admin' : '/family/scenarios';
+}
+
+function LegacyChatRedirect() {
+  const role = useAppSelector((state) => state.auth.user?.role);
+  return <Navigate to={legacyChatDestinationForRole(role)} replace />;
+}
+
+function AdminPage({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<AdminFallback />}>{children}</Suspense>;
+}
+
 function ThemedApp() {
   const themeMode = useAppSelector((s) => s.ui.themeMode);
   const theme = useMemo(() => (themeMode === 'dark' ? darkTheme : lightTheme), [themeMode]);
@@ -50,7 +63,7 @@ function ThemedApp() {
             <Route path="/auth/callback" element={<AuthCallback />} />
 
             <Route path="/" element={<Landing />} />
-            <Route path="/chat/*" element={<Navigate to="/family/scenarios" replace />} />
+            <Route path="/chat/*" element={<LegacyChatRedirect />} />
 
             <Route
               path="/family/scenarios"
@@ -162,9 +175,7 @@ function ThemedApp() {
               path="/admin/simulator"
               element={
                 <AdminRoute>
-                  <Suspense fallback={<AdminFallback />}>
-                    <SimulationWorkbench />
-                  </Suspense>
+                  <AdminPage><SimulationWorkbench /></AdminPage>
                 </AdminRoute>
               }
             />
@@ -172,9 +183,7 @@ function ThemedApp() {
               path="/admin/simulator/:runId"
               element={
                 <AdminRoute>
-                  <Suspense fallback={<AdminFallback />}>
-                    <SimulationWorkbench />
-                  </Suspense>
+                  <AdminPage><SimulationWorkbench /></AdminPage>
                 </AdminRoute>
               }
             />
@@ -206,9 +215,7 @@ function ThemedApp() {
               path="/admin/review-queue"
               element={
                 <AdminRoute>
-                  <Suspense fallback={<AdminFallback />}>
-                    <ReviewQueue />
-                  </Suspense>
+                  <AdminPage><ReviewQueue /></AdminPage>
                 </AdminRoute>
               }
             />
@@ -216,9 +223,7 @@ function ThemedApp() {
               path="/admin/curated-transcripts/:id/review"
               element={
                 <AdminRoute>
-                  <Suspense fallback={<AdminFallback />}>
-                    <CuratedContentReview />
-                  </Suspense>
+                  <AdminPage><CuratedContentReview /></AdminPage>
                 </AdminRoute>
               }
             />

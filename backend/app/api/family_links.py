@@ -10,7 +10,7 @@ from app.auth.security import get_current_user
 from app.config.rollout import FeatureFlag, require_feature
 from app.telemetry import record as telemetry_record
 from app.models.orm import FamilyRelationship,FamilyRelationshipAuditEvent,FamilyRelationshipInvitation,FamilySession,FamilySessionEvent,FamilySessionParticipant,User,get_db
-from app.models.schemas import FamilyAuthorizedSessionOut,FamilyRelationshipInvitationAcceptRequest,FamilyRelationshipInvitationCreateRequest,FamilyRelationshipInvitationOut,FamilyRelationshipOut,FamilyRelationshipPreviewOut,FamilyRelationshipUpdateRequest,FamilyRole
+from app.models.schemas import FamilyAuthorizedSessionOut,FamilyRelationshipInvitationAcceptRequest,FamilyRelationshipInvitationCreateRequest,FamilyRelationshipInvitationOut,FamilyRelationshipOut,FamilyRelationshipPreviewOut,FamilyRelationshipUpdateRequest,FamilyRole,ScenarioLifecycle,TERMINAL_FAMILY_SESSION_STATES,catalog_lifecycle_for_states
 
 def require_relationships_rollout() -> None:
     require_feature(FeatureFlag.RELATIONSHIPS)
@@ -118,7 +118,7 @@ def update_relationship(relationship_ref:str,body:FamilyRelationshipUpdateReques
     if not row: raise HTTPException(404,"Family relationship not found")
     point=now();row.status="blocked" if body.action=="block" else "revoked";row.revoked_at=point;row.blocked_by_user_id=current_user.id if body.action=="block" else None
     # Default Phase 8 policy: revoke future/live caregiver access, retain completed guides.
-    live=db.query(FamilySession).filter(FamilySession.child_user_id==row.learner_user_id,FamilySession.parent_user_id==row.caregiver_user_id,FamilySession.state.notin_(["completed","abandoned","expired"])).all()
+    live=db.query(FamilySession).filter(FamilySession.child_user_id==row.learner_user_id,FamilySession.parent_user_id==row.caregiver_user_id,FamilySession.state.notin_(TERMINAL_FAMILY_SESSION_STATES)).all()
     for session in live:
         member=db.query(FamilySessionParticipant).filter(FamilySessionParticipant.family_session_id==session.id,FamilySessionParticipant.user_id==row.caregiver_user_id,FamilySessionParticipant.left_at.is_(None)).first()
         if not member: continue
@@ -130,4 +130,4 @@ def update_relationship(relationship_ref:str,body:FamilyRelationshipUpdateReques
 @router.get("/sessions",response_model=list[FamilyAuthorizedSessionOut])
 def authorized_sessions(db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):
     rows=db.query(FamilySession,FamilySessionParticipant).join(FamilySessionParticipant,FamilySessionParticipant.family_session_id==FamilySession.id).filter(FamilySessionParticipant.user_id==current_user.id,FamilySessionParticipant.left_at.is_(None)).all()
-    return [FamilyAuthorizedSessionOut(session_ref=session.public_id or "",transcript_id=session.transcript_id,state=session.state,role=FamilyRole(member.role),owner_ref=member_ref(session.owner_user_id or session.child_user_id),started_at=stamp(session.started_at) or "",completed_at=stamp(session.completed_at)) for session,member in rows]
+    return [FamilyAuthorizedSessionOut(session_ref=session.public_id or "",transcript_id=session.transcript_id,state=session.state,role=FamilyRole(member.role),owner_ref=member_ref(session.owner_user_id or session.child_user_id),started_at=stamp(session.started_at) or "",completed_at=stamp(session.completed_at),lifecycle=ScenarioLifecycle(catalog_lifecycle_for_states([session.state]))) for session,member in rows]

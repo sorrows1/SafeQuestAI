@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useCreateFamilySessionMutation, useGetFamilyScenariosQuery } from '@/store/api';
+import { useCreateFamilySessionMutation, useGetFamilyScenariosQuery, useRestartFamilySessionMutation } from '@/store/api';
 import type { FamilyScenarioQuery, PublishedFamilyScenario, RenderSkin } from '@/types';
 import { FamilyAppShell } from '@/components/family/FamilyAppShell';
 import { ScenarioBrowserView } from './ScenarioBrowserView';
@@ -59,6 +59,7 @@ export function FamilyScenarioLobby() {
   const { data, isLoading, isFetching, isError, error: queryError, refetch } = useGetFamilyScenariosQuery(filters);
   const queryStatus = (queryError as { status?: number | string } | undefined)?.status;
   const [createSession, { isLoading: creating, error }] = useCreateFamilySessionMutation();
+  const [restartSession, { isLoading: restarting, error: restartError }] = useRestartFamilySessionMutation();
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -79,12 +80,36 @@ export function FamilyScenarioLobby() {
     setPage(1);
   };
 
+  const navigateToSession = (scenario: PublishedFamilyScenario, session: { public_id?: string | null; session_ref?: string | null; id: number }) => {
+    const sessionRefOrId = session.session_ref || session.public_id || session.id;
+    navigate('/family/scenarios/' + scenario.id + '/sessions/' + sessionRefOrId, { state: { session } });
+  };
+
   const handleScenarioClick = (item: PublishedFamilyScenario | null) => {
+    if (item?.lifecycle === 'active' && item.session_ref) {
+      navigate('/family/scenarios/' + item.id + '/sessions/' + item.session_ref);
+      return;
+    }
     setSelected(item);
   };
 
   const handleOpenSelector = () => {
     setSelectorModalOpen(true);
+  };
+
+  const handleLifecycleAction = async () => {
+    if (!selected) return;
+    if (selected.lifecycle !== 'completed' || !selected.session_ref) {
+      handleOpenSelector();
+      return;
+    }
+    try {
+      const session = await restartSession({ transcriptId: selected.id, prior_session_ref: selected.session_ref }).unwrap();
+      setSelected(null);
+      navigateToSession(selected, session);
+    } catch {
+      // Error is rendered through the existing mutation feedback state.
+    }
   };
 
   const handleStartSession = async (relationshipRef?: string) => {
@@ -94,10 +119,9 @@ export function FamilyScenarioLobby() {
         transcriptId: selected.id,
         relationship_ref: relationshipRef,
       }).unwrap();
-      const sessionRefOrId = session.public_id || session.id;
       setSelectorModalOpen(false);
       setSelected(null);
-      navigate('/family/scenarios/' + selected.id + '/sessions/' + sessionRefOrId, { state: { session } });
+      navigateToSession(selected, session);
     } catch {
       // Error handled by RTK mutation error state
     }
@@ -132,9 +156,9 @@ export function FamilyScenarioLobby() {
         onRefetch={refetch}
         selected={selected}
         onSelectScenario={handleScenarioClick}
-        onStartSolo={handleOpenSelector}
-        creating={creating}
-        createError={Boolean(error)}
+        onStartSolo={handleLifecycleAction}
+        creating={creating || restarting}
+        createError={Boolean(error || restartError)}
       />
 
       {/* Caregiver Selector Modal when starting a scenario */}
