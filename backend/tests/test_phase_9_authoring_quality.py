@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.generation.scorer import generation_quality_issues
+from app.generation.scorer import generation_quality_issues, propose_tags
 from app.models.schemas import (
     AdminSceneDraft,
     Difficulty,
@@ -70,18 +70,28 @@ def test_category_tags_and_image_request_safety_are_publication_gates():
         validate_scene_draft_for_publication(unsafe)
 
 
-def test_generation_quality_requires_taxonomy_plan_and_avoids_repeat_language():
+def test_generation_quality_ignores_invalid_taxonomy_tags_and_avoids_repeat_language():
     issues = generation_quality_issues(
-        category=ScenarioCategory.SCAM, modifier=DifficultyModifier(),
-        raw={"tactic_tags": ["not_a_taxonomy_tag"], "tactic_plan": ["not_a_taxonomy_tag"]},
-        texts=["Please hurry."], existing_messages=[],
+        category=ScenarioCategory.SCAM,
+        modifier=DifficultyModifier(),
+        raw={
+            "tactic_tags": ["not_a_taxonomy_tag"],
+            "tactic_plan": ["not_a_taxonomy_tag"],
+        },
+        texts=["Please hurry."],
+        existing_messages=[],
     )
-    assert {issue.code for issue in issues} >= {"INVALID_TACTIC_TAG"}
+    assert not any(issue.code == "INVALID_TACTIC_TAG" for issue in issues)
 
     issues = generation_quality_issues(
-        category=ScenarioCategory.SCAM, modifier=DifficultyModifier(),
-        raw={"tactic_tags": ["urgency_pressure"], "tactic_plan": ["urgency_pressure"]},
-        texts=["Please hurry.", "Please hurry."], existing_messages=[],
+        category=ScenarioCategory.SCAM,
+        modifier=DifficultyModifier(),
+        raw={
+            "tactic_tags": ["urgency_pressure"],
+            "tactic_plan": ["urgency_pressure"],
+        },
+        texts=["Please hurry.", "Please hurry."],
+        existing_messages=[],
     )
     assert any(issue.code == "REPEATED_LANGUAGE" for issue in issues)
 
@@ -101,3 +111,12 @@ def test_prompt_layers_request_tactic_plans_without_leaking_hidden_intent():
     initiator = "\n".join(runtime.layers(run, "initiator")["user"])
     assert "tactic_plan" in initiator and "secret objective" in initiator
     assert "secret objective" not in respondent and "Hidden" not in respondent
+
+
+def test_propose_tags_strips_non_taxonomy_tags():
+    tags = propose_tags(
+        ScenarioCategory.SCAM,
+        ["urgency_pressure", "not_a_taxonomy_tag"],
+    )
+
+    assert tags == ["urgency_pressure"]
