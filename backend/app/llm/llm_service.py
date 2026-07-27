@@ -30,9 +30,16 @@ class LLMService:
     """
 
     def __init__(self) -> None:
-        self._token = os.getenv("GITHUB_TOKEN") or os.getenv("OPENAI_API_KEY")
-        self._endpoint = os.getenv("OPENAI_ENDPOINT", "https://models.github.ai/inference")
+        self._endpoint = os.getenv(
+            "OPENAI_ENDPOINT", "https://models.github.ai/inference")
         self._model = os.getenv("OPENAI_MODEL", "openai/gpt-4.1-mini")
+
+        if "github.ai" in self._endpoint:
+            self._token = os.getenv(
+                "GITHUB_TOKEN") or os.getenv("OPENAI_API_KEY")
+        else:
+            self._token = os.getenv(
+                "OPENAI_API_KEY") or os.getenv("GITHUB_TOKEN")
 
         if not self._token:
             raise RuntimeError(
@@ -42,8 +49,10 @@ class LLMService:
         self._client = AsyncOpenAI(
             base_url=self._endpoint,
             api_key=self._token,
+            timeout=30.0,
         )
-        logger.info("LLMService initialised: model=%s endpoint=%s", self._model, self._endpoint)
+        logger.info("LLMService initialised: model=%s endpoint=%s",
+                    self._model, self._endpoint)
 
     async def generate(self, system_prompt: str, user_message: str) -> dict:
         """
@@ -60,29 +69,53 @@ class LLMService:
             ValueError: If the LLM response is not valid JSON.
             Exception: On API call failure.
         """
+        sys_content = system_prompt
+        if "json" not in system_prompt.lower() and "json" not in user_message.lower():
+            sys_content = f"{system_prompt}\n\nRespond strictly with a valid JSON object."
+
         messages: list[ChatCompletionMessageParam] = [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": sys_content},
             {"role": "user", "content": user_message},
         ]
 
-        logger.debug("LLMService: calling %s with %d message(s)", self._model, len(messages))
+        logger.debug("LLMService: calling %s with %d message(s)",
+                     self._model, len(messages))
 
         response = await self._client.chat.completions.create(
             model=self._model,
             messages=messages,
             response_format={"type": "json_object"},
             temperature=0.7,
-            max_tokens=1024,
+            max_tokens=4096,
+            extra_body={
+                "thinking": {
+                    "type": "disabled",
+                },
+            },
         )
 
-        raw_content = response.choices[0].message.content
-        if not raw_content:
+        choice = response.choices[0]
+
+        if choice.finish_reason == "length":
+            raise RuntimeError(
+                "LLM generation exceeded max_tokens before producing a complete response."
+            )
+
+        content = choice.message.content
+
+        if not content or not content.strip():
+            raise RuntimeError(
+                f"LLM returned empty response. finish_reason={choice.finish_reason!r}"
+            )
+
+        if not content:
             raise ValueError("LLM returned empty response.")
 
         try:
-            return json.loads(raw_content)
+            return json.loads(content)
         except json.JSONDecodeError as exc:
-            logger.error("LLM response is not valid JSON: %s", raw_content[:500])
+            logger.error("LLM response is not valid JSON: %s",
+                         content[:500])
             raise ValueError(f"LLM response is not valid JSON: {exc}") from exc
 
     async def generate_layers(

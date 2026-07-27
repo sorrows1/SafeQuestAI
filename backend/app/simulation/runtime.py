@@ -144,7 +144,7 @@ class SimulationRuntime:
                 if run:
                     self.freeze_usage(run)
                     run.status, run.stop_reason = FAILED_RETRYABLE, exc.code
-                    self.event(db, run, "run_status", {"status": run.status, "code": exc.code, "attempts": exc.attempts})
+                    self.event(db, run, "run_status", {"status": run.status, "code": exc.code, "detail": exc.detail, "attempts": exc.attempts})
                     db.commit()
                 return
             except Exception as exc:
@@ -152,7 +152,8 @@ class SimulationRuntime:
                 if run:
                     self.freeze_usage(run)
                     run.status, run.stop_reason = FAILED_TERMINAL, self.failure_code(exc)
-                    self.event(db, run, "run_status", {"status": run.status, "code": run.stop_reason})
+                    detail = str(getattr(exc, "detail", exc))
+                    self.event(db, run, "run_status", {"status": run.status, "code": run.stop_reason, "detail": detail})
                     db.commit()
                 return
             finally: db.close()
@@ -271,19 +272,20 @@ class SimulationRuntime:
                 code = self.retry_code(exc)
                 if not code:
                     raise
-                self.record_retry(db, run, attempt, code, exhausted=attempt == MAX_GENERATION_ATTEMPTS)
+                detail = str(getattr(exc, "detail", exc))
+                self.record_retry(db, run, attempt, code, detail=detail, exhausted=attempt == MAX_GENERATION_ATTEMPTS)
                 if attempt == MAX_GENERATION_ATTEMPTS:
-                    raise GenerationRetryExhausted(code, attempt) from exc
+                    raise GenerationRetryExhausted(code, attempt, detail=detail) from exc
                 await asyncio.sleep(RETRY_BACKOFF_SECONDS[attempt - 1])
         raise AssertionError("unreachable")
 
-    def record_retry(self, db: Session, run: SimulationRun, attempt: int, code: str, *, exhausted: bool) -> None:
+    def record_retry(self, db: Session, run: SimulationRun, attempt: int, code: str, *, detail: str = "", exhausted: bool) -> None:
         state = dict(run.state or {})
         diagnostics = list(state.get("generation_diagnostics", []))[-9:]
-        diagnostics.append({"attempt": attempt, "category": code, "exhausted": exhausted, "at": now().isoformat()})
+        diagnostics.append({"attempt": attempt, "category": code, "detail": detail, "exhausted": exhausted, "at": now().isoformat()})
         state["generation_diagnostics"] = diagnostics
         run.state = state
-        self.event(db, run, "generation_retry", {"attempt": attempt, "category": code, "exhausted": exhausted})
+        self.event(db, run, "generation_retry", {"attempt": attempt, "category": code, "detail": detail, "exhausted": exhausted})
         db.commit()
 
     @staticmethod
@@ -341,7 +343,7 @@ class SimulationRuntime:
         return [x for x in db.query(SimulationMessage).filter(SimulationMessage.run_id == run.id, SimulationMessage.branch_id == branch).order_by(SimulationMessage.sequence).all() if (x.metadata_json or {}).get("active", True)]
     def hydrate(self, db: Session, run: SimulationRun) -> None: run._runtime_messages = self.active_messages(db, run)  # type: ignore[attr-defined]
     def freeze_usage(self, run: SimulationRun) -> None:
-        usage = dict(run.resource_usage or {}); usage["running_seconds"] = self.running_seconds(run); run.resource_usage = usage; state = dict(run.state or {}); state.pop("running_started_at", None); run.state = state
+        usage = dict(run.resource_usage or {}); usage["running_seconds"] = self.running_seconds(run); run.resource_usage = usage; state = dict(run.state or {}); state.pop("running_started_at", None); run.state = state; run.worker_lease = {}
     def pause(self, db: Session, run: SimulationRun) -> None:
         if run.status != RUNNING: raise HTTPException(409, "Only a running simulation can be paused")
         self.freeze_usage(run); run.status = "paused"; self.event(db, run, "run_status", {"status": run.status}); db.commit()
@@ -350,14 +352,14 @@ class SimulationRuntime:
             if not extend: raise HTTPException(409, "Resuming a limited run requires extend_limits=true")
             usage = dict(run.resource_usage or {}); usage["message_limit"] = min(GLOBAL_MESSAGES, int(usage.get("message_limit", DEFAULT_MESSAGES)) + 100); usage["minute_limit"] = min(GLOBAL_MINUTES, int(usage.get("minute_limit", DEFAULT_MINUTES)) + 30); run.resource_usage = usage
         elif run.status not in {"paused", "awaiting_admin", FAILED_RETRYABLE}: raise HTTPException(409, "Simulation cannot be resumed from its current status")
-        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status, run.stop_reason = RUNNING, None; self.event(db, run, "run_status", {"status": run.status}); db.commit()
+        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status, run.stop_reason = RUNNING, None; run.worker_lease = {}; self.event(db, run, "run_status", {"status": run.status}); db.commit()
     def stop(self, db: Session, run: SimulationRun) -> None:
         if run.status not in {RUNNING, "paused", "awaiting_admin", "limit_reached", FAILED_RETRYABLE}: raise HTTPException(409, "Simulation cannot be stopped")
         self.freeze_usage(run); run.status, run.stop_reason = "ready_for_review", "stopped"; self.event(db, run, "run_status", {"status": run.status}); db.commit()
     def admin_response(self, db: Session, run: SimulationRun, content: str, admin_id: int) -> None:
         if run.status != "awaiting_admin" or run.mode != "admin_as_respondent": raise HTTPException(409, "Simulation is not awaiting an admin response")
         self.assert_safe(run, content); self.append(db, run, "respondent", content, {"active": True, "admin_id": admin_id, "evaluation": {"source": "admin"}}); self.apply_evaluation(run, {}, "respondent", content)
-        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; self.event(db, run, "run_status", {"status": run.status}); db.commit()
+        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; run.worker_lease = {}; self.event(db, run, "run_status", {"status": run.status}); db.commit()
     def edit(self, db: Session, run: SimulationRun, message_id: int, content: str, editor_id: int, reason: str | None) -> None:
         if run.status not in EDITABLE: raise HTTPException(409, "Messages may only be edited while paused, awaiting admin, or review-ready")
         self.assert_safe(run, content); active = self.active_messages(db, run); item = next((x for x in active if x.id == message_id), None)
@@ -373,7 +375,7 @@ class SimulationRuntime:
         active = self.active_messages(db, run)
         if run.status not in EDITABLE or not active: raise HTTPException(409, "An active completed or paused turn is required")
         last = active[-1]; self.edit(db, run, last.id, last.content, editor_id, "regenerate last turn"); last.metadata_json = {**(last.metadata_json or {}), "active": False}
-        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; self.event(db, run, "run_status", {"status": run.status}); db.commit()
+        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; run.worker_lease = {}; self.event(db, run, "run_status", {"status": run.status}); db.commit()
     @staticmethod
     def event(db: Session, run: SimulationRun, event_type: str, payload: dict[str, Any]) -> None:
         db.add(SimulationEvent(run_id=run.id, sequence=db.query(SimulationEvent).filter(SimulationEvent.run_id == run.id).count() + 1, event_type=event_type, payload=payload))
@@ -382,6 +384,6 @@ class GenerationSafetyError(RuntimeError):
 
 
 class GenerationRetryExhausted(RuntimeError):
-    def __init__(self, code: str, attempts: int) -> None:
-        self.code, self.attempts = code, attempts
-        super().__init__(code)
+    def __init__(self, code: str, attempts: int, detail: str = "") -> None:
+        self.code, self.attempts, self.detail = code, attempts, detail
+        super().__init__(f"{code}: {detail}" if detail else code)

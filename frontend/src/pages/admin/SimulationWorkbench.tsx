@@ -363,9 +363,27 @@ function PromptProvenanceDrawer({
 }
 
 // ── Diagnostic Detail Panel ──────────────────────────────────────────────────
-function DiagnosticDetailPanel({ run }: { run: SimulationRun; }) {
+function DiagnosticDetailPanel({ run, events }: { run: SimulationRun; events: Array<{ id: number; event: string; payload: any; }>; }) {
   const [tab, setTab] = useState(0);
   const [showRawPrompts, setShowRawPrompts] = useState(false);
+  const { enqueueSnackbar } = useSnackbar();
+
+  const copyRawJson = () => {
+    if (!run) return;
+    navigator.clipboard.writeText(JSON.stringify(run, null, 2));
+    enqueueSnackbar('Copied raw JSON to clipboard', { variant: 'info' });
+  };
+
+  const downloadRawJson = () => {
+    if (!run) return;
+    const blob = new Blob([JSON.stringify(run, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `simulation-run-${run.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const diagnostics = useMemo(() => {
     const rawDiag: any = run.diagnostics ?? {};
@@ -410,19 +428,21 @@ function DiagnosticDetailPanel({ run }: { run: SimulationRun; }) {
   const prompts = run.prompts ?? {};
 
   return (
-    <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 420 }, minWidth: { lg: 380 }, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 420 }, minWidth: { lg: 380 }, height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <Tabs
         value={tab}
         onChange={(_, value) => setTab(value)}
         variant="scrollable"
         scrollButtons="auto"
-        sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}
+        sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper', flexShrink: 0 }}
       >
         <Tab label="Overview" />
         <Tab label="Progress" />
         <Tab label={`Safety (${diagnostics.safety_findings.length + diagnostics.warnings.length})`} />
+        <Tab label={`Events (${events.length})`} />
         <Tab label="Prompts" />
         <Tab label="Usage" />
+        <Tab label="Raw JSON" />
       </Tabs>
 
       <Box sx={{ p: 2, flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -730,8 +750,13 @@ function DiagnosticDetailPanel({ run }: { run: SimulationRun; }) {
           </Stack>
         )}
 
-        {/* Tab 3: Prompts */}
+        {/* Tab 3: Events */}
         {tab === 3 && (
+          <ChronologicalEventLog events={events} embedded />
+        )}
+
+        {/* Tab 4: Prompts */}
+        {tab === 4 && (
           <Stack spacing={2}>
             <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle2">Prompt Provenance</Typography>
@@ -809,8 +834,8 @@ function DiagnosticDetailPanel({ run }: { run: SimulationRun; }) {
           </Stack>
         )}
 
-        {/* Tab 4: Usage */}
-        {tab === 4 && (
+        {/* Tab 5: Usage */}
+        {tab === 5 && (
           <Stack spacing={2}>
             {/* Message Budget Meter */}
             <Card variant="outlined">
@@ -888,13 +913,32 @@ function DiagnosticDetailPanel({ run }: { run: SimulationRun; }) {
             </Card>
           </Stack>
         )}
+
+        {/* Tab 6: Raw JSON */}
+        {tab === 6 && (
+          <Stack spacing={2}>
+            <Stack direction="row" spacing={1}>
+              <Button size="small" variant="outlined" startIcon={<ContentCopyIcon />} onClick={copyRawJson}>
+                Copy JSON
+              </Button>
+              <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={downloadRawJson}>
+                Download JSON
+              </Button>
+            </Stack>
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.paper', maxHeight: 400, overflow: 'auto' }}>
+              <Typography variant="caption" component="pre" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', m: 0 }}>
+                {JSON.stringify(run, null, 2)}
+              </Typography>
+            </Paper>
+          </Stack>
+        )}
       </Box>
     </Paper>
   );
 }
 
 // ── Chronological Event Log Timeline ─────────────────────────────────────────
-function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: string; payload: any; }>; }) {
+function ChronologicalEventLog({ events, embedded = false }: { events: Array<{ id: number; event: string; payload: any; }>; embedded?: boolean; }) {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -910,14 +954,16 @@ function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: 
     });
   }, [events, filterCategory, searchQuery]);
 
-  return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-        <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <StorageIcon fontSize="small" /> Event Log Timeline ({events.length})
-        </Typography>
+  const body = (
+    <Stack spacing={1.5}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+        {!embedded && (
+          <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <StorageIcon fontSize="small" /> Event Log Timeline ({events.length})
+          </Typography>
+        )}
 
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', width: { xs: '100%', sm: 'auto' } }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', width: '100%' }}>
           <TextField
             size="small"
             placeholder="Filter events..."
@@ -932,11 +978,11 @@ function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: 
                 ),
               },
             }}
-            sx={{ minWidth: 160 }}
+            sx={{ flex: 1, minWidth: 120 }}
           />
-          <FormControl size="small" sx={{ minWidth: 140 }}>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
             <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
-              <MenuItem value="all">All Categories</MenuItem>
+              <MenuItem value="all">All</MenuItem>
               <MenuItem value="lifecycle">Lifecycle</MenuItem>
               <MenuItem value="transcript">Transcript</MenuItem>
               <MenuItem value="revision">Revision</MenuItem>
@@ -948,7 +994,7 @@ function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: 
         </Stack>
       </Stack>
 
-      <Box sx={{ maxHeight: 220, overflow: 'auto' }}>
+      <Box sx={{ overflow: 'auto' }}>
         {filteredEvents.length ? (
           <List dense disablePadding>
             {filteredEvents.map((evt, idx) => {
@@ -986,8 +1032,11 @@ function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: 
           </Typography>
         )}
       </Box>
-    </Paper>
+    </Stack>
   );
+
+  if (embedded) return body;
+  return <Paper variant="outlined" sx={{ p: 2 }}>{body}</Paper>;
 }
 
 // ── Main Simulation Workbench Component ──────────────────────────────────────
@@ -1258,7 +1307,7 @@ export function SimulationWorkbench() {
 
   return (
     <AppShell>
-      <Box sx={{ height: { xs: 'auto', md: 'calc(100vh - 70px)' }, display: 'flex', flexDirection: 'column', overflow: 'hidden', p: 2.5, gap: 2 }}>
+      <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2, minHeight: '100%' }}>
         {/* Page Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, flexShrink: 0 }}>
           <Box>
@@ -1509,9 +1558,9 @@ export function SimulationWorkbench() {
 
         {/* Main Content Area: Transcript Timeline + Diagnostic Panel */}
         {run && (
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flex: 1, minHeight: 480 }}>
             {/* Left: Transcript Timeline */}
-            <Paper variant="outlined" sx={{ p: 2, flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <Paper variant="outlined" sx={{ p: 2, flex: 1, minHeight: 480, height: { xs: 500, lg: 'auto' }, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <Box sx={{ pb: 1, borderBottom: 1, borderColor: 'divider', mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                   Transcript Timeline ({messages.length} turns)
@@ -1652,37 +1701,8 @@ export function SimulationWorkbench() {
             </Paper>
 
             {/* Right: Diagnostic Detail Panel */}
-            <DiagnosticDetailPanel run={run} />
+            <DiagnosticDetailPanel run={run} events={eventLog} />
           </Stack>
-        )}
-
-        {/* Filterable Chronological Event Log */}
-        {run && <ChronologicalEventLog events={eventLog} />}
-
-        {/* Collapsed Advanced Raw JSON Drawer */}
-        {run && (
-          <Accordion variant="outlined" expanded={showRawJson} onChange={(_, exp) => setShowRawJson(exp)} sx={{ flexShrink: 0 }}>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CodeIcon fontSize="small" /> Advanced Raw JSON & Diagnostics
-              </Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
-                <Button size="small" variant="outlined" startIcon={<ContentCopyIcon />} onClick={copyRawJson}>
-                  Copy JSON
-                </Button>
-                <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={downloadRawJson}>
-                  Download JSON
-                </Button>
-              </Stack>
-              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.paper', maxHeight: 300, overflow: 'auto' }}>
-                <Typography variant="caption" component="pre" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', m: 0 }}>
-                  {JSON.stringify(run, null, 2)}
-                </Typography>
-              </Paper>
-            </AccordionDetails>
-          </Accordion>
         )}
 
         {/* Edit Revision Dialog */}

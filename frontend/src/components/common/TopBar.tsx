@@ -1,10 +1,11 @@
-import { AppBar, Toolbar, Box, IconButton, Button, Typography, Tooltip, Chip } from '@mui/material';
+import { AppBar, Toolbar, Box, IconButton, Button, Typography, Tooltip } from '@mui/material';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import MenuIcon from '@mui/icons-material/Menu';
+import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import { useAppDispatch, useAppSelector } from '@/store';
-import { toggleTheme } from '@/store/uiSlice';
-import { useLocation } from 'react-router-dom';
+import { toggleSidebar, toggleTheme } from '@/store/uiSlice';
 
 interface Props {
   onReload?: () => void;
@@ -13,12 +14,18 @@ interface Props {
 export function TopBar({ onReload }: Props) {
   const dispatch = useAppDispatch();
   const themeMode = useAppSelector((s) => s.ui.themeMode);
+  const sidebarOpen = useAppSelector((s) => s.ui.sidebarOpen);
 
   const title = 'Safe Quest';
 
   return (
     <AppBar position="static" elevation={0} sx={{ zIndex: 1 }}>
       <Toolbar variant="dense" sx={{ minHeight: 56, px: 2 }}>
+        <Tooltip title={sidebarOpen ? 'Collapse Sidebar' : 'Expand Sidebar'}>
+          <IconButton size="small" edge="start" color="inherit" onClick={() => dispatch(toggleSidebar())} sx={{ mr: 1.5 }}>
+            {sidebarOpen ? <MenuOpenIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
+          </IconButton>
+        </Tooltip>
         <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
           {title}
         </Typography>
