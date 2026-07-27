@@ -53,7 +53,18 @@ python scripts/migrate_json_to_db.py --dry-run
 python scripts/migrate_json_to_db.py
 ```
 
-Use `python scripts/migrate_json_to_db.py --publish-demo-fixtures` only in development. To inspect whether retired raw tables remain without exposing their rows, run `python scripts/audit_legacy_conversations.py`.
+OR 
+
+```bash
+cd backend
+alembic upgrade head
+python -m scripts.migrate_json_to_db--dry-run
+python -m scripts.migrate_json_to_db
+```
+whichevers working.
+
+
+Use `python scripts/migrate_json_to_db.py --publish-demo-fixtures` only in development(untested). To inspect whether retired raw tables remain without exposing their rows, run `python scripts/audit_legacy_conversations.py`.
 
 ## Architecture
 
