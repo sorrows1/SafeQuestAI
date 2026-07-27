@@ -1128,16 +1128,19 @@ export function SimulationWorkbench() {
     if (messages.length > prevMessagesCountRef.current) {
       if (userScrolledUp) {
         setUnreadEventsCount((prev) => prev + (messages.length - prevMessagesCountRef.current));
-      } else if (autoScroll && timelineRef.current) {
-        timelineRef.current.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'smooth' });
       }
     }
+    
+    if (autoScroll && !userScrolledUp && timelineRef.current) {
+      timelineRef.current.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'auto' });
+    }
+    
     prevMessagesCountRef.current = messages.length;
-  }, [messages.length, autoScroll, userScrolledUp]);
+  }, [messages, typing, autoScroll, userScrolledUp]);
 
   const scrollToBottom = () => {
     if (timelineRef.current) {
-      timelineRef.current.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'smooth' });
+      timelineRef.current.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'auto' });
     }
     setUserScrolledUp(false);
     setUnreadEventsCount(0);
@@ -1307,7 +1310,7 @@ export function SimulationWorkbench() {
 
   return (
     <AppShell>
-      <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2, minHeight: '100%' }}>
+      <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2, height: { xs: 'auto', lg: '100%' }, minHeight: '100%' }}>
         {/* Page Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, flexShrink: 0 }}>
           <Box>
@@ -1558,9 +1561,9 @@ export function SimulationWorkbench() {
 
         {/* Main Content Area: Transcript Timeline + Diagnostic Panel */}
         {run && (
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flex: 1, minHeight: 480 }}>
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flex: 1, minHeight: 480, height: { xs: 'auto', lg: '100%' } }}>
             {/* Left: Transcript Timeline */}
-            <Paper variant="outlined" sx={{ p: 2, flex: 1, minHeight: 480, height: { xs: 500, lg: 'auto' }, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <Paper variant="outlined" sx={{ p: 2, flex: 1, minHeight: 480, height: { xs: 500, lg: '100%' }, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <Box sx={{ pb: 1, borderBottom: 1, borderColor: 'divider', mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                   Transcript Timeline ({messages.length} turns)

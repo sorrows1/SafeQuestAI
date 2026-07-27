@@ -256,7 +256,11 @@ class SimulationRuntime:
                     texts = [str(raw.get("moment") or raw.get("reply") or "").strip()]
                 else:
                     values = raw.get("messages") if isinstance(raw.get("messages"), list) else [raw.get("reply", "")]
-                    texts = [str(value).strip() for value in values[:2] if str(value).strip()]
+                    texts = [
+                        (str(value.get("content", "")) if isinstance(value, dict) else str(value)).strip()
+                        for value in values[:2]
+                    ]
+                    texts = [t for t in texts if t]
                 if not texts or not all(texts):
                     raise ValueError("LLM response omitted required message content")
                 for text in texts:

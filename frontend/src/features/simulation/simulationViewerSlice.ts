@@ -93,7 +93,7 @@ const simulationViewerSlice = createSlice({
       state.runId = action.payload.id;
       state.runStatus = normalizeSimulationStatus(action.payload.status);
       state.activeBranch = String(action.payload.progress?.active_branch ?? 'main');
-      messagesAdapter.setAll(
+      messagesAdapter.upsertMany(
         state,
         (action.payload.messages ?? []).map((message) => ({
           id: message.id,
