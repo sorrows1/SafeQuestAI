@@ -73,9 +73,9 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import PaletteIcon from '@mui/icons-material/Palette';
 
 const DEFAULT_DIFFICULTY_MODIFIERS: Record<"Easy" | "Medium" | "Hard", DifficultyModifier> = {
-  Easy: { trust_delta_multiplier: 0.6, escalation_speed: "slow", red_flag_visibility: "high", trust_context_balance: 0.35, min_safe_message_ratio: 0.5, max_suspicious_targets: 2, min_distinct_tactics: 1 },
-  Medium: { trust_delta_multiplier: 1, escalation_speed: "medium", red_flag_visibility: "medium", trust_context_balance: 0.5, min_safe_message_ratio: 0.5, max_suspicious_targets: 3, min_distinct_tactics: 2 },
-  Hard: { trust_delta_multiplier: 1.2, escalation_speed: "medium", red_flag_visibility: "low", trust_context_balance: 0.65, min_safe_message_ratio: 0.5, max_suspicious_targets: 3, min_distinct_tactics: 2 },
+  Easy: { trust_delta_multiplier: 0.6, escalation_speed: "slow", red_flag_visibility: "high", trust_context_balance: 0.35, min_safe_message_ratio: 0.5, max_suspicious_targets: 2, min_distinct_tactics: 1, target_pacing_message_count: 10 },
+  Medium: { trust_delta_multiplier: 1, escalation_speed: "medium", red_flag_visibility: "medium", trust_context_balance: 0.5, min_safe_message_ratio: 0.5, max_suspicious_targets: 3, min_distinct_tactics: 2, target_pacing_message_count: 15 },
+  Hard: { trust_delta_multiplier: 1.2, escalation_speed: "medium", red_flag_visibility: "low", trust_context_balance: 0.65, min_safe_message_ratio: 0.5, max_suspicious_targets: 3, min_distinct_tactics: 2, target_pacing_message_count: 20 },
 };
 
 const DIFFICULTY_SUBTLETY_EXAMPLES: Record<"Easy" | "Medium" | "Hard", string> = {
@@ -658,10 +658,45 @@ export function ScenarioEditor() {
                             </Stack>
 
                             <Box sx={{ pt: 0.5 }}>
-                              <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                                <Chip label={`Max ${modifiers.max_suspicious_targets} Flags`} size="small" variant="outlined" icon={<ShieldIcon fontSize="small" />} />
-                                <Chip label={`Min ${modifiers.min_distinct_tactics} Tactic(s)`} size="small" variant="outlined" icon={<PsychologyIcon fontSize="small" />} />
-                              </Stack>
+                              <Box sx={{ pt: 0.5, borderTop: 1, borderColor: 'divider', mt: 1.5 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Budget & Pacing</Typography>
+                                <Grid container spacing={1}>
+                                  <Grid size={{ xs: 6 }}>
+                                    <TextField
+                                      label="Max Flags"
+                                      type="number"
+                                      size="small"
+                                      fullWidth
+                                      value={modifiers.max_suspicious_targets}
+                                      onChange={(e) => updateModifier({ max_suspicious_targets: Number(e.target.value) })}
+                                      slotProps={{ htmlInput: { min: 1, max: 8 } }}
+                                    />
+                                  </Grid>
+                                  <Grid size={{ xs: 6 }}>
+                                    <TextField
+                                      label="Min Tactics"
+                                      type="number"
+                                      size="small"
+                                      fullWidth
+                                      value={modifiers.min_distinct_tactics}
+                                      onChange={(e) => updateModifier({ min_distinct_tactics: Number(e.target.value) })}
+                                      slotProps={{ htmlInput: { min: 1, max: 8 } }}
+                                    />
+                                  </Grid>
+                                  <Grid size={{ xs: 12 }}>
+                                    <TextField
+                                      label="Pacing Window (Messages)"
+                                      type="number"
+                                      size="small"
+                                      fullWidth
+                                      value={modifiers.target_pacing_message_count || 20}
+                                      onChange={(e) => updateModifier({ target_pacing_message_count: Number(e.target.value) })}
+                                      slotProps={{ htmlInput: { min: 5, max: 100 } }}
+                                      helperText="Spread targets across this many messages."
+                                    />
+                                  </Grid>
+                                </Grid>
+                              </Box>
                               <Box>
                                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                                   Target Min Safe Ratio ({Math.round(modifiers.min_safe_message_ratio * 100)}%)

@@ -85,6 +85,7 @@ export interface DifficultyModifier {
   min_safe_message_ratio: number;
   max_suspicious_targets: number;
   min_distinct_tactics: number;
+  target_pacing_message_count: number;
 }
 
 export interface StageStep {
@@ -175,6 +176,7 @@ export interface SimulationRun {
   prompts?: Record<string, unknown>;
   messages?: SimulationMessage[];
   revisions?: SimulationRevision[];
+  config_snapshot?: Record<string, any>;
 }
 
 export interface SimulationOverview { id: number; scenario_id: string | null; mode: SimulationMode; status: SimulationStatus; created_at: string; stop_reason: string | null; }

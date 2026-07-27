@@ -32,13 +32,13 @@
     },
     {
       "stage": "boundary_nudge",
-      "mandatory_objectives": ["test_boundary_pressure", "notice_pressure"],
-      "optional_objectives": ["seek_trusted_help"],
+      "mandatory_objectives": ["test_boundary_pressure"],
+      "optional_objectives": [],
       "constraints": ["nonvisual_image_request", "no_secrecy_or_isolation"]
     },
     {
       "stage": "support_pause",
-      "mandatory_objectives": ["seek_trusted_help"],
+      "mandatory_objectives": ["escalate_boundary_pressure"],
       "optional_objectives": [],
       "constraints": ["nonvisual_image_request", "no_secrecy_or_isolation"]
     }

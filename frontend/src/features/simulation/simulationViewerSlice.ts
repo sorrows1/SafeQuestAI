@@ -8,6 +8,7 @@ export interface GenerationMessage {
   sender: string;
   content: string;
   pace: string;
+  tactic_tags: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -72,6 +73,12 @@ const simulationViewerSlice = createSlice({
       messagesAdapter.upsertOne(state, action.payload);
       state.typing = false;
     },
+    tacticTagsUpdated(state, action: PayloadAction<{ messageId: number; tactic_tags: string[] }>) {
+      const existing = state.entities[action.payload.messageId];
+      if (existing) {
+        existing.tactic_tags = action.payload.tactic_tags;
+      }
+    },
     typingStarted(state) {
       state.typing = true;
     },
@@ -100,7 +107,8 @@ const simulationViewerSlice = createSlice({
           sequence: message.sequence,
           sender: message.sender,
           content: message.content,
-          pace: String(message.metadata.pace ?? 'normal'),
+          pace: String(message.metadata?.pace ?? 'normal'),
+          tactic_tags: (message.metadata?.tactic_tags as string[]) ?? [],
           metadata: message.metadata,
         }))
       );
@@ -121,6 +129,7 @@ export const {
   runSelected,
   runStarted,
   runStatusChanged,
+  tacticTagsUpdated,
   typingStarted,
   typingStopped,
 } = simulationViewerSlice.actions;
@@ -134,5 +143,15 @@ export const selectSimulationConnectionStatus = (state: RootState) => state.simu
 export const selectSimulationLastEventId = (state: RootState) => state.simulationViewer.lastEventId;
 export const selectSimulationActiveBranch = (state: RootState) => state.simulationViewer.activeBranch;
 export const selectSimulationHasMessages = createSelector(selectSimulationMessages, (messages) => messages.length > 0);
+/** Derived: all unique tactic tags across active messages, updated live from SSE events. */
+export const selectLiveTacticTags = createSelector(
+  selectSimulationMessages,
+  (messages) => [...new Set(messages.flatMap((m) => m.tactic_tags ?? []))].sort(),
+);
+/** Derived: count of messages that carry at least one tactic tag (= red flag count). */
+export const selectLiveRedFlagCount = createSelector(
+  selectSimulationMessages,
+  (messages) => messages.filter((m) => (m.tactic_tags ?? []).length > 0).length,
+);
 
 export default simulationViewerSlice.reducer;

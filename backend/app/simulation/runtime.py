@@ -68,13 +68,18 @@ class SimulationRuntime:
     @staticmethod
     def public_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         source = snapshot["scenario"]
-        return {
+        public_data = {
             key: source.get(key)
             for key in (
                 "id", "display_name", "description", "difficulty", "category",
                 "render_skin", "tags", "learning_objectives",
             )
         }
+        public_data["personas"] = {
+            role: {"display_name": p.get("display_name"), "avatar_label": p.get("avatar_label")}
+            for role, p in snapshot.get("personas", {}).items()
+        }
+        return public_data
 
     def create_run(self, db: Session, scenario: ScenarioDefinition, creator_id: int, mode: str, is_negative_example: bool = False) -> SimulationRun:
         if mode not in {"ai_vs_ai", "admin_as_respondent", "single_pass"}: raise HTTPException(422, "Invalid simulation mode")
@@ -181,14 +186,17 @@ class SimulationRuntime:
         raw, texts, latency = await self.generated_payload(db, run, layers)
         db.refresh(run)
         if run.status != RUNNING: return  # Pause/stop wins between LLM calls; result is discarded.
-        tags = propose_tags(self.category(run), raw.get("tactic_tags", raw.get("flags", [])))
+        tags = propose_tags(self.category(run), raw.get("tactic_tags", []))
+        if role == "respondent":
+            tags = []
+        
         # Validate every output before persisting any portion of this turn.
         for index, text in enumerate(texts):
             # A turn can contain brief rapport plus one concern. Keep the
             # primary teaching tactic attached to one stable target instead of
             # duplicating it across every generated bubble.
             message_tags = tags if index == len(texts) - 1 else []
-            self.append(db, run, role, text, {"active": True, "tactic_tags": message_tags, "tactic_plan": raw.get("tactic_plan", []), "difficulty_fit": raw.get("difficulty_fit"), "is_checkpoint": bool(raw.get("is_checkpoint", False)) and index == len(texts) - 1, "checkpoint_prompt": raw.get("checkpoint_prompt"), "latency_ms": latency, "token_usage": raw.get("usage", {}), "state_before": before, "evaluation": self.evaluation(raw), "prompt": self.prompt_meta(run, role, layers)})
+            self.append(db, run, role, text, {"active": True, "tactic_tags": message_tags, "tactic_plan": raw.get("tactic_plan", []), "child_safe_explanation": raw.get("child_safe_explanation"), "tiered_hints": raw.get("tiered_hints", []), "difficulty_fit": raw.get("difficulty_fit"), "is_checkpoint": bool(raw.get("is_checkpoint", False)) and index == len(texts) - 1, "checkpoint_prompt": raw.get("checkpoint_prompt"), "latency_ms": latency, "token_usage": raw.get("usage", {}), "state_before": before, "evaluation": self.evaluation(raw), "prompt": self.prompt_meta(run, role, layers)})
             self.apply_evaluation(run, raw, role, text)
         self.event(db, run, "turn_complete", {"sender": role})
 
@@ -199,30 +207,77 @@ class SimulationRuntime:
         if run.status != RUNNING: return
         moment = texts[0]
         tags = propose_tags(self.category(run), raw.get("tactic_tags", raw.get("flags", [])))
-        self.append(db, run, "authored_moment", moment, {"active": True, "tactic_tags": tags, "is_checkpoint": True, "branch_options": [str(x) for x in raw.get("branch_options", raw.get("options", []))[:3]], "checkpoint_prompt": str(raw.get("checkpoint_prompt") or "What would you change before sharing this, and who could you ask for help?"), "prompt": self.prompt_meta(run, "authoring", layers)})
+        self.append(db, run, "authored_moment", moment, {"active": True, "tactic_tags": tags, "child_safe_explanation": raw.get("child_safe_explanation"), "tiered_hints": raw.get("tiered_hints", []), "is_checkpoint": True, "branch_options": [str(x) for x in raw.get("branch_options", raw.get("options", []))[:3]], "checkpoint_prompt": str(raw.get("checkpoint_prompt") or "What would you change before sharing this, and who could you ask for help?"), "prompt": self.prompt_meta(run, "authoring", layers)})
         self.freeze_usage(run); run.status = "ready_for_review"; self.event(db, run, "run_status", {"status": run.status})
 
     def layers(self, run: SimulationRun, role: str) -> dict[str, list[str]]:
         snap, scenario, state = run.config_snapshot, run.config_snapshot["scenario"], run.state or {}
         public = {k: scenario.get(k) for k in ("id", "display_name", "description", "category", "difficulty")}
+        
+        existing = getattr(run, "_runtime_messages", [])
+        existing_targets_count = sum(bool((getattr(m, "metadata_json", {}) or {}).get("tactic_tags")) for m in existing)
+        modifier = scenario.get("difficulty_modifiers", {}).get(str(scenario.get("difficulty")), {})
+        max_targets = modifier.get("max_suspicious_targets", 3)
+        pacing_count = modifier.get("target_pacing_message_count", 20)
+        # Collect every tactic tag already committed to the transcript so the LLM
+        # is never offered a tag the scorer will reject for TACTIC_DIVERSITY.
+        used_tags: set[str] = {
+            str(tag)
+            for m in existing
+            for tag in ((getattr(m, "metadata_json", {}) or {}).get("tactic_tags") or [])
+        }
+        all_category_tags = TACTIC_TAGS_BY_CATEGORY[self.category(run)]
+        remaining_tags = [t for t in all_category_tags if t not in used_tags]
+
+        if existing_targets_count >= max_targets or not remaining_tags:
+            allowed_tags = []
+            pacing_instruction = "Your target budget is exhausted. You MUST continue the conversation in a completely benign and normal manner. Do not use any manipulation tactics. Your tactic_plan MUST be an empty list []."
+        else:
+            allowed_tags = remaining_tags
+            pacing_instruction = f"Pacing Instruction: You have a budget of {max_targets} red-flag targets. Please space them out evenly over the first {pacing_count} messages."
+
         context: dict[str, Any] = {
             "role": role,
             "public_scenario": public,
-            "visible_history": [{"sender": x.sender, "content": x.content} for x in getattr(run, "_runtime_messages", [])],
+            "visible_history": [{"sender": x.sender, "content": x.content} for x in existing],
             "constraints": self.constraints(run),
             "current_stage": state.get("current_stage"),
             "persona": snap["personas"][role],
-            "difficulty_modifiers": scenario.get("difficulty_modifiers", {}).get(str(scenario.get("difficulty")), {}),
-            "allowed_tactic_tags": TACTIC_TAGS_BY_CATEGORY[self.category(run)],
+            "difficulty_modifiers": modifier,
+            "allowed_tactic_tags": allowed_tags,
         }
+        expected_difficulty_fit = {
+            "red_flag_visibility": modifier.get("red_flag_visibility", "medium"),
+            "escalation_speed": modifier.get("escalation_speed", "medium"),
+        }
+        context["expected_difficulty_fit"] = expected_difficulty_fit
         if role == "initiator":
-            objective = snap["objectives"].get(state.get("current_objective"), {})
+            objective_id = state.get("current_objective", "")
+            objective = snap["objectives"].get(objective_id, {})
+            context["current_objective_id"] = objective_id
             context["hidden_objective"] = objective.get("hidden_intent", objective.get("description", ""))
+            context["objective_success_signals"] = objective.get("success_signals", [])
         instruction = (
-            "First return tactic_plan as a short list of canonical tactic_tag values and difficulty_fit with the supplied red_flag_visibility and escalation_speed, then return moment, branch_options, checkpoint_prompt, and tactic_tags. "
+            "Return a JSON object with exactly these keys in order: "
+            "1) tactic_plan: short list of values ONLY from allowed_tactic_tags (empty list [] if no red-flag content). "
+            "2) difficulty_fit: copy the exact object from expected_difficulty_fit in context (do not change it). "
+            "3) moment, branch_options, checkpoint_prompt. "
+            "4) tactic_tags: list of values ONLY from allowed_tactic_tags that this message contains; [] if no red-flag content. "
+            "5) child_safe_explanation (string) and tiered_hints (list of 2-3 short hints for parents). "
+            f"{pacing_instruction} "
             "Use at most the target budget, keep safe context genuinely safe, and do not repeat manipulation wording."
             if role == "authoring" else
-            "First return tactic_plan as a short list of canonical tactic_tag values and difficulty_fit with the supplied red_flag_visibility and escalation_speed, then return messages, tactic_tags, objective_completed, next_stage, flags, trust_delta, and suspicion_delta. "
+            "Return a JSON object with exactly these keys in order: "
+            "1) tactic_plan: short list of values ONLY from allowed_tactic_tags (empty list [] if no red-flag content in this turn). "
+            "2) difficulty_fit: copy the exact object from expected_difficulty_fit in context (do not change it). "
+            "3) messages: list of 1-2 short message strings. "
+            "4) tactic_tags: list of values ONLY from allowed_tactic_tags that the last message contains; use [] for friendly or safe messages. Do NOT invent tag names or use flags here. "
+            f"{'5) objective_completed: set to true if this turn directly accomplishes the hidden_objective intent (signal: ' + str(snap["objectives"].get(state.get("current_objective"), {}).get("success_signals", [])) + '). Otherwise false. ' if role == 'initiator' else '5) objective_completed: always false (respondent does not track objectives). '}"
+            "6) next_stage: the stage to transition to next, or keep current. "
+            "7) flags: a list of brief LLM safety-evaluation notes (e.g. boundary_reinforcement, safe_response) — these are your internal evaluation signals, NOT tactic tag names. "
+            "8) trust_delta: float -0.3 to 0.3. suspicion_delta: float -0.3 to 0.3. "
+            "9) child_safe_explanation (string) and tiered_hints (list of 2-3 short hints for parents). "
+            f"{pacing_instruction} "
             "Use the difficulty target budget, keep safe context genuinely safe, and do not repeat manipulation wording."
         )
         system_prompt = snap.get("system_prompts", {}).get(role)
@@ -314,7 +369,7 @@ class SimulationRuntime:
         progress = dict(run.progress or {}); item = SimulationMessage(run_id=run.id, sequence=int(progress.get("next_sequence", 0)), branch_id=progress.get("active_branch", "main"), sender=sender, content=content, metadata_json=metadata)
         db.add(item); db.flush(); db.add(SimulationMessageRevision(message_id=item.id, revision_number=1, content=content, metadata_json={**metadata, "kind": "generated"}))
         progress["next_sequence"] = item.sequence + 1; run.progress = progress; usage = dict(run.resource_usage or {}); usage["messages"] = int(usage.get("messages", 0)) + 1; run.resource_usage = usage
-        self.event(db, run, "message", {"id": item.id, "sequence": item.sequence, "sender": sender, "content": content}); return item
+        self.event(db, run, "message", {"id": item.id, "sequence": item.sequence, "sender": sender, "content": content, "tactic_tags": metadata.get("tactic_tags", []), "is_checkpoint": bool(metadata.get("is_checkpoint", False)), "child_safe_explanation": metadata.get("child_safe_explanation"), "tiered_hints": metadata.get("tiered_hints", [])}); return item
 
     @staticmethod
     def evaluation(raw: dict[str, Any]) -> dict[str, Any]: return {k: raw.get(k) for k in ("objective_completed", "next_stage", "flags", "trust_delta", "suspicion_delta")}

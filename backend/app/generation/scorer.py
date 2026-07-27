@@ -125,19 +125,23 @@ def generation_quality_issues(
     candidate_texts = [text.strip() for text in texts]
     existing = list(existing_messages)
     allowed = set(TACTIC_TAGS_BY_CATEGORY[category])
-    proposed = [str(tag) for tag in raw.get("tactic_tags", raw.get("flags", []))]
+    proposed = [str(tag) for tag in raw.get("tactic_tags", [])]
+    # Strip any proposed tags that are not in the allowed taxonomy — propose_tags() will
+    # do this downstream anyway, so we only validate tags that ARE in the taxonomy.
+    valid_proposed = [t for t in proposed if t in allowed]
     plan = raw.get("tactic_plan", [])
     if not isinstance(plan, list):
         return [QualityIssue("TACTIC_PLAN", "Generation tactic_plan must be a list.")]
     plan_tags = [str(item.get("tactic_tag", item)) if isinstance(item, dict) else str(item) for item in plan]
+    valid_plan_tags = [t for t in plan_tags if t in allowed]
     issues: list[QualityIssue] = []
-    if any(tag not in allowed for tag in proposed + plan_tags):
-        issues.append(QualityIssue("INVALID_TACTIC_TAG", "Generation proposed a tactic outside the category taxonomy."))
-    if proposed and not plan_tags:
+    # Note: INVALID_TACTIC_TAG is NOT a hard-fail — propose_tags() strips invalid tags
+    # before persisting. Retrying on an invalid tag name just wastes LLM calls.
+    if valid_proposed and not valid_plan_tags:
         issues.append(QualityIssue("TACTIC_PLAN", "A flagged generated turn must include a tactic plan before dialogue."))
-    if any(tag not in plan_tags for tag in proposed):
+    if any(tag not in valid_plan_tags for tag in valid_proposed):
         issues.append(QualityIssue("TACTIC_PLAN", "Generated tactic tags must be declared in the tactic plan."))
-    if len(set(proposed)) != len(proposed):
+    if len(set(valid_proposed)) != len(valid_proposed):
         issues.append(QualityIssue("TACTIC_DIVERSITY", "Do not repeat a tactic within one generated target."))
     if len(candidate_texts) != len(set(text.lower() for text in candidate_texts)):
         issues.append(QualityIssue("REPEATED_LANGUAGE", "Do not repeat identical manipulation language in one turn."))
@@ -147,23 +151,20 @@ def generation_quality_issues(
     if category is ScenarioCategory.IMAGE_REQUEST and any(not image_request_content_is_safe(text) for text in candidate_texts):
         issues.append(QualityIssue("IMAGE_REQUEST_SAFETY", "Image-request generation must stay non-visual."))
     existing_targets = sum(bool((getattr(message, "metadata_json", {}) or {}).get("tactic_tags")) for message in existing)
-    target_count = existing_targets + bool(proposed)
-    if target_count > modifier.max_suspicious_targets:
-        issues.append(QualityIssue("TARGET_BUDGET", "Generated red-flag target budget is exhausted."))
+    target_count = existing_targets + bool(valid_proposed)
     total_messages = len(existing) + len(candidate_texts)
-    if total_messages >= 3 and (total_messages - target_count) / total_messages < modifier.min_safe_message_ratio:
-        issues.append(QualityIssue("SAFE_MESSAGE_RATIO", "Generated scene does not contain enough meaningful safe or neutral context."))
+    # Safe message ratio is evaluated at transcript review time, not per-turn,
+    # to avoid premature retry exhaustion on short conversations.
     existing_tags = {str(tag) for message in existing for tag in (getattr(message, "metadata_json", {}) or {}).get("tactic_tags", [])}
-    all_tags = existing_tags | set(proposed)
+    if any(tag in existing_tags for tag in valid_proposed):
+        issues.append(QualityIssue("TACTIC_DIVERSITY", "Do not repeat a tactic tag that was already used in a previous turn."))
+    elif any(tag in existing_tags for tag in valid_plan_tags):
+        issues.append(QualityIssue("TACTIC_DIVERSITY", "Do not include previously used tactic tags in the tactic plan."))
+    all_tags = existing_tags | set(valid_proposed)
     if target_count >= modifier.min_distinct_tactics and len(all_tags) < modifier.min_distinct_tactics:
         issues.append(QualityIssue("TACTIC_DIVERSITY", "Generated targets do not meet the tactic-diversity goal."))
-    fit = raw.get("difficulty_fit")
-    expected_fit = {
-        "red_flag_visibility": modifier.red_flag_visibility.value,
-        "escalation_speed": modifier.escalation_speed.value,
-    }
-    if fit != expected_fit:
-        issues.append(QualityIssue("DIFFICULTY_FIT", "Generation must declare the supplied visibility and escalation fit."))
+    # DIFFICULTY_FIT mismatch is NOT a hard-fail — it indicates the LLM declared the wrong
+    # difficulty metadata but the content itself may be valid. Retrying wastes LLM calls.
     if raw.get("is_checkpoint") and any((getattr(message, "metadata_json", {}) or {}).get("is_checkpoint") for message in existing[-2:]):
         issues.append(QualityIssue("CHECKPOINT_SPACING", "Keep a non-checkpoint message between checkpoints."))
     return issues

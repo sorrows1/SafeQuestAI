@@ -24,6 +24,7 @@ interface AnnotationTacticEditorProps {
   onUpdateAnnotation: (index: number, change: Partial<SceneAnnotationDraft>) => void;
   onAddAnnotation: (elementKey: string, tag: string) => void;
   onRemoveAnnotation: (index: number) => void;
+  selectedElementKey?: string | null;
 }
 
 export function AnnotationTacticEditor({
@@ -33,6 +34,7 @@ export function AnnotationTacticEditor({
   onUpdateAnnotation,
   onAddAnnotation,
   onRemoveAnnotation,
+  selectedElementKey = null,
 }: AnnotationTacticEditorProps) {
   const [selectedTargetKey, setSelectedTargetKey] = useState<string>('');
 
@@ -79,7 +81,9 @@ export function AnnotationTacticEditor({
 
         {annotations.length > 0 ? (
           <Stack spacing={2}>
-            {annotations.map((ann, idx) => (
+            {annotations.map((ann, idx) => {
+              if (selectedElementKey && ann.element_key !== selectedElementKey) return null;
+              return (
               <Paper
                 key={`${ann.element_key}-${idx}`}
                 variant="outlined"
@@ -161,7 +165,7 @@ export function AnnotationTacticEditor({
                   />
                 </Stack>
               </Paper>
-            ))}
+            )})}
           </Stack>
         ) : (
           <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>

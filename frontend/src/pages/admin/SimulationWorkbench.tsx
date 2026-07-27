@@ -104,6 +104,8 @@ import {
   selectSimulationMessages,
   selectSimulationRunStatus,
   selectSimulationTyping,
+  selectLiveTacticTags,
+  selectLiveRedFlagCount,
 } from '@/features/simulation/simulationViewerSlice';
 import type { SimulationMode, SimulationRun } from '@/types';
 
@@ -363,7 +365,12 @@ function PromptProvenanceDrawer({
 }
 
 // ── Diagnostic Detail Panel ──────────────────────────────────────────────────
-function DiagnosticDetailPanel({ run, events }: { run: SimulationRun; events: Array<{ id: number; event: string; payload: any; }>; }) {
+function DiagnosticDetailPanel({ run, events, liveTacticTags, liveRedFlagCount }: {
+  run: SimulationRun;
+  events: Array<{ id: number; event: string; payload: any; }>;
+  liveTacticTags: string[];
+  liveRedFlagCount: number;
+}) {
   const [tab, setTab] = useState(0);
   const [showRawPrompts, setShowRawPrompts] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
@@ -645,12 +652,24 @@ function DiagnosticDetailPanel({ run, events }: { run: SimulationRun; events: Ar
             {/* Tactic Tags */}
             <Card variant="outlined">
               <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                  DETECTED TACTIC TAGS
-                </Typography>
-                {diagnostics.tactic_tags.length ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    DETECTED TACTIC TAGS
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                    Red flags: {liveRedFlagCount} / {
+                      (() => {
+                        const modifiers = run.config_snapshot?.scenario?.difficulty_modifiers;
+                        const difficulty = run.config_snapshot?.scenario?.difficulty ?? 'Medium';
+                        const max = modifiers?.[difficulty]?.max_suspicious_targets ?? modifiers?.['Medium']?.max_suspicious_targets ?? 3;
+                        return typeof max === 'number' ? max : 3;
+                      })()
+                    }
+                  </Typography>
+                </Box>
+                {liveTacticTags.length ? (
                   <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
-                    {diagnostics.tactic_tags.map((tag: string) => (
+                    {liveTacticTags.map((tag: string) => (
                       <Chip key={tag} label={tag} size="small" variant="outlined" color="secondary" />
                     ))}
                   </Stack>
@@ -1052,6 +1071,8 @@ export function SimulationWorkbench() {
   const typing = useAppSelector(selectSimulationTyping);
   const connection = useAppSelector(selectSimulationConnectionStatus);
   const persistedCursor = useAppSelector(selectSimulationLastEventId);
+  const liveTacticTags = useAppSelector(selectLiveTacticTags);
+  const liveRedFlagCount = useAppSelector(selectLiveRedFlagCount);
 
   const [selectedRunId, setSelectedRunId] = useState<number | null>(routeRunId ? Number(routeRunId) : null);
   const [scenarioId, setScenarioId] = useState('');
@@ -1066,7 +1087,6 @@ export function SimulationWorkbench() {
   const [reconnectNonce, setReconnectNonce] = useState(0);
   const [eventLog, setEventLog] = useState<Array<{ id: number; event: string; payload: unknown; }>>([]);
   const [transcriptId, setTranscriptId] = useState<number | null>(null);
-  const [showRawJson, setShowRawJson] = useState(false);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(persistedCursor);
@@ -1130,11 +1150,11 @@ export function SimulationWorkbench() {
         setUnreadEventsCount((prev) => prev + (messages.length - prevMessagesCountRef.current));
       }
     }
-    
+
     if (autoScroll && !userScrolledUp && timelineRef.current) {
       timelineRef.current.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'auto' });
     }
-    
+
     prevMessagesCountRef.current = messages.length;
   }, [messages, typing, autoScroll, userScrolledUp]);
 
@@ -1181,7 +1201,13 @@ export function SimulationWorkbench() {
             const event = frame.match(/^event:\s*(.+)$/m)?.[1];
             const raw = frame.match(/^data:\s*(.+)$/m)?.[1];
             if (!event || !raw) continue;
-            const normalized = JSON.parse(raw) as any;
+            let normalized: any;
+            try {
+              normalized = JSON.parse(raw);
+            } catch (err) {
+              console.error('Failed to parse SSE JSON payload', raw);
+              continue;
+            }
             const payload = normalized.payload ?? normalized;
 
             if (id) {
@@ -1192,7 +1218,20 @@ export function SimulationWorkbench() {
 
             if (event === 'message')
               dispatch(
-                messageReceived({ id: payload.id, sequence: payload.sequence, sender: payload.sender, content: payload.content, pace: 'normal' })
+                messageReceived({
+                  id: payload.id,
+                  sequence: payload.sequence,
+                  sender: payload.sender,
+                  content: payload.content,
+                  pace: 'normal',
+                  tactic_tags: Array.isArray(payload.tactic_tags) ? payload.tactic_tags : [],
+                  metadata: {
+                    tactic_tags: Array.isArray(payload.tactic_tags) ? payload.tactic_tags : [],
+                    is_checkpoint: payload.is_checkpoint ?? false,
+                    child_safe_explanation: payload.child_safe_explanation ?? null,
+                    tiered_hints: payload.tiered_hints ?? [],
+                  },
+                })
               );
             if (event === 'run_status') {
               dispatch(runStatusChanged(payload.status));
@@ -1288,29 +1327,12 @@ export function SimulationWorkbench() {
     }
   };
 
-  const copyRawJson = () => {
-    if (!run) return;
-    navigator.clipboard.writeText(JSON.stringify(run, null, 2));
-    enqueueSnackbar('Copied raw JSON to clipboard', { variant: 'info' });
-  };
-
-  const downloadRawJson = () => {
-    if (!run) return;
-    const blob = new Blob([JSON.stringify(run, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `simulation-run-${run.id}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const currentScenario = scenarios.find((item) => item.id === scenarioId);
   const nextActionBanner = run ? getNextActionBanner(run.status) : null;
 
   return (
     <AppShell>
-      <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2, height: { xs: 'auto', lg: '100%' }, minHeight: '100%' }}>
+      <Box sx={{ p: 2.5, pb: 6, display: 'flex', flexDirection: 'column', gap: 2, height: { xs: 'auto', lg: '100%' }, minHeight: '100%' }}>
         {/* Page Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, flexShrink: 0 }}>
           <Box>
@@ -1704,7 +1726,7 @@ export function SimulationWorkbench() {
             </Paper>
 
             {/* Right: Diagnostic Detail Panel */}
-            <DiagnosticDetailPanel run={run} events={eventLog} />
+            <DiagnosticDetailPanel run={run} events={eventLog} liveTacticTags={liveTacticTags} liveRedFlagCount={liveRedFlagCount} />
           </Stack>
         )}
 

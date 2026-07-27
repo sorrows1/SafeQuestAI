@@ -19,6 +19,16 @@
     "patience": 3,
     "success_signals": ["boundary_request_made"]
   },
+  "escalate_boundary_pressure": {
+    "id": "escalate_boundary_pressure",
+    "display_name": "Escalate Boundary Pressure",
+    "description": "Push the boundary request more insistently after initial rapport.",
+    "hidden_intent": "Add a second, slightly more urgent boundary push — still reversible and low-detail — to test whether the youth will hold their position or comply.",
+    "natural_triggers": ["first boundary test was made", "youth did not immediately refuse"],
+    "priority": 0.85,
+    "patience": 2,
+    "success_signals": ["second_pressure_applied"]
+  },
   "notice_pressure": {
     "id": "notice_pressure",
     "display_name": "Notice Pressure",

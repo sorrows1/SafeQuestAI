@@ -209,6 +209,7 @@ class DifficultyModifier(BaseModel):
     min_safe_message_ratio: float = Field(default=0.5, ge=0.4, le=0.9, multiple_of=0.05)
     max_suspicious_targets: int = Field(default=3, ge=1, le=8)
     min_distinct_tactics: int = Field(default=2, ge=1, le=8)
+    target_pacing_message_count: int = Field(default=20, ge=5, le=100)
 
 
 def default_difficulty_modifiers() -> dict[Difficulty, DifficultyModifier]:
@@ -218,15 +219,18 @@ def default_difficulty_modifiers() -> dict[Difficulty, DifficultyModifier]:
             trust_delta_multiplier=0.6, escalation_speed=EscalationSpeed.SLOW,
             red_flag_visibility=RedFlagVisibility.HIGH, trust_context_balance=0.35,
             min_safe_message_ratio=0.5, max_suspicious_targets=2, min_distinct_tactics=1,
+            target_pacing_message_count=15,
         ),
         Difficulty.MEDIUM: DifficultyModifier(
             trust_context_balance=0.5, min_safe_message_ratio=0.5,
             max_suspicious_targets=3, min_distinct_tactics=2,
+            target_pacing_message_count=20,
         ),
         Difficulty.HARD: DifficultyModifier(
             trust_delta_multiplier=1.2, escalation_speed=EscalationSpeed.MEDIUM,
             red_flag_visibility=RedFlagVisibility.LOW, trust_context_balance=0.65,
             min_safe_message_ratio=0.5, max_suspicious_targets=3, min_distinct_tactics=2,
+            target_pacing_message_count=25,
         ),
     }
 

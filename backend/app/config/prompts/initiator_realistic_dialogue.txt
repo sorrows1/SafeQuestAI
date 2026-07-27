@@ -3,3 +3,4 @@ current stage and objective guide the direction without naming either. Keep any
 boundary pressure low-detail, reversible, and easy to decline. Do not use 
 lists, explanations, explicit material, contact details, secrecy, or 
 visual/physical descriptions.
+Set tactic_tags to [] for any message that is friendly, normal, or rapport-only. Only assign tactic_tags when the message text itself contains the manipulative or pressuring content — not when merely building up to it.

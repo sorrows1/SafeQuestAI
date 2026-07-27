@@ -49,13 +49,13 @@ export function CuratedContentReview() {
   const [publish, { isLoading: publishing }] = usePublishCuratedTranscriptMutation();
 
   useEffect(() => {
-    if (fetched) {
+    if (fetched && !draft) {
       setDraft(fetched);
       if (fetched.scene.elements.length > 0 && !selectedKey) {
         setSelectedKey(fetched.scene.elements[0].element_key);
       }
     }
-  }, [fetched, selectedKey]);
+  }, [fetched, draft, selectedKey]);
 
   const supportedTypes = useMemo(
     () => capabilities?.skins.find((skin) => skin.id === draft?.scene.render_skin)?.supported_element_types ?? [],
@@ -225,6 +225,7 @@ export function CuratedContentReview() {
                   onUpdateAnnotation={updateAnnotation}
                   onAddAnnotation={addAnnotation}
                   onRemoveAnnotation={removeAnnotation}
+                  selectedElementKey={selectedKey}
                 />
               </Stack>
 
@@ -240,7 +241,7 @@ export function CuratedContentReview() {
             </Box>
 
             {/* Bottom Action Bar */}
-            <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+            <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider', position: 'sticky', bottom: 16, zIndex: 10, bgcolor: 'background.paper', boxShadow: 3 }}>
               <Stack direction="row" spacing={1.5} sx={{ justifyContent: 'flex-end' }}>
                 <Button variant="outlined" onClick={validate} disabled={validating}>
                   Validate Preview

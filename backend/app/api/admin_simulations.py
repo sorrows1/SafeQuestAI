@@ -15,7 +15,7 @@ from app.generation.scorer import score_transcript, selected_modifier, transcrip
 from app.models.orm import (ConversationMessage, ConversationSession, CuratedMessage, CuratedSceneElement, CuratedTranscript,
                             RedFlagSpan, SimulationEvent, SimulationMessage, SimulationMessageRevision, SimulationRun, User, get_db)
 from app.models.schemas import (AdminSceneDraft, RenderSkin, SceneAnnotationDraft, SceneDefinition, SceneElement, ScenarioCategory,
-                                ScenarioDefinition, validate_scene_draft_for_publication, validate_scene_for_skin)
+                                ScenarioDefinition, validate_scene_draft_for_publication, validate_scene_for_skin, SceneActor)
 from app.repositories import content_repo
 from app.simulation.runtime import SimulationRuntime
 
@@ -428,8 +428,13 @@ def promote(db: Session, run: SimulationRun, reviewer: User, notes: str | None) 
             accessible_label=f"Message from {message.speaker_label}", semantic_role="article")
         db.add(element)
         db.flush()
-        for tag in meta.get("tactic_tags", []):
-            db.add(RedFlagSpan(transcript_id=transcript.id, message_sequence=item.sequence, scene_element_id=element.id, tactic_tag=str(tag), source="auto", tiered_hints=[]))
+        tactic_tags = meta.get("tactic_tags", [])
+        if tactic_tags:
+            db.add(RedFlagSpan(
+                transcript_id=transcript.id, message_sequence=item.sequence, scene_element_id=element.id, tactic_tag=str(tactic_tags[0]), source="auto", 
+                child_safe_explanation=meta.get("child_safe_explanation"),
+                tiered_hints=meta.get("tiered_hints", [])
+            ))
     persisted_elements = db.query(CuratedSceneElement).filter(CuratedSceneElement.transcript_id == transcript.id).all()
     validate_scene_for_skin(SceneDefinition(
         render_skin=RenderSkin(transcript.render_skin),
@@ -485,6 +490,14 @@ def _review_draft(db: Session, item: CuratedTranscript) -> AdminSceneDraft:
         category=ScenarioCategory(item.category),
         scene=SceneDefinition(
             render_skin=RenderSkin(item.render_skin),
+            actors=[
+                SceneActor(
+                    actor_key=role,
+                    display_name=info.get("display_name", role),
+                    avatar_label=info.get("avatar_label", role)
+                )
+                for role, info in (item.public_metadata_snapshot.get("personas", {}) if item.public_metadata_snapshot else {}).items()
+            ],
             elements=[SceneElement(
                 element_key=element.element_key, element_type=element.element_type,
                 parent_element_key=element.parent_element_key, source_message_id=element.source_message_id,
