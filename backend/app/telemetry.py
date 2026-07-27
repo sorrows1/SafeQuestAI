@@ -22,6 +22,29 @@ ALLOWED_EVENTS = frozenset({
 ALLOWED_DIMENSIONS = frozenset({"command", "reason", "channel", "transport", "status", "feature", "source"})
 PRIVATE_MARKERS = ("reasoning", "disclosure", "secret", "token", "answer", "email", "text", "message", "session", "user", "member", "invite")
 
+# Keys alone are not enough: a caller could otherwise put private prose in a
+# harmless-looking ``status`` field. Operational dimensions are deliberately
+# finite enums, which also makes dashboards safe to aggregate.
+ALLOWED_VALUES = {
+    "command": frozenset({
+        "start", "reveal_next", "continue_checkpoint", "enter_completion_review",
+        "acknowledge_completion", "open_help", "complete", "reset", "restart",
+    }),
+    "reason": frozenset({"stale_state", "unavailable", "provider_unavailable", "provider_failure"}),
+    "channel": frozenset({"family", "solo", "checkpoint", "flag_attempt", "private_child"}),
+    "transport": frozenset({"sse"}),
+    "status": frozenset({
+        "created", "waiting_for_participants", "in_progress", "checkpoint",
+        "completion_review", "help_and_resources", "completed", "abandoned",
+        "expired", "paused_for_support", "accepted",
+    }),
+    "feature": frozenset({
+        "scene_contract", "gameplay_shell", "flag_attempts", "relationships",
+        "multiplayer_events", "admin_diagnostics", "new_solo_sessions",
+    }),
+    "source": frozenset({"run_history", "run_detail", "event_history", "event_stream", "skin_router"}),
+}
+
 
 def sanitize_attributes(attributes: Mapping[str, Any]) -> dict[str, str | int | bool]:
     """Drop all unknown or potentially identifying attributes before logging."""
@@ -30,10 +53,11 @@ def sanitize_attributes(attributes: Mapping[str, Any]) -> dict[str, str | int | 
         lowered = key.lower()
         if key not in ALLOWED_DIMENSIONS or any(marker in lowered for marker in PRIVATE_MARKERS):
             continue
-        if isinstance(value, (bool, int)):
+        # All currently approved dimensions are low-cardinality strings. Do
+        # not accept booleans/integers until a specific aggregation need is
+        # approved and documented here.
+        if isinstance(value, str) and value in ALLOWED_VALUES[key]:
             clean[key] = value
-        elif isinstance(value, str):
-            clean[key] = value[:80]
     return clean
 
 

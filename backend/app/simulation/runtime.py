@@ -3,22 +3,26 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any, Callable
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from app.generation.scorer import propose_tags
+from app.generation.scorer import generation_quality_issues, image_request_content_is_safe, propose_tags, selected_modifier
 from app.generation.taxonomy import TACTIC_TAGS_BY_CATEGORY
 from app.models.orm import SimulationEvent, SimulationMessage, SimulationMessageRevision, SimulationRun
 from app.models.schemas import GenerationMode, ScenarioCategory, ScenarioDefinition
 from app.repositories import content_repo
 
 RUNNING = "running"
-EDITABLE = {"paused", "awaiting_admin", "ready_for_review"}
+FAILED_RETRYABLE = "failed_retryable"
+FAILED_TERMINAL = "failed_terminal"
+EDITABLE = {"paused", "awaiting_admin", "ready_for_review", FAILED_RETRYABLE}
 DEFAULT_MESSAGES, DEFAULT_MINUTES, GLOBAL_MESSAGES, GLOBAL_MINUTES = 200, 60, 1000, 240
+MAX_GENERATION_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = (0.25, 0.75)
+LEASE_SECONDS = 300
 SYSTEM_PROMPT_BY_ROLE = {
     "initiator": "simulation_initiator_system",
     "respondent": "simulation_respondent_system",
@@ -82,9 +86,38 @@ class SimulationRuntime:
             progress={"active_branch": "main", "next_sequence": 0}, resource_usage={"messages": 0, "running_seconds": 0, "message_limit": DEFAULT_MESSAGES, "minute_limit": DEFAULT_MINUTES}, worker_lease={})
         db.add(run); db.flush(); self.event(db, run, "run_status", {"status": RUNNING}); db.commit(); db.refresh(run); return run
 
-    def start(self, run_id: int) -> None:
+    def start(self, run_id: int) -> asyncio.Task[None]:
+        """Schedule a worker from an already-running ASGI event loop."""
         task = self._tasks.get(run_id)
-        if task is None or task.done(): self._tasks[run_id] = asyncio.create_task(self.worker(run_id))
+        if task is None or task.done():
+            task = asyncio.get_running_loop().create_task(self.worker(run_id))
+            self._tasks[run_id] = task
+        return task
+
+    def schedule_failed(self, db: Session, run: SimulationRun) -> None:
+        """Compensate a committed running transition if task scheduling fails."""
+        self.freeze_usage(run)
+        run.status, run.stop_reason = FAILED_RETRYABLE, "worker_scheduling_failed"
+        self.event(db, run, "run_status", {"status": run.status, "code": "WORKER_SCHEDULING_FAILED"})
+        db.commit()
+
+    def recover(self) -> int:
+        """Schedule durable running runs after process startup; leases prevent duplicates."""
+        from app.models.orm import SessionLocal
+        db = SessionLocal()
+        try:
+            ids = [row.id for row in db.query(SimulationRun.id).filter(SimulationRun.status == RUNNING).all()]
+        finally:
+            db.close()
+        for run_id in ids:
+            self.start(run_id)
+        return len(ids)
+
+    def shutdown(self) -> None:
+        for task in self._tasks.values():
+            if not task.done():
+                task.cancel()
+        self._tasks.clear()
 
     async def worker(self, run_id: int) -> None:
         from app.models.orm import SessionLocal
@@ -92,8 +125,11 @@ class SimulationRuntime:
         while True:
             db = SessionLocal()
             try:
-                run = db.get(SimulationRun, run_id)
+                run = db.query(SimulationRun).filter(SimulationRun.id == run_id).with_for_update().one_or_none()
                 if not run or run.status != RUNNING or not self.acquire_lease(run, token): db.commit(); return
+                # Persist the lease before an LLM call so another process observes it.
+                db.commit()
+                db.refresh(run)
                 if self.limited(db, run):
                     run.status, run.stop_reason = "limit_reached", "resource_limit"; self.event(db, run, "run_status", {"status": run.status}); db.commit(); return
                 self.hydrate(db, run)
@@ -103,16 +139,28 @@ class SimulationRuntime:
                 if run.mode == "admin_as_respondent":
                     self.freeze_usage(run); run.status = "awaiting_admin"; self.event(db, run, "run_status", {"status": run.status}); db.commit(); return
                 self.hydrate(db, run); await self.generated_turn(db, run, "respondent"); db.commit(); await asyncio.sleep(0)
+            except GenerationRetryExhausted as exc:
+                db.rollback(); run = db.get(SimulationRun, run_id)
+                if run:
+                    self.freeze_usage(run)
+                    run.status, run.stop_reason = FAILED_RETRYABLE, exc.code
+                    self.event(db, run, "run_status", {"status": run.status, "code": exc.code, "attempts": exc.attempts})
+                    db.commit()
+                return
             except Exception as exc:
                 db.rollback(); run = db.get(SimulationRun, run_id)
-                if run: run.status, run.stop_reason = "failed", str(getattr(exc, "detail", exc)); self.event(db, run, "run_status", {"status": "failed", "detail": run.stop_reason}); db.commit()
+                if run:
+                    self.freeze_usage(run)
+                    run.status, run.stop_reason = FAILED_TERMINAL, self.failure_code(exc)
+                    self.event(db, run, "run_status", {"status": run.status, "code": run.stop_reason})
+                    db.commit()
                 return
             finally: db.close()
 
     def acquire_lease(self, run: SimulationRun, token: str) -> bool:
         lease = dict(run.worker_lease or {}); expiration = lease.get("expires_at")
         if lease.get("token") not in {None, token} and expiration and datetime.fromisoformat(expiration) > now(): return False
-        run.worker_lease = {"token": token, "expires_at": (now() + timedelta(seconds=45)).isoformat()}; return True
+        run.worker_lease = {"token": token, "expires_at": (now() + timedelta(seconds=LEASE_SECONDS)).isoformat()}; return True
 
     def running_seconds(self, run: SimulationRun) -> int:
         usage, started = run.resource_usage or {}, (run.state or {}).get("running_started_at")
@@ -128,23 +176,28 @@ class SimulationRuntime:
         return int(usage.get("messages", 0)) >= int(usage.get("message_limit", DEFAULT_MESSAGES)) or elapsed >= int(usage.get("minute_limit", DEFAULT_MINUTES)) * 60
 
     async def generated_turn(self, db: Session, run: SimulationRun, role: str) -> None:
-        before, layers, started = dict(run.state or {}), self.layers(run, role), perf_counter()
-        raw = await self.call_llm(layers); latency = round((perf_counter() - started) * 1000, 2); db.refresh(run)
+        before, layers = dict(run.state or {}), self.layers(run, role)
+        raw, texts, latency = await self.generated_payload(db, run, layers)
+        db.refresh(run)
         if run.status != RUNNING: return  # Pause/stop wins between LLM calls; result is discarded.
-        values = raw.get("messages") if isinstance(raw.get("messages"), list) else [raw.get("reply", "")]
-        texts = [str(x).strip() for x in values[:2] if str(x).strip()]
-        if not texts: raise HTTPException(502, "LLM returned no message")
         tags = propose_tags(self.category(run), raw.get("tactic_tags", raw.get("flags", [])))
-        for text in texts:
-            self.assert_safe(run, text)
-            self.append(db, run, role, text, {"active": True, "tactic_tags": tags, "latency_ms": latency, "token_usage": raw.get("usage", {}), "state_before": before, "evaluation": self.evaluation(raw), "prompt": self.prompt_meta(run, role, layers)})
+        # Validate every output before persisting any portion of this turn.
+        for index, text in enumerate(texts):
+            # A turn can contain brief rapport plus one concern. Keep the
+            # primary teaching tactic attached to one stable target instead of
+            # duplicating it across every generated bubble.
+            message_tags = tags if index == len(texts) - 1 else []
+            self.append(db, run, role, text, {"active": True, "tactic_tags": message_tags, "tactic_plan": raw.get("tactic_plan", []), "difficulty_fit": raw.get("difficulty_fit"), "is_checkpoint": bool(raw.get("is_checkpoint", False)) and index == len(texts) - 1, "checkpoint_prompt": raw.get("checkpoint_prompt"), "latency_ms": latency, "token_usage": raw.get("usage", {}), "state_before": before, "evaluation": self.evaluation(raw), "prompt": self.prompt_meta(run, role, layers)})
             self.apply_evaluation(run, raw, role, text)
         self.event(db, run, "turn_complete", {"sender": role})
 
     async def single_pass(self, db: Session, run: SimulationRun) -> None:
-        layers = self.layers(run, "authoring"); raw = await self.call_llm(layers); moment = str(raw.get("moment") or raw.get("reply") or "").strip()
-        if not moment: raise HTTPException(502, "LLM returned no decision moment")
-        self.assert_safe(run, moment); tags = propose_tags(self.category(run), raw.get("tactic_tags", raw.get("flags", [])))
+        layers = self.layers(run, "authoring")
+        raw, texts, _ = await self.generated_payload(db, run, layers, single_pass=True)
+        db.refresh(run)
+        if run.status != RUNNING: return
+        moment = texts[0]
+        tags = propose_tags(self.category(run), raw.get("tactic_tags", raw.get("flags", [])))
         self.append(db, run, "authored_moment", moment, {"active": True, "tactic_tags": tags, "is_checkpoint": True, "branch_options": [str(x) for x in raw.get("branch_options", raw.get("options", []))[:3]], "checkpoint_prompt": str(raw.get("checkpoint_prompt") or "What would you change before sharing this, and who could you ask for help?"), "prompt": self.prompt_meta(run, "authoring", layers)})
         self.freeze_usage(run); run.status = "ready_for_review"; self.event(db, run, "run_status", {"status": run.status})
 
@@ -164,7 +217,13 @@ class SimulationRuntime:
         if role == "initiator":
             objective = snap["objectives"].get(state.get("current_objective"), {})
             context["hidden_objective"] = objective.get("hidden_intent", objective.get("description", ""))
-        instruction = "Return JSON with moment, branch_options, checkpoint_prompt, and tactic_tags." if role == "authoring" else "Return JSON with messages, tactic_tags, objective_completed, next_stage, flags, trust_delta, and suspicion_delta."
+        instruction = (
+            "First return tactic_plan as a short list of canonical tactic_tag values and difficulty_fit with the supplied red_flag_visibility and escalation_speed, then return moment, branch_options, checkpoint_prompt, and tactic_tags. "
+            "Use at most the target budget, keep safe context genuinely safe, and do not repeat manipulation wording."
+            if role == "authoring" else
+            "First return tactic_plan as a short list of canonical tactic_tag values and difficulty_fit with the supplied red_flag_visibility and escalation_speed, then return messages, tactic_tags, objective_completed, next_stage, flags, trust_delta, and suspicion_delta. "
+            "Use the difficulty target budget, keep safe context genuinely safe, and do not repeat manipulation wording."
+        )
         system_prompt = snap.get("system_prompts", {}).get(role)
         system_layers = ([system_prompt["content"]] if system_prompt else []) + [snap["prompts"][role]["content"]]
         return {"system": system_layers, "user": [json.dumps(context, sort_keys=True), instruction]}
@@ -174,8 +233,69 @@ class SimulationRuntime:
         for step in snap["scenario"].get("stage_sequence", []):
             if step.get("stage") == state.get("current_stage"): ids.extend(step.get("constraints", []))
         result = [snap["constraints"][x] for x in dict.fromkeys(ids) if x in snap["constraints"]]
-        if self.category(run) is ScenarioCategory.IMAGE_REQUEST: result.append({"id": "image_request_no_visual_descriptions", "forbidden_topics": ["image or photo descriptions", "physical descriptions"]})
+        if self.category(run) is ScenarioCategory.IMAGE_REQUEST:
+            result.append({
+                "id": "image_request_no_visual_descriptions",
+                "description": "Use only non-visual online boundary pressure in a fictional chat.",
+                "allowed_examples": ["a vague request to move a chat", "a request to pause", "asking a trusted adult for help"],
+                "forbidden_topics": ["image or photo descriptions", "physical descriptions", "appearance", "body details"],
+                "forbidden_semantic_behaviours": ["requesting or describing visual material", "describing a person body or appearance"],
+            })
         return result
+
+    async def generated_payload(self, db: Session, run: SimulationRun, layers: dict[str, list[str]], single_pass: bool = False) -> tuple[dict[str, Any], list[str], float]:
+        """Call, parse, and safety-check a complete turn with bounded retries."""
+        for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
+            started = perf_counter()
+            try:
+                raw = await self.call_llm(layers)
+                if not isinstance(raw, dict):
+                    raise ValueError("LLM returned a non-object JSON response")
+                if single_pass:
+                    texts = [str(raw.get("moment") or raw.get("reply") or "").strip()]
+                else:
+                    values = raw.get("messages") if isinstance(raw.get("messages"), list) else [raw.get("reply", "")]
+                    texts = [str(value).strip() for value in values[:2] if str(value).strip()]
+                if not texts or not all(texts):
+                    raise ValueError("LLM response omitted required message content")
+                for text in texts:
+                    self.assert_safe(run, text)
+                issues = generation_quality_issues(
+                    category=self.category(run), modifier=selected_modifier(run.config_snapshot["scenario"]),
+                    raw=raw, texts=texts, existing_messages=getattr(run, "_runtime_messages", []),
+                )
+                if issues:
+                    raise GenerationSafetyError("; ".join(issue.code for issue in issues))
+                return raw, texts, round((perf_counter() - started) * 1000, 2)
+            except Exception as exc:
+                code = self.retry_code(exc)
+                if not code:
+                    raise
+                self.record_retry(db, run, attempt, code, exhausted=attempt == MAX_GENERATION_ATTEMPTS)
+                if attempt == MAX_GENERATION_ATTEMPTS:
+                    raise GenerationRetryExhausted(code, attempt) from exc
+                await asyncio.sleep(RETRY_BACKOFF_SECONDS[attempt - 1])
+        raise AssertionError("unreachable")
+
+    def record_retry(self, db: Session, run: SimulationRun, attempt: int, code: str, *, exhausted: bool) -> None:
+        state = dict(run.state or {})
+        diagnostics = list(state.get("generation_diagnostics", []))[-9:]
+        diagnostics.append({"attempt": attempt, "category": code, "exhausted": exhausted, "at": now().isoformat()})
+        state["generation_diagnostics"] = diagnostics
+        run.state = state
+        self.event(db, run, "generation_retry", {"attempt": attempt, "category": code, "exhausted": exhausted})
+        db.commit()
+
+    @staticmethod
+    def retry_code(exc: Exception) -> str | None:
+        if isinstance(exc, GenerationSafetyError): return "safety_rejection"
+        if isinstance(exc, (ValueError, json.JSONDecodeError, asyncio.TimeoutError)): return "malformed_or_timeout"
+        if isinstance(exc, HTTPException) and exc.status_code in {502, 503, 504}: return "provider_transient"
+        return None
+
+    @staticmethod
+    def failure_code(exc: Exception) -> str:
+        return "provider_configuration" if isinstance(exc, RuntimeError) else "runtime_error"
 
     async def call_llm(self, layers: dict[str, list[str]]) -> dict[str, Any]:
         try:
@@ -229,15 +349,15 @@ class SimulationRuntime:
         if run.status == "limit_reached":
             if not extend: raise HTTPException(409, "Resuming a limited run requires extend_limits=true")
             usage = dict(run.resource_usage or {}); usage["message_limit"] = min(GLOBAL_MESSAGES, int(usage.get("message_limit", DEFAULT_MESSAGES)) + 100); usage["minute_limit"] = min(GLOBAL_MINUTES, int(usage.get("minute_limit", DEFAULT_MINUTES)) + 30); run.resource_usage = usage
-        elif run.status not in {"paused", "awaiting_admin"}: raise HTTPException(409, "Simulation cannot be resumed from its current status")
-        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; self.event(db, run, "run_status", {"status": run.status}); db.commit(); self.start(run.id)
+        elif run.status not in {"paused", "awaiting_admin", FAILED_RETRYABLE}: raise HTTPException(409, "Simulation cannot be resumed from its current status")
+        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status, run.stop_reason = RUNNING, None; self.event(db, run, "run_status", {"status": run.status}); db.commit()
     def stop(self, db: Session, run: SimulationRun) -> None:
-        if run.status not in {RUNNING, "paused", "awaiting_admin", "limit_reached"}: raise HTTPException(409, "Simulation cannot be stopped")
+        if run.status not in {RUNNING, "paused", "awaiting_admin", "limit_reached", FAILED_RETRYABLE}: raise HTTPException(409, "Simulation cannot be stopped")
         self.freeze_usage(run); run.status, run.stop_reason = "ready_for_review", "stopped"; self.event(db, run, "run_status", {"status": run.status}); db.commit()
     def admin_response(self, db: Session, run: SimulationRun, content: str, admin_id: int) -> None:
         if run.status != "awaiting_admin" or run.mode != "admin_as_respondent": raise HTTPException(409, "Simulation is not awaiting an admin response")
         self.assert_safe(run, content); self.append(db, run, "respondent", content, {"active": True, "admin_id": admin_id, "evaluation": {"source": "admin"}}); self.apply_evaluation(run, {}, "respondent", content)
-        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; self.event(db, run, "run_status", {"status": run.status}); db.commit(); self.start(run.id)
+        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; self.event(db, run, "run_status", {"status": run.status}); db.commit()
     def edit(self, db: Session, run: SimulationRun, message_id: int, content: str, editor_id: int, reason: str | None) -> None:
         if run.status not in EDITABLE: raise HTTPException(409, "Messages may only be edited while paused, awaiting admin, or review-ready")
         self.assert_safe(run, content); active = self.active_messages(db, run); item = next((x for x in active if x.id == message_id), None)
@@ -253,21 +373,15 @@ class SimulationRuntime:
         active = self.active_messages(db, run)
         if run.status not in EDITABLE or not active: raise HTTPException(409, "An active completed or paused turn is required")
         last = active[-1]; self.edit(db, run, last.id, last.content, editor_id, "regenerate last turn"); last.metadata_json = {**(last.metadata_json or {}), "active": False}
-        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; self.event(db, run, "run_status", {"status": run.status}); db.commit(); self.start(run.id)
+        state = dict(run.state or {}); state["running_started_at"] = now().isoformat(); run.state = state; run.status = RUNNING; self.event(db, run, "run_status", {"status": run.status}); db.commit()
     @staticmethod
     def event(db: Session, run: SimulationRun, event_type: str, payload: dict[str, Any]) -> None:
         db.add(SimulationEvent(run_id=run.id, sequence=db.query(SimulationEvent).filter(SimulationEvent.run_id == run.id).count() + 1, event_type=event_type, payload=payload))
-_VISUAL_PATTERN = re.compile(
-    r"\b(?:photo|picture|selfie|image|nude|naked|body|bodies|face|looks?|appearance|what\s+you\s+look\s+like)\b",
-    re.IGNORECASE,
-)
-
-
 class GenerationSafetyError(RuntimeError):
     """A generated turn exceeded a hard generation-time safety boundary."""
 
 
-def image_request_content_is_safe(content: str) -> bool:
-    """Reject visual or physical-description content before persistence."""
-    return _VISUAL_PATTERN.search(content) is None
-
+class GenerationRetryExhausted(RuntimeError):
+    def __init__(self, code: str, attempts: int) -> None:
+        self.code, self.attempts = code, attempts
+        super().__init__(code)

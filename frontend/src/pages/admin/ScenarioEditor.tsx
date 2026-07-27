@@ -26,6 +26,11 @@ import {
   Grid,
   Autocomplete,
   Stack,
+  Slider,
+  LinearProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -34,7 +39,12 @@ import SearchIcon from '@mui/icons-material/Search';
 import CodeIcon from '@mui/icons-material/Code';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import SaveIcon from '@mui/icons-material/Save';
+import PublishIcon from '@mui/icons-material/Publish';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import SpeedIcon from '@mui/icons-material/Speed';
+import ShieldIcon from '@mui/icons-material/Shield';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 import { useSnackbar } from 'notistack';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -63,9 +73,15 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import PaletteIcon from '@mui/icons-material/Palette';
 
 const DEFAULT_DIFFICULTY_MODIFIERS: Record<"Easy" | "Medium" | "Hard", DifficultyModifier> = {
-  Easy: { trust_delta_multiplier: 0.6, escalation_speed: "slow", red_flag_visibility: "high" },
-  Medium: { trust_delta_multiplier: 1, escalation_speed: "medium", red_flag_visibility: "medium" },
-  Hard: { trust_delta_multiplier: 1.2, escalation_speed: "medium", red_flag_visibility: "low" },
+  Easy: { trust_delta_multiplier: 0.6, escalation_speed: "slow", red_flag_visibility: "high", trust_context_balance: 0.35, min_safe_message_ratio: 0.5, max_suspicious_targets: 2, min_distinct_tactics: 1 },
+  Medium: { trust_delta_multiplier: 1, escalation_speed: "medium", red_flag_visibility: "medium", trust_context_balance: 0.5, min_safe_message_ratio: 0.5, max_suspicious_targets: 3, min_distinct_tactics: 2 },
+  Hard: { trust_delta_multiplier: 1.2, escalation_speed: "medium", red_flag_visibility: "low", trust_context_balance: 0.65, min_safe_message_ratio: 0.5, max_suspicious_targets: 3, min_distinct_tactics: 2 },
+};
+
+const DIFFICULTY_SUBTLETY_EXAMPLES: Record<"Easy" | "Medium" | "Hard", string> = {
+  Easy: "Obvious manipulation cues with high visibility and slow, predictable escalation. Low cognitive load for beginner learners.",
+  Medium: "Contextual red-flag cues requiring active observation. Realistic trust building with a balanced ratio of safe and suspicious messages.",
+  Hard: "Subtle, gradual manipulation with low visibility cues. Requires careful context evaluation and nuanced boundary setting.",
 };
 
 const normaliseDifficultyModifiers = (modifiers: Record<string, DifficultyModifier>) =>
@@ -230,6 +246,16 @@ export function ScenarioEditor() {
       })()
     : [];
 
+  const handleJumpToField = (fieldKey: string) => {
+    if (['id', 'display_name', 'description', 'starting_stage', 'role_setup', 'initiator', 'respondent', 'authoring', 'difficulty'].includes(fieldKey)) {
+      setTab(0);
+    } else if (['elements', 'annotations', 'render_skin'].includes(fieldKey)) {
+      setTab(1);
+    } else {
+      setTab(3);
+    }
+  };
+
   useEffect(() => {
     if (urlId && scenarios.length > 0 && !selected) {
       const match = scenarios.find((s) => s.id === urlId);
@@ -247,22 +273,37 @@ export function ScenarioEditor() {
     setEdges(e);
   };
 
-  const save = async () => {
+  const saveDraft = async () => {
     if (!selected) return;
     try {
-      if (bindingIssues.length) {
-        enqueueSnackbar(bindingIssues[0], { variant: 'error' });
-        return;
-      }
       const isNew = !scenarios.find((s) => s.id === selected.id);
       if (isNew) {
         await createScenario(selected).unwrap();
       } else {
         await updateScenario({ id: selected.id, body: selected }).unwrap();
       }
-      enqueueSnackbar('Scenario saved', { variant: 'success' });
+      enqueueSnackbar('Draft saved successfully', { variant: 'success' });
     } catch (e: any) {
-      enqueueSnackbar(e?.data?.detail ?? 'Save failed', { variant: 'error' });
+      enqueueSnackbar(e?.data?.detail ?? 'Save draft failed', { variant: 'error' });
+    }
+  };
+
+  const publishScenario = async () => {
+    if (!selected) return;
+    if (bindingIssues.length > 0) {
+      enqueueSnackbar(`Cannot publish: ${bindingIssues[0]}`, { variant: 'error' });
+      return;
+    }
+    try {
+      const isNew = !scenarios.find((s) => s.id === selected.id);
+      if (isNew) {
+        await createScenario(selected).unwrap();
+      } else {
+        await updateScenario({ id: selected.id, body: selected }).unwrap();
+      }
+      enqueueSnackbar('Scenario validated and published cleanly', { variant: 'success' });
+    } catch (e: any) {
+      enqueueSnackbar(e?.data?.detail ?? 'Publish failed', { variant: 'error' });
     }
   };
 
@@ -406,13 +447,27 @@ export function ScenarioEditor() {
               />
               <Button
                 size="small"
-                variant="contained"
+                variant="outlined"
                 startIcon={saving ? <CircularProgress size={12} /> : <SaveIcon />}
-                onClick={save}
-                disabled={saving || bindingIssues.length > 0}
+                onClick={saveDraft}
+                disabled={saving}
               >
-                Save
+                Save Draft
               </Button>
+              <Tooltip title={bindingIssues.length > 0 ? `Cannot publish: ${bindingIssues[0]}` : 'Publish scenario to production'}>
+                <span>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={saving ? <CircularProgress size={12} /> : <PublishIcon />}
+                    onClick={publishScenario}
+                    disabled={saving || bindingIssues.length > 0}
+                  >
+                    Approve & Publish
+                  </Button>
+                </span>
+              </Tooltip>
             </Box>
 
             <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -518,42 +573,107 @@ export function ScenarioEditor() {
                     />
                   </Grid>
                   <Grid size={{ xs: 12 }}>
-                    <Typography variant="subtitle1">Difficulty modifiers</Typography>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                      Visual Difficulty Modifiers & Tactic Budgeting
+                    </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Each difficulty has a bounded trust multiplier (0.25–2.00 in 0.05 steps), escalation pace, and red-flag visibility.
+                      Adjust difficulty parameters with plain-language subtlety examples, trust delta multipliers (0.25–2.00x), max flag budgets, and min safe content ratios.
                     </Typography>
                   </Grid>
                   {(["Easy", "Medium", "Hard"] as const).map((difficultyKey) => {
                     const modifiers = normaliseDifficultyModifiers(selected.difficulty_modifiers)[difficultyKey];
+                    const exampleText = DIFFICULTY_SUBTLETY_EXAMPLES[difficultyKey];
                     const updateModifier = (change: Partial<DifficultyModifier>) =>
-                      setSelected({
-                        ...selected,
-                        difficulty_modifiers: {
-                          ...normaliseDifficultyModifiers(selected.difficulty_modifiers),
-                          [difficultyKey]: { ...modifiers, ...change },
-                        },
-                      });
+                      setSelected((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              difficulty_modifiers: {
+                                ...normaliseDifficultyModifiers(prev.difficulty_modifiers),
+                                [difficultyKey]: { ...modifiers, ...change },
+                              },
+                            }
+                          : prev
+                      );
                     return (
                       <Grid key={difficultyKey} size={{ xs: 12, md: 4 }}>
-                        <Paper variant="outlined" sx={{ p: 1.5 }}>
-                          <Typography variant="subtitle2">{difficultyKey}</Typography>
-                          <TextField
-                            fullWidth size="small" type="number" label="Trust multiplier" value={modifiers.trust_delta_multiplier}
-                            slotProps={{ htmlInput: { min: 0.25, max: 2, step: 0.05 } }} sx={{ mt: 1 }}
-                            onChange={(event) => updateModifier({ trust_delta_multiplier: Number(event.target.value) })}
-                          />
-                          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                            <InputLabel>Escalation</InputLabel>
-                            <Select label="Escalation" value={modifiers.escalation_speed} onChange={(event) => updateModifier({ escalation_speed: event.target.value as DifficultyModifier["escalation_speed"] })}>
-                              <MenuItem value="slow">Slow</MenuItem><MenuItem value="medium">Medium</MenuItem><MenuItem value="fast">Fast</MenuItem>
-                            </Select>
-                          </FormControl>
-                          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                            <InputLabel>Red-flag visibility</InputLabel>
-                            <Select label="Red-flag visibility" value={modifiers.red_flag_visibility} onChange={(event) => updateModifier({ red_flag_visibility: event.target.value as DifficultyModifier["red_flag_visibility"] })}>
-                              <MenuItem value="high">High</MenuItem><MenuItem value="medium">Medium</MenuItem><MenuItem value="low">Low</MenuItem>
-                            </Select>
-                          </FormControl>
+                        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5, bgcolor: 'background.paper' }}>
+                          <Stack spacing={1.5}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{difficultyKey} Level</Typography>
+                              <Chip
+                                label={`${modifiers.trust_delta_multiplier.toFixed(2)}x Trust`}
+                                size="small"
+                                color={difficultyKey === 'Hard' ? 'error' : difficultyKey === 'Medium' ? 'warning' : 'success'}
+                                variant="outlined"
+                                sx={{ fontWeight: 800 }}
+                              />
+                            </Box>
+
+                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', minHeight: 40 }}>
+                              "{exampleText}"
+                            </Typography>
+
+                            <Box>
+                              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                                Trust Delta Multiplier: {modifiers.trust_delta_multiplier.toFixed(2)}x
+                              </Typography>
+                              <Slider
+                                size="small"
+                                value={modifiers.trust_delta_multiplier}
+                                min={0.25}
+                                max={2.0}
+                                step={0.05}
+                                onChange={(_, val) => updateModifier({ trust_delta_multiplier: val as number })}
+                                valueLabelDisplay="auto"
+                                valueLabelFormat={(v) => `${v.toFixed(2)}x`}
+                              />
+                            </Box>
+
+                            <Stack direction="row" spacing={1}>
+                              <FormControl fullWidth size="small">
+                                <InputLabel>Escalation</InputLabel>
+                                <Select
+                                  label="Escalation"
+                                  value={modifiers.escalation_speed}
+                                  onChange={(event) => updateModifier({ escalation_speed: event.target.value as DifficultyModifier["escalation_speed"] })}
+                                >
+                                  <MenuItem value="slow">Slow</MenuItem>
+                                  <MenuItem value="medium">Medium</MenuItem>
+                                  <MenuItem value="fast">Fast</MenuItem>
+                                </Select>
+                              </FormControl>
+                              <FormControl fullWidth size="small">
+                                <InputLabel>Visibility</InputLabel>
+                                <Select
+                                  label="Visibility"
+                                  value={modifiers.red_flag_visibility}
+                                  onChange={(event) => updateModifier({ red_flag_visibility: event.target.value as DifficultyModifier["red_flag_visibility"] })}
+                                >
+                                  <MenuItem value="high">High</MenuItem>
+                                  <MenuItem value="medium">Medium</MenuItem>
+                                  <MenuItem value="low">Low</MenuItem>
+                                </Select>
+                              </FormControl>
+                            </Stack>
+
+                            <Box sx={{ pt: 0.5 }}>
+                              <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                <Chip label={`Max ${modifiers.max_suspicious_targets} Flags`} size="small" variant="outlined" icon={<ShieldIcon fontSize="small" />} />
+                                <Chip label={`Min ${modifiers.min_distinct_tactics} Tactic(s)`} size="small" variant="outlined" icon={<PsychologyIcon fontSize="small" />} />
+                              </Stack>
+                              <Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                  Target Min Safe Ratio ({Math.round(modifiers.min_safe_message_ratio * 100)}%)
+                                </Typography>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={modifiers.min_safe_message_ratio * 100}
+                                  sx={{ height: 6, borderRadius: 3 }}
+                                />
+                              </Box>
+                            </Box>
+                          </Stack>
                         </Paper>
                       </Grid>
                     );
@@ -792,19 +912,24 @@ export function ScenarioEditor() {
                   <ScenarioValidationSummary
                     scenario={selected}
                     bindingIssues={bindingIssues}
+                    onJumpToField={handleJumpToField}
                   />
 
-                  <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
-                      Raw Scenario Definition (Read-Only)
-                    </Typography>
-                    <Typography
-                      component="pre"
-                      sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
-                    >
-                      {JSON.stringify(selected, null, 2)}
-                    </Typography>
-                  </Paper>
+                  <Accordion variant="outlined" sx={{ borderRadius: 2 }}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                        Raw Scenario Definition (Advanced / Debug JSON)
+                      </Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Typography
+                        component="pre"
+                        sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                      >
+                        {JSON.stringify(selected, null, 2)}
+                      </Typography>
+                    </AccordionDetails>
+                  </Accordion>
                 </Stack>
               </Box>
             )}

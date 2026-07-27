@@ -12,7 +12,7 @@ export interface GenerationMessage {
 }
 
 export type ViewerRunStatus =
-  'idle' | 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'limit_reached' | 'completed' | 'failed';
+  'idle' | 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'limit_reached' | 'completed' | 'failed' | 'failed_retryable' | 'failed_terminal';
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 const messagesAdapter = createEntityAdapter<GenerationMessage>({
@@ -38,6 +38,8 @@ export function normalizeSimulationStatus(status: string): ViewerRunStatus {
     case 'rejected':
     case 'limit_reached':
     case 'failed':
+    case 'failed_retryable':
+    case 'failed_terminal':
     case 'completed':
       return status;
     case 'queued':

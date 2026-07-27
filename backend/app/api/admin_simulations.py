@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth.security import require_admin
 from app.config.rollout import FeatureFlag, require_feature
 from app.telemetry import record as telemetry_record
-from app.generation.scorer import score_transcript
+from app.generation.scorer import score_transcript, selected_modifier, transcript_quality_issues
 from app.models.orm import (ConversationMessage, ConversationSession, CuratedMessage, CuratedSceneElement, CuratedTranscript,
                             RedFlagSpan, SimulationEvent, SimulationMessage, SimulationMessageRevision, SimulationRun, User, get_db)
 from app.models.schemas import (AdminSceneDraft, RenderSkin, SceneAnnotationDraft, SceneDefinition, SceneElement, ScenarioCategory,
@@ -20,6 +20,7 @@ from app.repositories import content_repo
 from app.simulation.runtime import SimulationRuntime
 
 router = APIRouter(prefix="/api/admin", tags=["Admin - Simulations"])
+MAX_SSE_REPLAY_EVENTS = 250
 
 
 def llm():
@@ -30,6 +31,15 @@ def llm():
 
 
 runtime = SimulationRuntime(llm)
+
+
+def start_worker(db: Session, run: SimulationRun) -> None:
+    """Schedule only from an async FastAPI endpoint and compensate on failure."""
+    try:
+        runtime.start(run.id)
+    except RuntimeError as exc:
+        runtime.schedule_failed(db, run)
+        raise HTTPException(503, "Simulation worker could not be scheduled; resume to retry.") from exc
 
 
 class CreateRequest(BaseModel):
@@ -77,6 +87,7 @@ EVENT_PRESENTATION = {
     "turn_complete": ("transcript", "info", "Turn completed"),
     "message_revised": ("revision", "warning", "Message revision created"),
     "resource_warning": ("resources", "warning", "Resource limit warning"),
+    "generation_retry": ("safety", "warning", "Generation retry recorded"),
 }
 
 
@@ -108,6 +119,10 @@ def event_out(item: SimulationEvent, advanced_raw: bool) -> dict:
     )
     if item.event_type == "run_status" and (item.payload or {}).get("status") == "failed":
         severity, label = "error", "Run failed"
+    if item.event_type == "run_status" and (item.payload or {}).get("status") == "failed_terminal":
+        severity, label = "error", "Run failed permanently"
+    if item.event_type == "run_status" and (item.payload or {}).get("status") == "failed_retryable":
+        severity, label = "warning", "Run needs recovery"
     if item.event_type == "run_status" and (item.payload or {}).get("status") == "limit_reached":
         category, severity, label = "resources", "warning", "Resource limit reached"
     payload = dict(item.payload or {})
@@ -142,6 +157,10 @@ def derive_diagnostics(run: SimulationRun, messages: list[SimulationMessage],
     ]
     if run.status == "failed":
         warnings.append({"code": "RUN_FAILED", "message": run.stop_reason or "The simulation worker failed.", "severity": "error", "source": "runtime"})
+    if run.status == "failed_terminal":
+        warnings.append({"code": "RUN_FAILED_TERMINAL", "message": "The simulation cannot continue automatically. Start a new run after reviewing diagnostics.", "severity": "error", "source": "runtime"})
+    if run.status == "failed_retryable":
+        warnings.append({"code": "RUN_FAILED_RETRYABLE", "message": "Generation retries were exhausted. Resume or regenerate from the last committed turn.", "severity": "warning", "source": "runtime"})
     if run.status == "limit_reached":
         warnings.append({"code": "RESOURCE_LIMIT_REACHED", "message": "The simulation reached its configured resource limit.", "severity": "warning", "source": "resource_limits"})
     safety = [
@@ -238,7 +257,7 @@ async def create(body: CreateRequest, db: Session = Depends(get_db), admin: User
         raise HTTPException(404, "Scenario not found")
     run = runtime.create_run(db, scenario, admin.id,
                              body.mode, body.is_negative_example)
-    runtime.start(run.id)
+    start_worker(db, run)
     return {"id": run.id, "status": run.status, "mode": run.mode}
 
 
@@ -318,12 +337,14 @@ async def events(run_id: int, advanced_raw: bool = False, last_event_id: str | N
             local = SessionLocal()
             try:
                 rows = local.query(SimulationEvent).filter(
-                    SimulationEvent.run_id == run_id, SimulationEvent.id > cursor).order_by(SimulationEvent.id).limit(250).all()
+                    SimulationEvent.run_id == run_id, SimulationEvent.id > cursor,
+                ).order_by(SimulationEvent.id.desc()).limit(MAX_SSE_REPLAY_EVENTS).all()
+                rows.reverse()
                 for row in rows:
                     cursor = row.id
                     yield f"id: {row.id}\nevent: {row.event_type}\ndata: {json.dumps(event_out(row, advanced_raw), default=str)}\n\n"
                 run = local.get(SimulationRun, run_id)
-                if run and run.status in {"ready_for_review", "approved", "rejected", "failed", "limit_reached"}:
+                if run and run.status in {"ready_for_review", "approved", "rejected", "failed", "failed_retryable", "failed_terminal", "limit_reached"}:
                     return
             finally:
                 local.close()
@@ -339,9 +360,10 @@ def pause(run_id: int, db: Session = Depends(get_db), _: User = Depends(require_
 
 
 @router.post("/simulations/{run_id}/resume")
-def resume(run_id: int, body: ResumeRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+async def resume(run_id: int, body: ResumeRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     run = run_or_404(db, run_id)
     runtime.resume(db, run, body.extend_limits)
+    start_worker(db, run)
     return {"id": run.id, "status": run.status}
 
 
@@ -353,16 +375,18 @@ def stop(run_id: int, db: Session = Depends(get_db), _: User = Depends(require_a
 
 
 @router.post("/simulations/{run_id}/respond", status_code=202)
-def respond(run_id: int, body: RespondRequest, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+async def respond(run_id: int, body: RespondRequest, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     run = run_or_404(db, run_id)
     runtime.admin_response(db, run, body.content, admin.id)
+    start_worker(db, run)
     return {"id": run.id, "status": run.status}
 
 
 @router.post("/simulations/{run_id}/regenerate-last-turn", status_code=202)
-def regenerate(run_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+async def regenerate(run_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     run = run_or_404(db, run_id)
     runtime.regenerate_last(db, run, admin.id)
+    start_worker(db, run)
     return {"id": run.id, "status": run.status}
 
 
@@ -477,6 +501,7 @@ def _review_draft(db: Session, item: CuratedTranscript) -> AdminSceneDraft:
             ),
             tactic_tag=annotation.tactic_tag, start_offset=annotation.start_offset, end_offset=annotation.end_offset,
             explanation=annotation.child_safe_explanation, tiered_hints=annotation.tiered_hints or [],
+            repeat_justification=annotation.repeat_justification,
         ) for annotation in annotations],
     )
 
@@ -512,6 +537,7 @@ def _save_review_draft(db: Session, item: CuratedTranscript, draft: AdminSceneDr
             transcript_id=item.id, message_sequence=source.sequence if source else None, scene_element_id=target.id,
             start_offset=annotation.start_offset, end_offset=annotation.end_offset, tactic_tag=annotation.tactic_tag,
             source="reviewer", child_safe_explanation=annotation.explanation, tiered_hints=annotation.tiered_hints,
+            repeat_justification=annotation.repeat_justification,
         ))
 
 
@@ -540,8 +566,22 @@ def publish(transcript_id: int, db: Session = Depends(get_db), _: User = Depends
     item = db.get(CuratedTranscript, transcript_id)
     if not item:
         raise HTTPException(404, "Curated transcript not found")
+    reviewer_annotation_count = db.query(RedFlagSpan).filter(
+        RedFlagSpan.transcript_id == item.id, RedFlagSpan.source == "reviewer"
+    ).count()
+    if reviewer_annotation_count == 0:
+        raise HTTPException(422, "Publication blocked: an admin must save a reviewed scene and annotation before publication")
+    scenario = content_repo.get_scenario(db, item.source_scenario_id) if item.source_scenario_id else None
+    modifier = selected_modifier(scenario.model_dump(mode="json")) if scenario else None
     try:
-        validate_scene_draft_for_publication(_review_draft(db, item))
+        validate_scene_draft_for_publication(_review_draft(db, item), modifier)
+        quality_issues = transcript_quality_issues(
+            db.query(CuratedMessage).filter(CuratedMessage.transcript_id == item.id).order_by(CuratedMessage.sequence).all(),
+            db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == item.id).all(),
+            modifier or selected_modifier({}),
+        )
+        if quality_issues:
+            raise ValueError("; ".join(issue.message for issue in quality_issues))
     except ValueError as exc:
         raise HTTPException(422, f"Publication blocked: {exc}") from exc
     item.is_published, item.published_at = True, datetime.now(timezone.utc)

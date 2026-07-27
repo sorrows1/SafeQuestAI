@@ -203,14 +203,31 @@ class DifficultyModifier(BaseModel):
     trust_delta_multiplier: float = Field(default=1.0, ge=0.25, le=2.0, multiple_of=0.05)
     escalation_speed: EscalationSpeed = EscalationSpeed.MEDIUM
     red_flag_visibility: RedFlagVisibility = RedFlagVisibility.MEDIUM
+    # These describe the authored scene, rather than how a learner performs.
+    # Difficulty never makes a benign message misleading or relies on hidden knowledge.
+    trust_context_balance: float = Field(default=0.5, ge=0.2, le=0.8, multiple_of=0.05)
+    min_safe_message_ratio: float = Field(default=0.5, ge=0.4, le=0.9, multiple_of=0.05)
+    max_suspicious_targets: int = Field(default=3, ge=1, le=8)
+    min_distinct_tactics: int = Field(default=2, ge=1, le=8)
 
 
 def default_difficulty_modifiers() -> dict[Difficulty, DifficultyModifier]:
     """Explicit, safe starting values for each authoring difficulty."""
     return {
-        Difficulty.EASY: DifficultyModifier(trust_delta_multiplier=0.6, escalation_speed=EscalationSpeed.SLOW, red_flag_visibility=RedFlagVisibility.HIGH),
-        Difficulty.MEDIUM: DifficultyModifier(),
-        Difficulty.HARD: DifficultyModifier(trust_delta_multiplier=1.2, escalation_speed=EscalationSpeed.MEDIUM, red_flag_visibility=RedFlagVisibility.LOW),
+        Difficulty.EASY: DifficultyModifier(
+            trust_delta_multiplier=0.6, escalation_speed=EscalationSpeed.SLOW,
+            red_flag_visibility=RedFlagVisibility.HIGH, trust_context_balance=0.35,
+            min_safe_message_ratio=0.5, max_suspicious_targets=2, min_distinct_tactics=1,
+        ),
+        Difficulty.MEDIUM: DifficultyModifier(
+            trust_context_balance=0.5, min_safe_message_ratio=0.5,
+            max_suspicious_targets=3, min_distinct_tactics=2,
+        ),
+        Difficulty.HARD: DifficultyModifier(
+            trust_delta_multiplier=1.2, escalation_speed=EscalationSpeed.MEDIUM,
+            red_flag_visibility=RedFlagVisibility.LOW, trust_context_balance=0.65,
+            min_safe_message_ratio=0.5, max_suspicious_targets=3, min_distinct_tactics=2,
+        ),
     }
 
 
@@ -582,6 +599,7 @@ class SceneAnnotationDraft(BaseModel):
     end_offset: int | None = Field(default=None, ge=0)
     explanation: str | None = Field(default=None, max_length=2_000)
     tiered_hints: list[str] = Field(default_factory=list, max_length=3)
+    repeat_justification: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
     def validate_range(self) -> "SceneAnnotationDraft":
@@ -591,6 +609,8 @@ class SceneAnnotationDraft(BaseModel):
             raise ValueError("annotation end_offset must be greater than start_offset")
         if any(not hint.strip() or len(hint) > 500 for hint in self.tiered_hints):
             raise ValueError("tiered hints must be non-empty and no longer than 500 characters")
+        if self.repeat_justification is not None and not self.repeat_justification.strip():
+            raise ValueError("repeat justification must not be blank when supplied")
         return self
 
 
@@ -624,10 +644,16 @@ class AdminSceneDraft(BaseModel):
         return self
 
 
-def validate_scene_draft_for_publication(draft: AdminSceneDraft) -> AdminSceneDraft:
+def validate_scene_draft_for_publication(draft: AdminSceneDraft, modifier: DifficultyModifier | None = None) -> AdminSceneDraft:
+    from app.generation.scorer import validate_scene_quality
+
     validate_scene_for_skin(draft.scene, require_selectable=True)
     if not draft.annotations:
         raise ValueError("publication requires at least one reviewed red-flag annotation")
+    missing_explanations = [annotation.element_key for annotation in draft.annotations if not (annotation.explanation or "").strip()]
+    if missing_explanations:
+        raise ValueError("publication requires an explanation for every red-flag annotation: " + ", ".join(missing_explanations))
+    validate_scene_quality(draft, modifier)
     return draft
 
 

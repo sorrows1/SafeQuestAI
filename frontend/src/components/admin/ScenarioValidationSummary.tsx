@@ -1,6 +1,7 @@
 import {
   Alert,
   Box,
+  Button,
   Chip,
   Paper,
   Stack,
@@ -10,11 +11,13 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
 import InfoIcon from '@mui/icons-material/Info';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import type { AdminSceneDraft, ScenarioDefinition } from '@/types';
 
 export interface ValidationItem {
   type: 'blocker' | 'warning' | 'suggestion';
   message: string;
+  fieldKey?: string;
 }
 
 interface ScenarioValidationSummaryProps {
@@ -22,6 +25,7 @@ interface ScenarioValidationSummaryProps {
   draft?: AdminSceneDraft | null;
   bindingIssues?: string[];
   supportedElementTypes?: string[];
+  onJumpToField?: (fieldKey: string) => void;
 }
 
 export function ScenarioValidationSummary({
@@ -29,27 +33,32 @@ export function ScenarioValidationSummary({
   draft,
   bindingIssues = [],
   supportedElementTypes = [],
+  onJumpToField,
 }: ScenarioValidationSummaryProps) {
   const items: ValidationItem[] = [];
 
   // 1. Check Binding Issues
   bindingIssues.forEach((issue) => {
-    items.push({ type: 'blocker', message: issue });
+    let fieldKey = 'role_setup';
+    if (issue.toLowerCase().includes('initiator')) fieldKey = 'initiator';
+    else if (issue.toLowerCase().includes('respondent')) fieldKey = 'respondent';
+    else if (issue.toLowerCase().includes('authoring')) fieldKey = 'authoring';
+    items.push({ type: 'blocker', message: issue, fieldKey });
   });
 
   // 2. Check Scenario Properties
   if (scenario) {
     if (!scenario.id) {
-      items.push({ type: 'blocker', message: 'Scenario ID is missing.' });
+      items.push({ type: 'blocker', message: 'Scenario ID is missing.', fieldKey: 'id' });
     }
     if (!scenario.display_name) {
-      items.push({ type: 'blocker', message: 'Display name is missing.' });
+      items.push({ type: 'blocker', message: 'Display name is missing.', fieldKey: 'display_name' });
     }
     if (!scenario.starting_stage) {
-      items.push({ type: 'warning', message: 'Starting stage is not selected.' });
+      items.push({ type: 'warning', message: 'Starting stage is not selected.', fieldKey: 'starting_stage' });
     }
     if (!scenario.description) {
-      items.push({ type: 'warning', message: 'Scenario description is empty.' });
+      items.push({ type: 'warning', message: 'Scenario description is empty.', fieldKey: 'description' });
     }
   }
 
@@ -57,11 +66,11 @@ export function ScenarioValidationSummary({
   if (draft) {
     const selectable = draft.scene.elements.filter((e) => e.selectable);
     if (selectable.length === 0) {
-      items.push({ type: 'blocker', message: 'No selectable red-flag target exists in the scene.' });
+      items.push({ type: 'blocker', message: 'No selectable red-flag target exists in the scene.', fieldKey: 'elements' });
     }
 
     if (draft.annotations.length === 0) {
-      items.push({ type: 'warning', message: 'No ground-truth red-flag annotations defined.' });
+      items.push({ type: 'warning', message: 'No ground-truth red-flag annotations defined.', fieldKey: 'annotations' });
     }
 
     // Check for unsupported element types
@@ -71,6 +80,7 @@ export function ScenarioValidationSummary({
           items.push({
             type: 'blocker',
             message: `Element "${el.element_key}" has unsupported type "${el.element_type}" for skin "${draft.scene.render_skin}".`,
+            fieldKey: 'elements',
           });
         }
       });
@@ -82,12 +92,14 @@ export function ScenarioValidationSummary({
         items.push({
           type: 'warning',
           message: `Annotation for "${ann.element_key}" is missing a child-safe explanation.`,
+          fieldKey: 'annotations',
         });
       }
       if (ann.tiered_hints.length === 0) {
         items.push({
           type: 'suggestion',
           message: `Consider adding tiered hints for annotation on "${ann.element_key}".`,
+          fieldKey: 'annotations',
         });
       }
     });
@@ -134,7 +146,25 @@ export function ScenarioValidationSummary({
               🔴 Publish Blockers ({blockers.length})
             </Typography>
             {blockers.map((item, idx) => (
-              <Alert key={idx} severity="error" icon={<ErrorIcon fontSize="small" />} sx={{ py: 0, borderRadius: 2 }}>
+              <Alert
+                key={idx}
+                severity="error"
+                icon={<ErrorIcon fontSize="small" />}
+                action={
+                  item.fieldKey && onJumpToField ? (
+                    <Button
+                      size="small"
+                      color="inherit"
+                      endIcon={<ArrowForwardIcon fontSize="small" />}
+                      onClick={() => onJumpToField(item.fieldKey!)}
+                      sx={{ fontSize: '0.7rem', textTransform: 'none', fontWeight: 700, py: 0 }}
+                    >
+                      Jump to field
+                    </Button>
+                  ) : undefined
+                }
+                sx={{ py: 0.5, borderRadius: 2, alignItems: 'center' }}
+              >
                 <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.message}</Typography>
               </Alert>
             ))}
@@ -148,7 +178,25 @@ export function ScenarioValidationSummary({
               🟡 Review Warnings ({warnings.length})
             </Typography>
             {warnings.map((item, idx) => (
-              <Alert key={idx} severity="warning" icon={<WarningIcon fontSize="small" />} sx={{ py: 0, borderRadius: 2 }}>
+              <Alert
+                key={idx}
+                severity="warning"
+                icon={<WarningIcon fontSize="small" />}
+                action={
+                  item.fieldKey && onJumpToField ? (
+                    <Button
+                      size="small"
+                      color="inherit"
+                      endIcon={<ArrowForwardIcon fontSize="small" />}
+                      onClick={() => onJumpToField(item.fieldKey!)}
+                      sx={{ fontSize: '0.7rem', textTransform: 'none', fontWeight: 700, py: 0 }}
+                    >
+                      Jump to field
+                    </Button>
+                  ) : undefined
+                }
+                sx={{ py: 0.5, borderRadius: 2, alignItems: 'center' }}
+              >
                 <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.message}</Typography>
               </Alert>
             ))}
@@ -162,7 +210,25 @@ export function ScenarioValidationSummary({
               🔵 Quality Suggestions ({suggestions.length})
             </Typography>
             {suggestions.map((item, idx) => (
-              <Alert key={idx} severity="info" icon={<InfoIcon fontSize="small" />} sx={{ py: 0, borderRadius: 2 }}>
+              <Alert
+                key={idx}
+                severity="info"
+                icon={<InfoIcon fontSize="small" />}
+                action={
+                  item.fieldKey && onJumpToField ? (
+                    <Button
+                      size="small"
+                      color="inherit"
+                      endIcon={<ArrowForwardIcon fontSize="small" />}
+                      onClick={() => onJumpToField(item.fieldKey!)}
+                      sx={{ fontSize: '0.7rem', textTransform: 'none', fontWeight: 700, py: 0 }}
+                    >
+                      Jump to field
+                    </Button>
+                  ) : undefined
+                }
+                sx={{ py: 0.5, borderRadius: 2, alignItems: 'center' }}
+              >
                 <Typography variant="caption">{item.message}</Typography>
               </Alert>
             ))}

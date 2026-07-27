@@ -6,6 +6,7 @@ import {
   selectFamilySessionLastEventId,
 } from "./familySessionSlice";
 import type { FamilySessionEvent } from "@/types";
+import { recordClientTelemetry } from "@/telemetry";
 
 const RECOVERABLE_EVENTS = new Set([
   "state_changed", "reveal", "finding_validated", "checkpoint_response",
@@ -38,6 +39,7 @@ export function useFamilySessionEvents(
 
     const poll = () => {
       dispatch(familySessionStreamStatusSet("offline"));
+      recordClientTelemetry("family.stream.offline", { status: "offline" });
       onAuthoritativeChange();
       pollTimer = window.setInterval(onAuthoritativeChange, 10_000);
     };
@@ -59,6 +61,7 @@ export function useFamilySessionEvents(
 
     const connect = async () => {
       dispatch(familySessionStreamStatusSet(cursor.current ? "reconnecting" : "connecting"));
+      if (cursor.current) recordClientTelemetry("family.stream.reconnect", { transport: "sse" });
       try {
         const response = await fetch(`/api/family/sessions/${sessionId}/events`, {
           headers: {

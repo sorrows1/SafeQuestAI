@@ -24,7 +24,20 @@ INDEX_NAME = "uq_family_sessions_active_learner_transcript"
 PREDICATE = "state NOT IN ('completed', 'abandoned', 'expired')"
 
 
+def _widen_alembic_version_column() -> None:
+    """Revision IDs outgrew the legacy 32-character Alembic version column.
+
+    PostgreSQL enforces the historical width; SQLite does not, so this is a
+    no-op there and keeps the migration rehearsal portable.
+    """
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.alter_column("alembic_version", "version_num", existing_type=sa.String(length=32), type_=sa.String(length=255))
+
+
 def upgrade() -> None:
+    # Alembic writes this revision ID after upgrade() returns, so widen first.
+    _widen_alembic_version_column()
     # Existing duplicate live attempts are retained as history, but only the
     # newest remains resumable before the partial unique index is installed.
     bind = op.get_bind()
@@ -59,3 +72,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index(INDEX_NAME, table_name="family_sessions")
+    # Keep the widened Alembic metadata column. Alembic records the prior
+    # revision only after downgrade() returns, so narrowing here would reject
+    # the current longer revision ID before it can be replaced.

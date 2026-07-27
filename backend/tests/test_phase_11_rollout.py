@@ -12,7 +12,7 @@ from app.telemetry import record, sanitize_attributes
 def test_migration_graph_has_one_release_head_and_phase_five_is_reversible() -> None:
     config = Config("alembic.ini")
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["20260726_p8_multiplayer"]
+    assert script.get_heads() == ["20260727_phase9_authoring_quality"]
     phase_five = Path("alembic/versions/20260726_phase5_scene_render_contract.py").read_text(encoding="utf-8")
     assert "def upgrade()" in phase_five and "def downgrade()" in phase_five
     assert "_backfill_scene_semantics" in phase_five

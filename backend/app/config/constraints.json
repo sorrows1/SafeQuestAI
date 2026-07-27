@@ -12,8 +12,10 @@
     "id": "nonvisual_image_request",
     "description": "Keep boundary-pressure examples entirely non-visual and non-physical.",
     "forbidden_actions": ["describe_visual_content", "describe_appearance", "request_contact_details"],
-    "forbidden_topics": ["visual details", "physical appearance", "body details"],
-    "required_behaviours": ["refer only to a general online request", "allow a clear refusal or pause"],
+    "forbidden_topics": ["visual details", "physical appearance", "body details", "requesting visual material"],
+    "forbidden_semantic_behaviours": ["requesting or describing images, photos, or selfies", "describing a person body, face, or appearance"],
+    "allowed_examples": ["a vague request to move the conversation", "a clear pause or refusal", "asking a trusted adult for help"],
+    "required_behaviours": ["refer only to a general online request", "allow a clear refusal or pause", "offer a trusted-adult support option"],
     "violation_severity": "critical",
     "recovery_suggestion": "Return to a general online boundary and a support option."
   },

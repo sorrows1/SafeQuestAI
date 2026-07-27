@@ -72,7 +72,7 @@ export const CaregiverSelectorModal: React.FC<CaregiverSelectorModalProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <PeopleOutlinedIcon color="primary" />
           <Typography variant="h6" component="span" sx={{ fontWeight: 'bold' }}>
-            Select Practice Mode
+            Choose how to practice
           </Typography>
         </Box>
         <IconButton onClick={onClose} size="small" aria-label="close">
@@ -84,7 +84,7 @@ export const CaregiverSelectorModal: React.FC<CaregiverSelectorModalProps> = ({
 
       <DialogContent sx={{ py: 3 }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Choose how you would like to practice <strong>{scenarioTitle}</strong>.
+          Select your practice mode for <strong>{scenarioTitle}</strong>.
         </Typography>
 
         {isLoading ? (
@@ -115,7 +115,7 @@ export const CaregiverSelectorModal: React.FC<CaregiverSelectorModalProps> = ({
                 <Box sx={{ flexGrow: 1 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                      Solo Practice with AI Companion
+                      Practice solo with Companion
                     </Typography>
                     <Chip label="Private" size="small" color="info" variant="outlined" />
                   </Box>
@@ -156,7 +156,7 @@ export const CaregiverSelectorModal: React.FC<CaregiverSelectorModalProps> = ({
                       <Box sx={{ flexGrow: 1 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                            {rel.member_display_name}
+                            Practice with caregiver ({rel.member_display_name})
                           </Typography>
                           <Chip
                             label={rel.role === 'caregiver' ? 'Caregiver' : 'Learner'}

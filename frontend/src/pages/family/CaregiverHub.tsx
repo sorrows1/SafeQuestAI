@@ -122,10 +122,11 @@ export const CaregiverHub: React.FC = () => {
           elevation={0}
           variant="outlined"
           sx={{
-            p: 3,
+            p: 3.5,
             mb: 4,
             borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(25, 118, 210, 0.08) 0%, rgba(156, 39, 176, 0.08) 100%)',
+            bgcolor: 'background.paper',
+            borderColor: 'divider',
             display: 'flex',
             flexDirection: { xs: 'column', sm: 'row' },
             alignItems: { xs: 'flex-start', sm: 'center' },
@@ -134,7 +135,7 @@ export const CaregiverHub: React.FC = () => {
           }}
         >
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
+            <Typography variant="h4" sx={{ fontWeight: 800, color: 'text.primary', letterSpacing: '-0.01em' }}>
               Caregiver & Family Hub
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -147,7 +148,16 @@ export const CaregiverHub: React.FC = () => {
             size="large"
             startIcon={<PersonAddIcon />}
             onClick={() => setInviteModalOpen(true)}
-            sx={{ borderRadius: 2, px: 3, py: 1.2, fontWeight: 'bold', whiteSpace: 'nowrap' }}
+            sx={{
+              borderRadius: 2.5,
+              px: 3,
+              py: 1.3,
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 14px rgba(25, 118, 210, 0.3)',
+              '&:hover': { transform: 'translateY(-1px)' },
+              transition: 'transform 0.2s ease',
+            }}
           >
             Invite Family Member
           </Button>
@@ -155,57 +165,101 @@ export const CaregiverHub: React.FC = () => {
 
         {/* Quick Metric Cards */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 3, mb: 4 }}>
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main', width: 48, height: 48 }}>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 2.5,
+              borderRadius: 3,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              transition: 'all 0.2s ease',
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', borderColor: 'primary.main' },
+            }}
+          >
+            <Avatar sx={{ bgcolor: 'rgba(25, 118, 210, 0.15)', color: 'primary.main', width: 52, height: 52 }}>
               <PeopleIcon />
             </Avatar>
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+              <Typography variant="h4" sx={{ fontWeight: 800 }}>
                 {activeRelationships.length}
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                 Linked Family Members
               </Typography>
             </Box>
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar sx={{ bgcolor: 'secondary.light', color: 'secondary.main', width: 48, height: 48 }}>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 2.5,
+              borderRadius: 3,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              transition: 'all 0.2s ease',
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', borderColor: 'secondary.main' },
+            }}
+          >
+            <Avatar sx={{ bgcolor: 'rgba(156, 39, 176, 0.15)', color: 'secondary.main', width: 52, height: 52 }}>
               <MailOutlinedIcon />
             </Avatar>
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+              <Typography variant="h4" sx={{ fontWeight: 800 }}>
                 {pendingInvitations.length}
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                 Pending Invitations
               </Typography>
             </Box>
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar sx={{ bgcolor: 'info.light', color: 'info.main', width: 48, height: 48 }}>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 2.5,
+              borderRadius: 3,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              transition: 'all 0.2s ease',
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', borderColor: 'info.main' },
+            }}
+          >
+            <Avatar sx={{ bgcolor: 'rgba(2, 136, 209, 0.15)', color: 'info.main', width: 52, height: 52 }}>
               <PlayCircleOutlinedIcon />
             </Avatar>
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+              <Typography variant="h4" sx={{ fontWeight: 800 }}>
                 {activeSessions.length}
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                 Active Practice Sessions
               </Typography>
             </Box>
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar sx={{ bgcolor: 'success.light', color: 'success.main', width: 48, height: 48 }}>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 2.5,
+              borderRadius: 3,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              transition: 'all 0.2s ease',
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', borderColor: 'success.main' },
+            }}
+          >
+            <Avatar sx={{ bgcolor: 'rgba(46, 125, 50, 0.15)', color: 'success.main', width: 52, height: 52 }}>
               <AssignmentTurnedInIcon />
             </Avatar>
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+              <Typography variant="h4" sx={{ fontWeight: 800 }}>
                 {reviewSessions.length}
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                 Guides for Review
               </Typography>
             </Box>

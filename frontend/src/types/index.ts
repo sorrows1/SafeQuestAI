@@ -81,6 +81,10 @@ export interface DifficultyModifier {
   trust_delta_multiplier: number;
   escalation_speed: 'slow' | 'medium' | 'fast';
   red_flag_visibility: 'low' | 'medium' | 'high';
+  trust_context_balance: number;
+  min_safe_message_ratio: number;
+  max_suspicious_targets: number;
+  min_distinct_tactics: number;
 }
 
 export interface StageStep {
@@ -130,7 +134,7 @@ export interface PromptTemplate {
 
 // ── Durable admin simulation runtime (admin-only API) ──────────────────────
 export type SimulationMode = 'ai_vs_ai' | 'admin_as_respondent' | 'single_pass';
-export type SimulationStatus = 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'failed' | 'limit_reached';
+export type SimulationStatus = 'running' | 'paused' | 'awaiting_admin' | 'ready_for_review' | 'approved' | 'rejected' | 'failed' | 'failed_retryable' | 'failed_terminal' | 'limit_reached';
 export interface SimulationMessage {
   id: number;
   sequence: number;
@@ -426,6 +430,7 @@ export interface SceneAnnotationDraft {
   end_offset?: number | null;
   explanation?: string | null;
   tiered_hints: string[];
+  repeat_justification?: string | null;
 }
 
 export interface AdminSceneDraft {

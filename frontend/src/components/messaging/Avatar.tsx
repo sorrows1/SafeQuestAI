@@ -18,7 +18,7 @@ export const Avatar = memo(function Avatar({ speakerLabel, role }: AvatarProps) 
   }, [role, speakerLabel]);
 
   return (
-    <MuiAvatar aria-label={speakerLabel} sx={{ width: 32, height: 32, bgcolor: avatar.color }}>
+    <MuiAvatar role="img" aria-label={speakerLabel} sx={{ width: 32, height: 32, bgcolor: avatar.color }}>
       {avatar.icon}
     </MuiAvatar>
   );

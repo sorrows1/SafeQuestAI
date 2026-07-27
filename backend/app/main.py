@@ -36,43 +36,12 @@ logging.basicConfig(
 llm_service: LLMService | None = None
 
 
-# ---------------------------------------------------------------------------
-# Admin seeding
-# ---------------------------------------------------------------------------
-def _seed_admin() -> None:
-    from app.auth.security import hash_password
-
-    email    = os.getenv("ADMIN_EMAIL")
-    password = os.getenv("ADMIN_PASSWORD")
-    name     = os.getenv("ADMIN_DISPLAY_NAME", "Administrator")
-    if not email or not password:
-        logger.info("ADMIN_EMAIL/ADMIN_PASSWORD not set — skipping admin seed.")
-        return
-
-    db = SessionLocal()
-    try:
-        existing = db.query(User).filter(User.email == email).first()
-        if existing:
-            if existing.role != "admin":
-                existing.role = "admin"
-                db.commit()
-                logger.info("Upgraded existing user %s to admin.", email)
-            return
-
-        admin = User(
-            email=email,
-            hashed_password=hash_password(password),
-            display_name=name,
-            role="admin",
-        )
-        db.add(admin)
-        db.commit()
-        logger.info("Seeded admin account: %s", email)
-    finally:
-        db.close()
 
 
-EXPECTED_SCHEMA_REVISION = "20260726_p8_multiplayer"
+# Keep this explicit instead of calling ``create_all`` at startup. A deploy
+# that has not run the latest migration must fail fast rather than quietly
+# serving a partially upgraded contract.
+EXPECTED_SCHEMA_REVISION = "20260727_phase9_authoring_quality"
 
 def _init_db() -> None:
     """Verify the database has been migrated; startup never changes schema."""
@@ -104,18 +73,22 @@ async def lifespan(app: FastAPI):
 
     _init_db()
 
-    logger.info("Seeding admin account...")
-    _seed_admin()
 
     try:
         llm_service = LLMService()
         logger.info("LLMService initialised.")
+        from app.api.admin_simulations import runtime as simulation_runtime
+        recovered = simulation_runtime.recover()
+        logger.info("Scheduled recovery for %d durable simulation run(s).", recovered)
     except RuntimeError as exc:
         logger.warning("LLMService could not be initialised: %s", exc)
         llm_service = None  # type: ignore[assignment]
 
     logger.info("Safe Quest API startup complete.")
     yield
+    if llm_service is not None:
+        from app.api.admin_simulations import runtime as simulation_runtime
+        simulation_runtime.shutdown()
     logger.info("Safe Quest API shutting down.")
 
 
@@ -218,7 +191,7 @@ def config_summary(db=Depends(get_db), _: User = Depends(require_admin)):
             "review_ready_count": db.query(SimulationRun).filter(SimulationRun.status == "ready_for_review").count(),
             "unpublished_approved_transcript_count": db.query(CuratedTranscript).filter(CuratedTranscript.is_published.is_(False)).count(),
             "active_run_count": db.query(SimulationRun).filter(SimulationRun.status.in_(["running", "paused", "awaiting_admin"])).count(),
-            "failed_run_count": db.query(SimulationRun).filter(SimulationRun.status == "failed").count(),
+            "failed_run_count": db.query(SimulationRun).filter(SimulationRun.status.in_(["failed", "failed_retryable", "failed_terminal"])).count(),
             "limited_run_count": db.query(SimulationRun).filter(SimulationRun.status == "limit_reached").count(),
             "validation_blocker_count": len(validation.errors),
             "recently_published": [
@@ -248,6 +221,3 @@ if STATIC_DIR.exists():
 else:
     logger.info("Frontend dist not found — API-only mode.")
 
-
-if __name__ == "__main__":
-    _seed_admin()

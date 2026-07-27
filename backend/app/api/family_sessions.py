@@ -82,6 +82,10 @@ router = APIRouter(prefix="/api/family", tags=["Family Sessions"])
 
 PRESENCE_TTL = timedelta(seconds=90)
 EPHEMERAL_EVENT_TTL = timedelta(minutes=2)
+# A reconnect receives at most this many durable events. The client always
+# refetches session detail, which is authoritative, so an old cursor never
+# causes an unbounded replay or timeline mount.
+MAX_SSE_REPLAY_EVENTS = 250
 
 # A caregiver may observe, add anchored discussion notes, and contribute a
 # shared checkpoint reflection. The learner alone advances or finishes the
@@ -453,6 +457,17 @@ def _resume_active_attempt(response: Response, active: FamilySession) -> FamilyS
     return _session_out(active)
 
 
+def _require_new_session_rollout(*, shared: bool) -> None:
+    """Gate creation only; reads and active-attempt resumes remain compatible."""
+    for flag in (FeatureFlag.SCENE_CONTRACT, FeatureFlag.GAMEPLAY_SHELL):
+        require_feature(flag)
+    if shared:
+        require_feature(FeatureFlag.RELATIONSHIPS)
+        require_feature(FeatureFlag.MULTIPLAYER_EVENTS)
+    else:
+        require_feature(FeatureFlag.NEW_SOLO_SESSIONS)
+
+
 @router.post("/scenarios/{transcript_id}/sessions", response_model=FamilySessionOut, status_code=status.HTTP_201_CREATED)
 def create_session(
     transcript_id: int,
@@ -472,11 +487,7 @@ def create_session(
     prior = _latest_terminal_learner_session(transcript.id, current_user.id, db)
     if prior:
         raise HTTPException(status_code=409, detail={"code": "restart_required", "session_ref": prior.public_id})
-    if body.relationship_ref:
-        require_feature(FeatureFlag.RELATIONSHIPS)
-    else:
-        for flag in (FeatureFlag.NEW_SOLO_SESSIONS, FeatureFlag.SCENE_CONTRACT, FeatureFlag.GAMEPLAY_SHELL):
-            require_feature(flag)
+    _require_new_session_rollout(shared=bool(body.relationship_ref))
     relationship = active_relationship_for_ref(db, body.relationship_ref, current_user.id) if body.relationship_ref else None
     caregiver_id = relationship.caregiver_user_id if relationship else None
     if relationship and relationship.learner_user_id != current_user.id:
@@ -525,6 +536,7 @@ def restart_session(
         FamilySessionParticipant.left_at.is_(None),
     ).first()
     caregiver_id = caregiver_member.user_id if caregiver_member else None
+    _require_new_session_rollout(shared=caregiver_id is not None)
     session = _new_attempt(transcript, current_user.id, caregiver_id, db, previous_session=prior)
     try:
         db.commit()
@@ -775,7 +787,8 @@ async def stream_session_events(
                 rows = local.query(FamilySessionEvent).filter(
                     FamilySessionEvent.family_session_id == family_session_id,
                     FamilySessionEvent.id > cursor,
-                ).order_by(FamilySessionEvent.id).limit(250).all()
+                ).order_by(FamilySessionEvent.id.desc()).limit(MAX_SSE_REPLAY_EVENTS).all()
+                rows.reverse()
                 for row in rows:
                     cursor = row.id
                     if row.is_ephemeral and row.expires_at and row.expires_at <= now:

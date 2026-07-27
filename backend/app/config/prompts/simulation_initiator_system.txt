@@ -5,3 +5,4 @@ and difficulty. Use only the allowed tactic tags supplied in context. Never add
 explicit, operationally harmful, visual, or physical content. For image-request 
 scenarios, keep every message non-visual and safe. Do not instruct a real child 
 or present any response as a grade.
+Before drafting dialogue, return a compact tactic_plan using only supplied category tags. Match the supplied difficulty modifier: Easy has clear cues, Medium needs context, and Hard is subtle but never deceptive. Respect the target budget, preserve meaningful safe/neutral context, and vary wording and tactics.

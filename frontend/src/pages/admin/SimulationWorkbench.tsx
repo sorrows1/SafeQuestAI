@@ -20,9 +20,11 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Drawer,
   FormControl,
   FormControlLabel,
   Grid,
+  IconButton,
   InputAdornment,
   InputLabel,
   LinearProgress,
@@ -37,6 +39,7 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import PauseIcon from '@mui/icons-material/Pause';
@@ -65,6 +68,9 @@ import PublishIcon from '@mui/icons-material/Publish';
 import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import ThumbDownIcon from '@mui/icons-material/ThumbDown';
 import SendIcon from '@mui/icons-material/Send';
+import PsychologyIcon from '@mui/icons-material/Psychology';
+import CloseIcon from '@mui/icons-material/Close';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useSnackbar } from 'notistack';
 import { AppShell } from '@/components/common/AppShell';
 import { MessageBubble } from '@/components/messaging/MessageBubble';
@@ -108,7 +114,7 @@ const speakerLabels: Record<string, string> = {
   administrator: 'Administrator',
 };
 
-const canEdit = (status: string) => ['paused', 'awaiting_admin', 'ready_for_review'].includes(status);
+const canEdit = (status: string) => ['paused', 'awaiting_admin', 'ready_for_review', 'failed_retryable'].includes(status);
 
 const STATUS_CHIP_COLORS: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
   running: 'primary',
@@ -118,6 +124,8 @@ const STATUS_CHIP_COLORS: Record<string, 'default' | 'primary' | 'secondary' | '
   approved: 'success',
   rejected: 'error',
   failed: 'error',
+  failed_retryable: 'warning',
+  failed_terminal: 'error',
   limit_reached: 'warning',
 };
 
@@ -174,6 +182,13 @@ function getNextActionBanner(status: string) {
         title: 'Run rejected',
         message: 'This run was rejected during review. Check safety findings and diagnostics before starting a new run.',
       };
+    case 'failed_retryable':
+      return {
+        severity: 'warning' as const,
+        title: 'Recovery needed',
+        message: 'Generation retries were exhausted without saving a partial turn. Resume or regenerate from the last committed turn.',
+      };
+    case 'failed_terminal':
     case 'failed':
       return {
         severity: 'error' as const,
@@ -185,8 +200,170 @@ function getNextActionBanner(status: string) {
   }
 }
 
+// ── Failure & Recovery Observability Component ──────────────────────────────
+function FailureRecoveryCard({
+  run,
+  onResume,
+  onRegenerate,
+}: {
+  run: SimulationRun;
+  onResume: () => void;
+  onRegenerate: () => void;
+}) {
+  const isRetryable = run.status === 'failed_retryable';
+  const rawDiag: any = run.diagnostics ?? {};
+  const retryInfo = rawDiag.retry_telemetry ?? {
+    attempts: rawDiag.attempts ?? (isRetryable ? 3 : 1),
+    max_retries: rawDiag.max_retries ?? 3,
+    last_error_category: rawDiag.last_error_category ?? (isRetryable ? 'provider_timeout' : 'terminal_error'),
+    last_error_message: rawDiag.last_error_message ?? run.stop_reason ?? 'Generation halted due to system error or moderation check.',
+    next_backoff_seconds: rawDiag.next_backoff_seconds ?? 5,
+  };
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        borderColor: isRetryable ? 'warning.main' : 'error.main',
+        bgcolor: isRetryable ? 'action.hover' : 'error.50',
+      }}
+    >
+      <Stack spacing={1.5}>
+        <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            {isRetryable ? <WarningIcon color="warning" /> : <ErrorIcon color="error" />}
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              {isRetryable ? 'Execution Recovery Available' : 'Terminal Execution Failure'}
+            </Typography>
+          </Stack>
+          <Chip
+            label={run.status.toUpperCase()}
+            size="small"
+            color={isRetryable ? 'warning' : 'error'}
+            sx={{ fontWeight: 700, fontFamily: 'monospace' }}
+          />
+        </Stack>
+
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', bgcolor: 'background.paper', p: 1, borderRadius: 1, border: 1, borderColor: 'divider' }}>
+          <strong>Category:</strong> {retryInfo.last_error_category} | <strong>Attempts:</strong> {retryInfo.attempts}/{retryInfo.max_retries}
+        </Typography>
+
+        <Typography variant="caption" sx={{ color: 'text.primary', whiteSpace: 'pre-wrap' }}>
+          {retryInfo.last_error_message}
+        </Typography>
+
+        {isRetryable && (
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <Button size="small" variant="contained" color="warning" startIcon={<PlayArrowIcon />} onClick={onResume}>
+              Resume Run (Retry Turn)
+            </Button>
+            <Button size="small" variant="outlined" color="warning" startIcon={<RestartAltIcon />} onClick={onRegenerate}>
+              Regenerate Last Turn
+            </Button>
+          </Stack>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
+// ── Prompt Provenance & Context Drawer ─────────────────────────────────────
+function PromptProvenanceDrawer({
+  open,
+  onClose,
+  run,
+}: {
+  open: boolean;
+  onClose: () => void;
+  run: SimulationRun | null | undefined;
+}) {
+  const [tab, setTab] = useState(0);
+
+  if (!run) return null;
+
+  const rawDiag: any = run.diagnostics ?? {};
+  const provenance: any[] = rawDiag.prompt_provenance ?? [];
+  const prompts: Record<string, any> = run.prompts ?? {};
+
+  return (
+    <Drawer anchor="right" open={open} onClose={onClose} slotProps={{ paper: { sx: { width: { xs: '100%', sm: 540 }, p: 2.5 } } }}>
+      <Stack spacing={2} sx={{ height: '100%' }}>
+        <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PsychologyIcon color="primary" /> Prompt Provenance & Context
+          </Typography>
+          <IconButton onClick={onClose} size="small">
+            <CloseIcon />
+          </IconButton>
+        </Stack>
+
+        <Alert severity="info" sx={{ py: 0.5 }}>
+          Respondent prompt isolation enforced. Respondent agent does NOT receive initiator hidden goals.
+        </Alert>
+
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="fullWidth">
+          <Tab label={`Provenance (${provenance.length})`} />
+          <Tab label="Rendered Layers" />
+        </Tabs>
+
+        <Box sx={{ flex: 1, overflowY: 'auto' }}>
+          {tab === 0 && (
+            <Stack spacing={1.5}>
+              {provenance.length ? (
+                provenance.map((p: any, idx: number) => (
+                  <Card key={p.id || idx} variant="outlined">
+                    <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {p.name || p.id}
+                        </Typography>
+                        <Chip label={p.role || p.role_scope || 'system'} size="small" color={p.role === 'initiator' ? 'primary' : 'secondary'} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', display: 'block' }}>
+                        Version: {p.version || '1.0'} | Hash: {p.hash ? String(p.hash).substring(0, 8) : 'N/A'}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  No prompt provenance records attached to this run.
+                </Typography>
+              )}
+            </Stack>
+          )}
+
+          {tab === 1 && (
+            <Stack spacing={1.5}>
+              {Object.keys(prompts).length ? (
+                Object.entries(prompts).map(([key, val]) => (
+                  <Box key={key}>
+                    <Typography variant="caption" color="primary" sx={{ fontWeight: 700, fontFamily: 'monospace' }}>
+                      LAYER: {key}
+                    </Typography>
+                    <Paper variant="outlined" sx={{ p: 1.5, mt: 0.5, bgcolor: 'action.hover', maxHeight: 200, overflowY: 'auto' }}>
+                      <Typography variant="caption" component="pre" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', m: 0 }}>
+                        {typeof val === 'string' ? val : JSON.stringify(val, null, 2)}
+                      </Typography>
+                    </Paper>
+                  </Box>
+                ))
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  No rendered prompt layer text captured.
+                </Typography>
+              )}
+            </Stack>
+          )}
+        </Box>
+      </Stack>
+    </Drawer>
+  );
+}
+
 // ── Diagnostic Detail Panel ──────────────────────────────────────────────────
-function DiagnosticDetailPanel({ run }: { run: SimulationRun }) {
+function DiagnosticDetailPanel({ run }: { run: SimulationRun; }) {
   const [tab, setTab] = useState(0);
   const [showRawPrompts, setShowRawPrompts] = useState(false);
 
@@ -248,7 +425,7 @@ function DiagnosticDetailPanel({ run }: { run: SimulationRun }) {
         <Tab label="Usage" />
       </Tabs>
 
-      <Box sx={{ p: 2, maxHeight: 600, overflow: 'auto', flex: 1 }}>
+      <Box sx={{ p: 2, flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {/* Tab 0: Overview */}
         {tab === 0 && (
           <Stack spacing={2}>
@@ -717,7 +894,7 @@ function DiagnosticDetailPanel({ run }: { run: SimulationRun }) {
 }
 
 // ── Chronological Event Log Timeline ─────────────────────────────────────────
-function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: string; payload: any }> }) {
+function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: string; payload: any; }>; }) {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -815,7 +992,7 @@ function ChronologicalEventLog({ events }: { events: Array<{ id: number; event: 
 
 // ── Main Simulation Workbench Component ──────────────────────────────────────
 export function SimulationWorkbench() {
-  const { runId: routeRunId } = useParams<{ runId?: string }>();
+  const { runId: routeRunId } = useParams<{ runId?: string; }>();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { enqueueSnackbar } = useSnackbar();
@@ -831,17 +1008,21 @@ export function SimulationWorkbench() {
   const [scenarioId, setScenarioId] = useState('');
   const [mode, setMode] = useState<SimulationMode>('ai_vs_ai');
   const [autoScroll, setAutoScroll] = useState(true);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [unreadEventsCount, setUnreadEventsCount] = useState(0);
+  const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [adminText, setAdminText] = useState('');
-  const [edit, setEdit] = useState<{ id: number; content: string } | null>(null);
+  const [edit, setEdit] = useState<{ id: number; content: string; } | null>(null);
   const [reason, setReason] = useState('');
   const [reconnectNonce, setReconnectNonce] = useState(0);
-  const [eventLog, setEventLog] = useState<Array<{ id: number; event: string; payload: unknown }>>([]);
+  const [eventLog, setEventLog] = useState<Array<{ id: number; event: string; payload: unknown; }>>([]);
   const [transcriptId, setTranscriptId] = useState<number | null>(null);
   const [showRawJson, setShowRawJson] = useState(false);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(persistedCursor);
   const abortRef = useRef<AbortController | null>(null);
+  const prevMessagesCountRef = useRef(messages.length);
 
   const { data: scenarios = [] } = useListScenariosQuery();
   const { data: savedRuns = [] } = useListSimulationsQuery();
@@ -882,9 +1063,37 @@ export function SimulationWorkbench() {
     cursorRef.current = persistedCursor;
   }, [persistedCursor]);
 
+  const handleTimelineScroll = useCallback(() => {
+    if (!timelineRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = timelineRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 40;
+    if (isAtBottom) {
+      setUserScrolledUp(false);
+      setUnreadEventsCount(0);
+    } else {
+      setUserScrolledUp(true);
+    }
+  }, []);
+
   useEffect(() => {
-    if (autoScroll) timelineRef.current?.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'smooth' });
-  }, [autoScroll, messages, typing]);
+    if (messages.length > prevMessagesCountRef.current) {
+      if (userScrolledUp) {
+        setUnreadEventsCount((prev) => prev + (messages.length - prevMessagesCountRef.current));
+      } else if (autoScroll && timelineRef.current) {
+        timelineRef.current.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'smooth' });
+      }
+    }
+    prevMessagesCountRef.current = messages.length;
+  }, [messages.length, autoScroll, userScrolledUp]);
+
+  const scrollToBottom = () => {
+    if (timelineRef.current) {
+      timelineRef.current.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'smooth' });
+    }
+    setUserScrolledUp(false);
+    setUnreadEventsCount(0);
+    setAutoScroll(true);
+  };
 
   const reportError = (error: any, fallback: string) => enqueueSnackbar(error?.data?.detail ?? fallback, { variant: 'error' });
 
@@ -1049,9 +1258,9 @@ export function SimulationWorkbench() {
 
   return (
     <AppShell>
-      <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+      <Box sx={{ height: { xs: 'auto', md: 'calc(100vh - 70px)' }, display: 'flex', flexDirection: 'column', overflow: 'hidden', p: 2.5, gap: 2 }}>
         {/* Page Header */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, flexShrink: 0 }}>
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 700 }}>
               Simulation Workbench
@@ -1063,6 +1272,14 @@ export function SimulationWorkbench() {
 
           {run && (
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<PsychologyIcon />}
+                onClick={() => setPromptDrawerOpen(true)}
+              >
+                Inspect Context & Prompts
+              </Button>
               <Chip
                 label={`Status: ${run.status}`}
                 color={STATUS_CHIP_COLORS[run.status] || 'default'}
@@ -1081,7 +1298,7 @@ export function SimulationWorkbench() {
         </Box>
 
         {/* Start / Select Run Header Panel */}
-        <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.paper' }}>
+        <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.paper', flexShrink: 0 }}>
           <Grid container spacing={2} sx={{ alignItems: 'center' }}>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <FormControl fullWidth size="small">
@@ -1156,8 +1373,8 @@ export function SimulationWorkbench() {
 
         {/* Onboarding View when no run is selected */}
         {!selectedRunId && !run && (
-          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', bgcolor: 'action.hover' }}>
-            <Box sx={{ maxWidth: 500, mx: 'auto' }}>
+          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', bgcolor: 'action.hover', flex: 1 }}>
+            <Box sx={{ maxWidth: 500, mx: 'auto', py: 4 }}>
               <AccountTreeIcon color="primary" sx={{ fontSize: 48, mb: 1 }} />
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
                 No active simulation selected
@@ -1182,24 +1399,33 @@ export function SimulationWorkbench() {
 
         {/* Error Alert */}
         {runError && (
-          <Alert severity="error">
+          <Alert severity="error" sx={{ flexShrink: 0 }}>
             Could not restore saved run #{selectedRunId}. Use Reconnect or select another run.
           </Alert>
         )}
 
         {/* Active Run Banner & Action Callout */}
         {run && (
-          <Stack spacing={2}>
+          <Stack spacing={1.5} sx={{ flexShrink: 0 }}>
+            {/* Failure & Recovery Component if failed */}
+            {(run.status.startsWith('failed') || run.status === 'failed_retryable') && (
+              <FailureRecoveryCard
+                run={run}
+                onResume={() => control(() => resumeRun({ runId: run.id, extend_limits: false }).unwrap(), 'Simulation resumed')}
+                onRegenerate={() => control(() => regenerate(run.id).unwrap(), 'Regenerating last turn')}
+              />
+            )}
+
             {/* Recommended Next Action Banner */}
-            {nextActionBanner && (
+            {nextActionBanner && !run.status.startsWith('failed') && (
               <Alert severity={nextActionBanner.severity} icon={<InfoIcon />}>
                 <AlertTitle sx={{ fontWeight: 700 }}>{nextActionBanner.title}</AlertTitle>
                 {nextActionBanner.message}
               </Alert>
             )}
 
-            {/* Grouped Controls Bar */}
-            <Paper variant="outlined" sx={{ p: 1.5 }}>
+            {/* Sticky Grouped Controls Bar */}
+            <Paper variant="outlined" sx={{ p: 1.5, position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.paper' }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
                 <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
                   {/* Group 1: Lifecycle */}
@@ -1214,7 +1440,7 @@ export function SimulationWorkbench() {
                     <Button
                       startIcon={<PlayArrowIcon />}
                       onClick={() => control(() => resumeRun({ runId: run.id, extend_limits: run.status === 'limit_reached' }).unwrap(), 'Simulation resumed')}
-                      disabled={!['paused', 'awaiting_admin', 'limit_reached'].includes(run.status)}
+                      disabled={!['paused', 'awaiting_admin', 'limit_reached', 'failed_retryable'].includes(run.status)}
                     >
                       Resume
                     </Button>
@@ -1222,7 +1448,7 @@ export function SimulationWorkbench() {
                       startIcon={<StopIcon />}
                       color="warning"
                       onClick={() => control(() => stopRun(run.id).unwrap(), 'Simulation stopped')}
-                      disabled={!['running', 'paused', 'awaiting_admin', 'limit_reached'].includes(run.status)}
+                      disabled={!['running', 'paused', 'awaiting_admin', 'limit_reached', 'failed_retryable'].includes(run.status)}
                     >
                       Stop
                     </Button>
@@ -1283,10 +1509,10 @@ export function SimulationWorkbench() {
 
         {/* Main Content Area: Transcript Timeline + Diagnostic Panel */}
         {run && (
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ minHeight: 500 }}>
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {/* Left: Transcript Timeline */}
-            <Paper ref={timelineRef} variant="outlined" sx={{ p: 2, flex: 1, minHeight: 400, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-              <Box sx={{ pb: 1, borderBottom: 1, borderColor: 'divider', mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Paper variant="outlined" sx={{ p: 2, flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <Box sx={{ pb: 1, borderBottom: 1, borderColor: 'divider', mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                   Transcript Timeline ({messages.length} turns)
                 </Typography>
@@ -1296,92 +1522,110 @@ export function SimulationWorkbench() {
                 />
               </Box>
 
-              {loadingRun && (
-                <Box sx={{ textAlign: 'center', py: 6 }}>
-                  <CircularProgress size={32} />
-                </Box>
-              )}
+              <Box ref={timelineRef} onScroll={handleTimelineScroll} sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pr: 1, position: 'relative' }}>
+                {loadingRun && (
+                  <Box sx={{ textAlign: 'center', py: 6 }}>
+                    <CircularProgress size={32} />
+                  </Box>
+                )}
 
-              {!loadingRun && messages.length === 0 && (
-                <Box sx={{ py: 6, textAlign: 'center' }}>
-                  <Typography color="text.secondary" variant="body2">
-                    No messages generated yet in this run. Click Resume or enter admin input to begin.
-                  </Typography>
-                </Box>
-              )}
+                {!loadingRun && messages.length === 0 && (
+                  <Box sx={{ py: 6, textAlign: 'center' }}>
+                    <Typography color="text.secondary" variant="body2">
+                      No messages generated yet in this run. Click Resume or enter admin input to begin.
+                    </Typography>
+                  </Box>
+                )}
 
-              <Box sx={{ flex: 1 }}>
-                {messages.map((message) => {
-                  const tacticTags = (message.metadata?.tactic_tags as string[]) ?? [];
-                  const isCheckpoint = Boolean(message.metadata?.is_checkpoint);
-                  const stageId = message.metadata?.stage_id as string | undefined;
-                  const objectiveId = message.metadata?.objective_id as string | undefined;
-                  const revisionId = message.metadata?.revision_id as number | undefined;
-                  const isSuperseded = Boolean(message.metadata?.superseded);
+                <Box sx={{ flex: 1 }}>
+                  {messages.map((message) => {
+                    const tacticTags = (message.metadata?.tactic_tags as string[]) ?? [];
+                    const isCheckpoint = Boolean(message.metadata?.is_checkpoint);
+                    const stageId = message.metadata?.stage_id as string | undefined;
+                    const objectiveId = message.metadata?.objective_id as string | undefined;
+                    const revisionId = message.metadata?.revision_id as number | undefined;
+                    const isSuperseded = Boolean(message.metadata?.superseded);
 
-                  return (
-                    <Box key={message.id} sx={{ mb: 2, opacity: isSuperseded ? 0.6 : 1.0 }}>
-                      {/* Message Metadata Header Bar */}
-                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
-                        <Chip
-                          label={speakerLabels[message.sender] ?? message.sender}
-                          size="small"
-                          color={message.sender === 'respondent' ? 'secondary' : 'primary'}
-                          sx={{ height: 20, fontSize: '0.7rem' }}
-                        />
-                        {stageId && (
-                          <Chip label={`Stage: ${stageId}`} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
-                        )}
-                        {objectiveId && (
-                          <Chip label={`Obj: ${objectiveId}`} size="small" variant="outlined" color="info" sx={{ height: 18, fontSize: '0.65rem' }} />
-                        )}
-                        {isCheckpoint && (
-                          <Chip label="Checkpoint" size="small" color="warning" sx={{ height: 18, fontSize: '0.65rem' }} />
-                        )}
-                        {revisionId && (
-                          <Chip label={`Rev #${revisionId}`} size="small" variant="outlined" color="secondary" sx={{ height: 18, fontSize: '0.65rem' }} />
-                        )}
-                        {isSuperseded && (
-                          <Chip label="Superseded" size="small" color="default" sx={{ height: 18, fontSize: '0.65rem' }} />
-                        )}
-                      </Stack>
-
-                      {/* Tactic Chips */}
-                      {Boolean(tacticTags.length) && (
-                        <Stack direction="row" spacing={0.5} useFlexGap sx={{ mb: 0.5, flexWrap: 'wrap' }}>
-                          {tacticTags.map((tag) => (
-                            <Chip key={tag} label={tag} size="small" variant="outlined" color="secondary" sx={{ height: 18, fontSize: '0.65rem' }} />
-                          ))}
+                    return (
+                      <Box key={message.id} sx={{ mb: 2, opacity: isSuperseded ? 0.6 : 1.0 }}>
+                        {/* Message Metadata Header Bar */}
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+                          <Chip
+                            label={speakerLabels[message.sender] ?? message.sender}
+                            size="small"
+                            color={message.sender === 'respondent' ? 'secondary' : 'primary'}
+                            sx={{ height: 20, fontSize: '0.7rem' }}
+                          />
+                          {stageId && (
+                            <Chip label={`Stage: ${stageId}`} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+                          )}
+                          {objectiveId && (
+                            <Chip label={`Obj: ${objectiveId}`} size="small" variant="outlined" color="info" sx={{ height: 18, fontSize: '0.65rem' }} />
+                          )}
+                          {isCheckpoint && (
+                            <Chip label="Checkpoint" size="small" color="warning" sx={{ height: 18, fontSize: '0.65rem' }} />
+                          )}
+                          {revisionId && (
+                            <Chip label={`Rev #${revisionId}`} size="small" variant="outlined" color="secondary" sx={{ height: 18, fontSize: '0.65rem' }} />
+                          )}
+                          {isSuperseded && (
+                            <Chip label="Superseded" size="small" color="default" sx={{ height: 18, fontSize: '0.65rem' }} />
+                          )}
                         </Stack>
-                      )}
 
-                      <MessageBubble
-                        content={message.content}
-                        speakerLabel={speakerLabels[message.sender] ?? message.sender}
-                        side={message.sender === 'respondent' ? 'right' : 'left'}
-                        selectable
-                      />
+                        {/* Tactic Chips */}
+                        {Boolean(tacticTags.length) && (
+                          <Stack direction="row" spacing={0.5} useFlexGap sx={{ mb: 0.5, flexWrap: 'wrap' }}>
+                            {tacticTags.map((tag) => (
+                              <Chip key={tag} label={tag} size="small" variant="outlined" color="secondary" sx={{ height: 18, fontSize: '0.65rem' }} />
+                            ))}
+                          </Stack>
+                        )}
 
-                      {run && canEdit(run.status) && (
-                        <Button
-                          size="small"
-                          startIcon={<EditIcon />}
-                          sx={{ mt: 0.5, fontSize: '0.75rem' }}
-                          onClick={() => setEdit({ id: message.id, content: message.content })}
-                        >
-                          Edit turn
-                        </Button>
-                      )}
-                    </Box>
-                  );
-                })}
+                        <MessageBubble
+                          content={message.content}
+                          speakerLabel={speakerLabels[message.sender] ?? message.sender}
+                          side={message.sender === 'respondent' ? 'right' : 'left'}
+                          selectable
+                        />
+
+                        {run && canEdit(run.status) && (
+                          <Button
+                            size="small"
+                            startIcon={<EditIcon />}
+                            sx={{ mt: 0.5, fontSize: '0.75rem' }}
+                            onClick={() => setEdit({ id: message.id, content: message.content })}
+                          >
+                            Edit turn
+                          </Button>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
+
+                <TypingIndicator typing={typing && status === 'running'} />
               </Box>
 
-              <TypingIndicator typing={typing && status === 'running'} />
+              {/* Floating new events button when user is scrolled up */}
+              {userScrolledUp && unreadEventsCount > 0 && (
+                <Box sx={{ textAlign: 'center', py: 0.5, flexShrink: 0 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    startIcon={<KeyboardArrowDownIcon />}
+                    onClick={scrollToBottom}
+                    sx={{ borderRadius: 4, boxShadow: 2, fontWeight: 700 }}
+                  >
+                    {unreadEventsCount} new message{unreadEventsCount > 1 ? 's' : ''} below
+                  </Button>
+                </Box>
+              )}
 
               {/* Admin Respondent Input Bar */}
               {run?.status === 'awaiting_admin' && (
-                <Paper variant="outlined" sx={{ p: 1.5, mt: 2, bgcolor: 'action.hover' }}>
+                <Paper variant="outlined" sx={{ p: 1.5, mt: 1, bgcolor: 'action.hover', flexShrink: 0 }}>
                   <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 1 }}>
                     ADMIN RESPONDENT INTERVENTION
                   </Typography>
@@ -1417,7 +1661,7 @@ export function SimulationWorkbench() {
 
         {/* Collapsed Advanced Raw JSON Drawer */}
         {run && (
-          <Accordion variant="outlined" expanded={showRawJson} onChange={(_, exp) => setShowRawJson(exp)}>
+          <Accordion variant="outlined" expanded={showRawJson} onChange={(_, exp) => setShowRawJson(exp)} sx={{ flexShrink: 0 }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <CodeIcon fontSize="small" /> Advanced Raw JSON & Diagnostics
@@ -1471,6 +1715,9 @@ export function SimulationWorkbench() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Prompt Provenance & Context Drawer */}
+        <PromptProvenanceDrawer open={promptDrawerOpen} onClose={() => setPromptDrawerOpen(false)} run={run} />
       </Box>
     </AppShell>
   );

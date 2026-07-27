@@ -230,6 +230,7 @@ class RedFlagSpan(Base):
     scene_element_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("curated_scene_elements.id"), nullable=True, index=True)
     child_safe_explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tiered_hints: Mapped[list[str]] = mapped_column(JSON, default=list)
+    repeat_justification: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     transcript: Mapped[CuratedTranscript] = relationship(
         "CuratedTranscript", back_populates="red_flag_spans"

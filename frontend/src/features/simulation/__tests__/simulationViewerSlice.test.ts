@@ -11,6 +11,8 @@ describe("normalizeSimulationStatus", () => {
     ["rejected", "rejected"],
     ["limit_reached", "limit_reached"],
     ["failed", "failed"],
+    ["failed_retryable", "failed_retryable"],
+    ["failed_terminal", "failed_terminal"],
   ] as const)("preserves runtime status %s", (input, expected) => {
     expect(normalizeSimulationStatus(input)).toBe(expected);
   });
