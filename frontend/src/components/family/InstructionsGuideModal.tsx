@@ -70,10 +70,13 @@ export function InstructionsGuideModal({ open, onClose }: Props) {
               </Box>
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <VisibilityIcon fontSize="small" color="primary" /> Observe the Scenario Flow
+                  <VisibilityIcon fontSize="small" color="primary" /> Read & Look for Red Flags
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.45 }}>
-                  Read through the conversation or feed beats as they unfold on screen. Your goal is to notice subtle manipulation, boundary pressure, or unexpected requests.
+                  The conversation contains hidden red flags — pressure tactics, manipulation, or unsafe requests. Read each message carefully. Your goal is to find <strong>ALL</strong> the red flags before completing the scenario.
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, fontWeight: 600 }}>
+                  Use the <strong>Continue Conversation</strong> button to advance. The conversation will never auto-advance — you decide when you are ready to move on.
                 </Typography>
               </Box>
             </Stack>
@@ -90,16 +93,16 @@ export function InstructionsGuideModal({ open, onClose }: Props) {
               </Box>
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <TouchAppIcon fontSize="small" color="warning" /> Select & Explain Red Flags
+                  <TouchAppIcon fontSize="small" color="warning" /> Select & Investigate Suspicious Items
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.45 }}>
-                  Tap any message or element that makes you feel uneasy. Provide your reasoning in the inspector panel to validate red flag findings.
+                  Tap any message or element to select it (it will show a blue border). Then, in the inspector panel, explain why it concerns you and check it with your Safety Companion.
                 </Typography>
               </Box>
             </Stack>
           </Paper>
 
-          {/* Step 3: Companion & Discussion Checkpoints */}
+          {/* Step 3: Companion & Checkpoints */}
           <Paper
             elevation={0}
             sx={{ p: 2, borderRadius: 2.5, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 4px rgba(0,0,0,0.02)' }}
@@ -110,16 +113,16 @@ export function InstructionsGuideModal({ open, onClose }: Props) {
               </Box>
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <HelpOutlineOutlinedIcon fontSize="small" color="secondary" /> Companion Guidance & Checkpoints
+                  <HelpOutlineOutlinedIcon fontSize="small" color="secondary" /> Hints & Checkpoints
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.45 }}>
-                  Ask the Safety Companion questions like <em>“What makes this feel pressuring?”</em> or <em>“Who could help here?”</em> When a checkpoint pause occurs, share your reflection to resume progression.
+                  Stuck? Tap <strong>Hint</strong> for guidance about a selected item. At checkpoint pauses, share your reflection to continue. Your findings count toward your progress — find all red flags to complete the scenario.
                 </Typography>
               </Box>
             </Stack>
           </Paper>
 
-          {/* Step 4: Completion Review */}
+          {/* Step 4: Review & Complete */}
           <Paper
             elevation={0}
             sx={{ p: 2, borderRadius: 2.5, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 4px rgba(0,0,0,0.02)' }}
@@ -130,10 +133,10 @@ export function InstructionsGuideModal({ open, onClose }: Props) {
               </Box>
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <ForumIcon fontSize="small" color="success" /> Completion Review & Family Discussion
+                  <ForumIcon fontSize="small" color="success" /> Review & Complete
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.45 }}>
-                  Upon reaching the end of content, complete the session review together to access your non-graded family discussion guide.
+                  Once you have found all red flags, click <strong>Review My Findings</strong> to enter the completion review. The scenario can only be completed when all required red flags have been identified.
                 </Typography>
               </Box>
             </Stack>

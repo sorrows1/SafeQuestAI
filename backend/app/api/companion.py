@@ -215,7 +215,19 @@ async def submit_flag_attempt(
             raise HTTPException(409, "A command ID cannot be reused for another flag attempt")
         return _attempt_out(existing, target, session, db)
 
+    # Prevent re-submission of already-validated red flags.
+    existing_findings = db.query(ValidatedFinding).filter(
+        ValidatedFinding.family_session_id == session.id,
+        ValidatedFinding.element_id == target.id,
+    ).all()
     annotations = _annotations(session, target, db)
+    if bool(annotations):
+        existing_annotation_ids = {f.red_flag_span_id for f in existing_findings}
+        annotation_ids = {a.id for a in annotations}
+        if annotation_ids and annotation_ids.issubset(existing_annotation_ids):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                detail="This red flag has already been validated. Review your findings list and continue investigating.")
+
     sanitized_reasoning = redact_personal_info(body.reasoning)
     disclosure = is_real_disclosure(body.reasoning)
     explicit_content = contains_explicit_content(body.reasoning)

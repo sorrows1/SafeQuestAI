@@ -70,6 +70,13 @@ export interface FamilyGameplayViewProps {
   onHint?: () => void;
   onReset?: () => void;
   isResetting?: boolean;
+  // Progression controls — explicitly require user interaction
+  canRevealNext?: boolean;
+  canEnterReview?: boolean;
+  onRevealNext?: () => void;
+  onEnterReview?: () => void;
+  validatedFindingCount?: number;
+  requiredFindingCount?: number;
 
   // Companion, Attempt & Finding props
   selectedElementKey?: string | null;
@@ -144,6 +151,12 @@ export function FamilyGameplayView({
   onHint,
   onReset,
   isResetting = false,
+  canRevealNext = false,
+  canEnterReview = false,
+  onRevealNext,
+  onEnterReview,
+  validatedFindingCount = 0,
+  requiredFindingCount = 0,
 
   selectedElementKey = null,
   companionNotice = null,
@@ -238,9 +251,15 @@ export function FamilyGameplayView({
         revealedCount={revealedCount}
         totalCount={totalCount}
         highlightedCount={highlightedMessageIds.length}
+        validatedFindingCount={validatedFindingCount}
+        requiredFindingCount={requiredFindingCount}
         hintLevel={hintLevel}
         hintMessage={hintMessage}
         turnRole={turnRole}
+        canRevealNext={canRevealNext}
+        canEnterReview={canEnterReview}
+        onRevealNext={onRevealNext ?? (() => {})}
+        onEnterReview={onEnterReview ?? (() => {})}
         onHint={onHint ?? (() => {})}
         onReset={onReset ?? (() => {})}
         onOpenGuide={openGuide}

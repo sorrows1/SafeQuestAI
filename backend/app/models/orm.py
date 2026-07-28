@@ -326,6 +326,9 @@ class FamilySession(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Session join code for caregiver to join an active session.
+    join_code_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    join_code_short: Mapped[Optional[str]] = mapped_column(String(8), nullable=True, index=True)
 
 
 class FamilySessionCommand(Base):

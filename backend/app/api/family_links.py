@@ -101,6 +101,40 @@ def accept(body:FamilyRelationshipInvitationAcceptRequest,db:Session=Depends(get
 def decline(body:FamilyRelationshipInvitationAcceptRequest,db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):
     row=consume(body,db,current_user,"decline");row.status="declined";audit(db,"invitation_declined",current_user,row);db.commit()
 
+@router.post("/invitations/{invitation_ref}/accept-as-recipient",response_model=FamilyRelationshipOut)
+def accept_as_recipient(invitation_ref:str,db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):
+    """Accept an invitation without requiring the secret — uses authenticated user's email."""
+    limit("accept",current_user.id)
+    row=db.query(FamilyRelationshipInvitation).filter(FamilyRelationshipInvitation.public_id==invitation_ref,FamilyRelationshipInvitation.status=="pending",FamilyRelationshipInvitation.expires_at>now()).first()
+    if not row or row.learner_email!=current_user.email.casefold(): raise invalid()
+    row.accept_attempt_count+=1;row.last_attempt_at=now()
+    caregiver=db.get(User,row.caregiver_user_id)
+    if not caregiver or not caregiver.is_active or caregiver.id==current_user.id: row.failed_lookup_count+=1;db.commit();raise invalid()
+    low,high=sorted((caregiver.id,current_user.id))
+    existing=db.query(FamilyRelationship).filter(FamilyRelationship.user_low_id==low,FamilyRelationship.user_high_id==high).first()
+    if existing and existing.status=="active": row.status="accepted";row.accepted_at=now();row.accepted_by_user_id=current_user.id;audit(db,"invitation_replayed",current_user,row,existing);db.commit();return relation_out(existing,current_user,db)
+    if existing and existing.status=="blocked": row.failed_lookup_count+=1;db.commit();raise invalid()
+    row.status="accepted";row.accepted_at=now();row.accepted_by_user_id=current_user.id
+    if existing:
+        existing.caregiver_user_id=caregiver.id;existing.learner_user_id=current_user.id;existing.invitation_id=row.id;existing.accepted_at=now();existing.revoked_at=None;existing.status="active";existing.blocked_by_user_id=None
+        audit(db,"relationship_relinked",current_user,row,existing);db.commit();return relation_out(existing,current_user,db)
+    relationship=FamilyRelationship(public_id=ref("fr"),caregiver_user_id=caregiver.id,learner_user_id=current_user.id,user_low_id=low,user_high_id=high,invitation_id=row.id,source="invitation",accepted_at=now(),status="active")
+    db.add(relationship);audit(db,"invitation_accepted",current_user,row,relationship)
+    try: db.commit()
+    except IntegrityError:
+        db.rollback(); existing=db.query(FamilyRelationship).filter(FamilyRelationship.user_low_id==low,FamilyRelationship.user_high_id==high,FamilyRelationship.status=="active").first()
+        if not existing: raise
+        return relation_out(existing,current_user,db)
+    db.refresh(relationship);telemetry_record("invitation.success", status="accepted");return relation_out(relationship,current_user,db)
+
+@router.post("/invitations/{invitation_ref}/decline-as-recipient",status_code=status.HTTP_204_NO_CONTENT)
+def decline_as_recipient(invitation_ref:str,db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):
+    """Decline an invitation without requiring the secret — uses authenticated user's email."""
+    limit("decline",current_user.id)
+    row=db.query(FamilyRelationshipInvitation).filter(FamilyRelationshipInvitation.public_id==invitation_ref,FamilyRelationshipInvitation.status=="pending",FamilyRelationshipInvitation.expires_at>now()).first()
+    if not row or row.learner_email!=current_user.email.casefold(): raise invalid()
+    row.status="declined";audit(db,"invitation_declined",current_user,row);db.commit()
+
 @router.post("/invitations/{invitation_ref}/revoke",status_code=status.HTTP_204_NO_CONTENT)
 def revoke(invitation_ref:str,db:Session=Depends(get_db),current_user:User=Depends(get_current_user)):
     row=db.query(FamilyRelationshipInvitation).filter(FamilyRelationshipInvitation.public_id==invitation_ref,FamilyRelationshipInvitation.caregiver_user_id==current_user.id,FamilyRelationshipInvitation.status=="pending").first()

@@ -26,7 +26,7 @@ export function PublicHeader() {
   return (
     <AppBar position="sticky" color="default" elevation={0}>
       <Container maxWidth="lg">
-        <Toolbar disableGutters sx={{ justifyContent: 'space-between', minHeight: { xs: 64, md: 72 } }}>
+        <Toolbar disableGutters sx={{ justifyContent: 'space-between', minHeight: { xs: 64, md: 72 }, alignItems: 'center' }}>
           {/* Logo */}
           <Box component={RouterLink} to="/" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, textDecoration: 'none', color: 'inherit' }}>
             <Box
@@ -43,7 +43,19 @@ export function PublicHeader() {
             >
               <ShieldOutlinedIcon sx={{ fontSize: 24 }} />
             </Box>
-            <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em', background: theme.palette.mode === 'dark' ? 'linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%)' : 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 800,
+                letterSpacing: '-0.02em',
+                background:
+                  theme.palette.mode === 'dark'
+                    ? 'linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%)'
+                    : 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
               Safe Quest
             </Typography>
           </Box>
@@ -51,7 +63,13 @@ export function PublicHeader() {
           {/* Navigation Links (Desktop) */}
           <Stack direction="row" spacing={3} sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
             {navLinks.map((link) => (
-              <Typography key={link.href} component="a" href={link.href} variant="body2" sx={{ color: 'text.secondary', textDecoration: 'none', fontWeight: 600, '&:hover': { color: 'primary.main' } }}>
+              <Typography
+                key={link.href}
+                component="a"
+                href={link.href}
+                variant="body2"
+                sx={{ color: 'text.secondary', textDecoration: 'none', fontWeight: 600, '&:hover': { color: 'primary.main' }, lineHeight: 1, display: 'inline-flex', alignItems: 'center' }}
+              >
                 {link.label}
               </Typography>
             ))}
@@ -74,7 +92,7 @@ export function PublicHeader() {
               Log in
             </Button>
             <Button component={RouterLink} to="/register" variant="contained" size="medium" sx={{ fontWeight: 600, borderRadius: '10px' }}>
-              Sign up free
+              Sign up
             </Button>
           </Stack>
 
@@ -144,10 +162,24 @@ export function PublicHeader() {
               {themeMode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             </Button>
 
-            <Button component={RouterLink} to="/login" variant="outlined" fullWidth onClick={() => setMobileOpen(false)} sx={{ borderRadius: '10px', py: 1 }}>
+            <Button
+              component={RouterLink}
+              to="/login"
+              variant="outlined"
+              fullWidth
+              onClick={() => setMobileOpen(false)}
+              sx={{ borderRadius: '10px', py: 1 }}
+            >
               Log in
             </Button>
-            <Button component={RouterLink} to="/register" variant="contained" fullWidth onClick={() => setMobileOpen(false)} sx={{ borderRadius: '10px', py: 1 }}>
+            <Button
+              component={RouterLink}
+              to="/register"
+              variant="contained"
+              fullWidth
+              onClick={() => setMobileOpen(false)}
+              sx={{ borderRadius: '10px', py: 1 }}
+            >
               Sign up free
             </Button>
           </Stack>

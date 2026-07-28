@@ -24,6 +24,7 @@ from app.models.orm import (
     CuratedMessage,
     CuratedSceneElement,
     CuratedTranscript,
+    FamilyRelationship,
     FamilySession,
     FamilySessionCommand,
     FamilySessionEvent,
@@ -60,6 +61,9 @@ from app.models.schemas import (
     FamilyCaregiverCommentCreateRequest,
     FamilyCaregiverCommentUpdateRequest,
     FamilyCaregiverCommentOut,
+    GenerateJoinCodeResponse,
+    JoinSessionRequest,
+    JoinSessionResponse,
     ParticipantPresenceStatus,
     SceneActor,
     SceneElementOut,
@@ -227,6 +231,7 @@ def _session_out(session: FamilySession) -> FamilySessionOut:
         completion_acknowledged_at=_timestamp(session.completion_acknowledged_at),
         attempt_number=session.attempt_number,
         updated_at=_timestamp(session.updated_at),
+        join_code_short=session.join_code_short,
     )
 
 
@@ -418,6 +423,17 @@ def get_scenario_detail(
     return _published_scenario_out(transcript, db, lifecycle, session_ref)
 
 
+def _generate_join_code(session: FamilySession) -> str:
+    """Generate a 6-character alphanumeric join code, store its salted hash."""
+    import string as str_mod
+    code = ''.join(secrets.choice(str_mod.ascii_uppercase + str_mod.digits) for _ in range(6))
+    # Salt the hash with the session's opaque public_id to prevent rainbow-table attacks.
+    salted = code + (session.public_id or "")
+    session.join_code_hash = sha256(salted.encode()).hexdigest()
+    session.join_code_short = code
+    return code
+
+
 def _new_attempt(
     transcript: CuratedTranscript,
     learner_id: int,
@@ -436,6 +452,10 @@ def _new_attempt(
     )
     db.add(session)
     db.flush()
+    # Generate a join code for shared sessions so the caregiver can join.
+    if caregiver_id is not None:
+        _generate_join_code(session)
+        db.flush()
     now = datetime.now(timezone.utc)
     learner = FamilySessionParticipant(
         family_session_id=session.id, user_id=learner_id, role="learner",
@@ -560,7 +580,13 @@ def _completion_ready(session: FamilySession, db: Session) -> bool:
         CheckpointResponse.family_session_id == session.id,
         CheckpointResponse.responder_role == ParticipantRole.CHILD.value,
     ).all()}
-    return checkpoint_ids.issubset(answered_ids)
+    if not checkpoint_ids.issubset(answered_ids):
+        return False
+    # Scenario must not complete until ALL required red flags/objectives are validated.
+    progress = db.get(SessionProgress, session.id)
+    if progress and is_enabled(FeatureFlag.FLAG_ATTEMPTS) and progress.validated_finding_count < progress.required_finding_count:
+        return False
+    return True
 
 
 def _progress_out(session: FamilySession, db: Session) -> SessionProgressOut:
@@ -1144,6 +1170,90 @@ def get_messages(
         )
         for message in messages
     ]
+
+
+@router.post("/sessions/join", response_model=FamilySessionDetailOut, status_code=status.HTTP_200_OK)
+def join_session(
+    body: JoinSessionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Caregiver joins a family session by entering the join code."""
+    # Require caregiver to have an account.
+    if not current_user.id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Find session by short code.
+    session = db.query(FamilySession).filter(
+        FamilySession.join_code_short == body.session_code.strip().upper(),
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Invalid session code")
+
+    # Validate session is still active.
+    if is_terminal_family_session_state(session.state):
+        raise HTTPException(status_code=400, detail="Session has ended")
+
+    # Caregiver must not already be a participant.
+    existing = db.query(FamilySessionParticipant).filter(
+        FamilySessionParticipant.family_session_id == session.id,
+        FamilySessionParticipant.user_id == current_user.id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="You are already a member of this session")
+
+    # Caregiver must have an active relationship with the learner.
+    relationship = db.query(FamilyRelationship).filter(
+        FamilyRelationship.learner_user_id == session.child_user_id,
+        FamilyRelationship.caregiver_user_id == current_user.id,
+        FamilyRelationship.status == "active",
+    ).first()
+    if not relationship:
+        raise HTTPException(status_code=403, detail="You must be linked with the learner to join")
+
+    # Verify the join code hash.
+    salted = body.session_code.strip().upper() + (session.public_id or "")
+    if session.join_code_hash != sha256(salted.encode()).hexdigest():
+        raise HTTPException(status_code=404, detail="Invalid session code")
+
+    # Add caregiver as participant.
+    now = datetime.now(timezone.utc)
+    participant = FamilySessionParticipant(
+        family_session_id=session.id, user_id=current_user.id, role="caregiver",
+        last_seen_at=now, last_heartbeat_at=now, presence_expires_at=now + timedelta(seconds=90),
+        presence_status="online",
+    )
+    db.add(participant)
+    db.flush()
+    _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED,
+        {"member_ref": member_ref(current_user.id), "role": "caregiver"}, actor_participant=participant)
+    db.commit()
+    db.refresh(session)
+    return _session_detail_out(session, current_user, db)
+
+
+@router.post("/sessions/{session_id}/generate-join-code", response_model=GenerateJoinCodeResponse, status_code=status.HTTP_200_OK)
+def generate_join_code(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a join code for an existing session. Only the learner can do this."""
+    session = _load_session(session_id, current_user, db)
+    if session.child_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the learner can generate a join code")
+
+    # If code already exists, return it idempotently.
+    if session.join_code_short:
+        return GenerateJoinCodeResponse(join_code_short=session.join_code_short)
+
+    if is_terminal_family_session_state(session.state):
+        raise HTTPException(status_code=400, detail="Cannot generate join code for a completed/ended session")
+
+    code = _generate_join_code(session)
+    db.commit()
+    db.refresh(session)
+    return GenerateJoinCodeResponse(join_code_short=code)
 
 
 @router.post("/sessions/{session_id}/checkpoint-responses", response_model=CheckpointResponseOut, status_code=status.HTTP_201_CREATED)

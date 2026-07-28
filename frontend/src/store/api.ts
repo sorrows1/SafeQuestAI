@@ -125,12 +125,26 @@ export const safeQuestApi = createApi({
     acceptFamilyInvitation: build.mutation<FamilyRelationship, { secret: string }>({ query: (body) => ({ url: '/family/invitations/accept', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
     declineFamilyInvitation: build.mutation<void, { secret: string }>({ query: (body) => ({ url: '/family/invitations/decline', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
     revokeFamilyInvitation: build.mutation<void, string>({ query: (ref) => ({ url: '/family/invitations/' + ref + '/revoke', method: 'POST' }), invalidatesTags: ['FamilyLink'] }),
+    acceptFamilyInvitationAsRecipient: build.mutation<FamilyRelationship, { invitation_ref: string }>({
+      query: ({ invitation_ref }) => ({ url: '/family/invitations/' + invitation_ref + '/accept-as-recipient', method: 'POST' }), invalidatesTags: ['FamilyLink'],
+    }),
+    declineFamilyInvitationAsRecipient: build.mutation<void, { invitation_ref: string }>({
+      query: ({ invitation_ref }) => ({ url: '/family/invitations/' + invitation_ref + '/decline-as-recipient', method: 'POST' }), invalidatesTags: ['FamilyLink'],
+    }),
     getFamilyRelationships: build.query<FamilyRelationship[], void>({ query: () => '/family/relationships', providesTags: ['FamilyLink'] }),
     updateFamilyRelationship: build.mutation<FamilyRelationship, { relationship_ref: string; action: 'unlink' | 'block' }>({ query: ({ relationship_ref, ...body }) => ({ url: '/family/relationships/' + relationship_ref, method: 'PATCH', body }), invalidatesTags: ['FamilyLink', 'FamilySession'] }),
     getAuthorizedFamilySessions: build.query<FamilyAuthorizedSession[], void>({ query: () => '/family/sessions', providesTags: ['FamilySession'] }),
     getFamilySession: build.query<FamilySessionDetail, number | string>({
       query: (sessionId) => "/family/sessions/" + sessionId,
       providesTags: (_result, _error, sessionId) => [{ type: "FamilySession", id: sessionId }],
+    }),
+    joinFamilySession: build.mutation<FamilySessionDetail, { session_code: string }>({
+      query: (body) => ({ url: '/family/sessions/join', method: 'POST', body }),
+      invalidatesTags: ['FamilySession'],
+    }),
+    generateJoinCode: build.mutation<{ join_code_short: string }, number | string>({
+      query: (sessionId) => ({ url: '/family/sessions/' + sessionId + '/generate-join-code', method: 'POST' }),
+      invalidatesTags: (_result, _error, sessionId) => [{ type: "FamilySession", id: sessionId }],
     }),
     commandFamilySession: build.mutation<FamilySessionDetail, { sessionId: number | string } & FamilySessionCommandRequest>({
       query: ({ sessionId, ...body }) => ({ url: "/family/sessions/" + sessionId + "/commands", method: "POST", body }),
@@ -503,6 +517,10 @@ export const {
   useUpdateFamilyRelationshipMutation,
   useGetAuthorizedFamilySessionsQuery,
   useGetFamilySessionQuery,
+  useAcceptFamilyInvitationAsRecipientMutation,
+  useDeclineFamilyInvitationAsRecipientMutation,
+  useJoinFamilySessionMutation,
+  useGenerateJoinCodeMutation,
   useCommandFamilySessionMutation,
   useHeartbeatFamilySessionMutation,
   usePublishFamilySelectionFocusMutation,

@@ -30,9 +30,15 @@ interface Props {
   revealedCount: number;
   totalCount: number;
   highlightedCount: number;
+  validatedFindingCount: number;
+  requiredFindingCount: number;
   hintLevel?: number;
   turnRole?: 'learner' | 'caregiver' | 'shared';
   turnLabel?: string;
+  canRevealNext?: boolean;
+  canEnterReview?: boolean;
+  onRevealNext?: () => void;
+  onEnterReview?: () => void;
   onHint: () => void;
   hintMessage?: string | null;
   onReset: () => void;
@@ -49,9 +55,15 @@ export function GameplayMissionBar({
   revealedCount,
   totalCount,
   highlightedCount,
+  validatedFindingCount = 0,
+  requiredFindingCount = 0,
   hintLevel = 0,
   turnRole,
   turnLabel,
+  canRevealNext = false,
+  canEnterReview = false,
+  onRevealNext,
+  onEnterReview,
   onHint,
   hintMessage = null,
   onReset,
@@ -63,6 +75,8 @@ export function GameplayMissionBar({
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const progressPercent = totalCount > 0 ? Math.min(100, Math.round((revealedCount / totalCount) * 100)) : 0;
+  const findingsProgressPercent = requiredFindingCount > 0 ? Math.min(100, Math.round((validatedFindingCount / requiredFindingCount) * 100)) : 100;
+  const findingsComplete = requiredFindingCount > 0 && validatedFindingCount >= requiredFindingCount;
   const hintNoticeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -164,8 +178,36 @@ export function GameplayMissionBar({
           </Stack>
 
           {/* Status & Actions */}
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             {getStatusChip()}
+
+            {/* Continue / Reveal Next Button */}
+            {canRevealNext && (
+              <Button
+                variant="contained"
+                color="primary"
+                size="small"
+                onClick={onRevealNext}
+                startIcon={<PlayArrowOutlinedIcon />}
+                sx={{ borderRadius: '20px', textTransform: 'none', fontWeight: 700, minHeight: 36 }}
+              >
+                {isMobile ? 'Continue' : 'Continue Conversation'}
+              </Button>
+            )}
+
+            {/* Review My Findings Button */}
+            {canEnterReview && (
+              <Button
+                variant="outlined"
+                color="secondary"
+                size="small"
+                onClick={onEnterReview}
+                startIcon={<CheckCircleOutlinedIcon />}
+                sx={{ borderRadius: '20px', textTransform: 'none', fontWeight: 700, minHeight: 36 }}
+              >
+                Review My Findings
+              </Button>
+            )}
 
             {/* Hint Ladder Button */}
             <Tooltip title={hintLevel > 0 ? `Current hint level: ${hintLevel}. Click for another discussion hint.` : 'Get age-appropriate discussion hint'}>
@@ -224,44 +266,75 @@ export function GameplayMissionBar({
           </Alert>
         )}
 
-        {/* Bottom Row: Progress Bar & Discovered Findings Counter */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {/* Discovered Findings Counter */}
-          <Chip
-            size="small"
-            icon={<FlagIcon sx={{ fontSize: '0.9rem !important' }} />}
-            label={`Findings: ${highlightedCount}`}
-            color={highlightedCount > 0 ? 'primary' : 'default'}
-            variant={highlightedCount > 0 ? 'filled' : 'outlined'}
-            sx={{
-              fontWeight: 800,
-              fontSize: '0.75rem',
-              px: 0.5,
-              transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-              boxShadow: highlightedCount > 0 ? '0 2px 8px rgba(25, 118, 210, 0.25)' : 'none',
-              transform: highlightedCount > 0 ? 'scale(1.02)' : 'none',
-            }}
-          />
+        {/* Bottom Row: Findings Counter + Dual Progress Bars */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {/* Findings Counter */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Chip
+              size="small"
+              icon={<FlagIcon sx={{ fontSize: '0.9rem !important' }} />}
+              label={`Findings: ${validatedFindingCount}/${requiredFindingCount}`}
+              color={findingsComplete ? 'success' : validatedFindingCount > 0 ? 'primary' : 'default'}
+              variant={validatedFindingCount > 0 ? 'filled' : 'outlined'}
+              sx={{
+                fontWeight: 800,
+                fontSize: '0.75rem',
+                px: 0.5,
+                transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}
+            />
+            {findingsComplete && (
+              <Chip
+                size="small"
+                color="success"
+                icon={<CheckCircleOutlinedIcon sx={{ fontSize: '0.9rem !important' }} />}
+                label="All flags found!"
+                sx={{ fontWeight: 700, fontSize: '0.7rem' }}
+              />
+            )}
+          </Box>
 
-          {/* Progress Bar */}
-          <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          {/* Conversation Progress Bar */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Box sx={{ flexGrow: 1 }}>
               <LinearProgress
                 variant="determinate"
                 value={progressPercent}
                 sx={{
-                  height: 8,
-                  borderRadius: 4,
+                  height: 6,
+                  borderRadius: 3,
                   bgcolor: 'action.hover',
                   '& .MuiLinearProgress-bar': {
-                    borderRadius: 4,
+                    borderRadius: 3,
                     backgroundImage: 'linear-gradient(90deg, #1976d2, #42a5f5)',
                   },
                 }}
               />
             </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, minWidth: 40, textAlign: 'right' }}>
-              {progressPercent}%
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, minWidth: 60, textAlign: 'right', whiteSpace: 'nowrap' }}>
+              Conversation {progressPercent}%
+            </Typography>
+          </Box>
+
+          {/* Findings Progress Bar */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ flexGrow: 1 }}>
+              <LinearProgress
+                variant="determinate"
+                value={findingsProgressPercent}
+                sx={{
+                  height: 6,
+                  borderRadius: 3,
+                  bgcolor: 'action.hover',
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 3,
+                    bgcolor: findingsComplete ? 'success.main' : 'secondary.main',
+                  },
+                }}
+              />
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, minWidth: 60, textAlign: 'right', whiteSpace: 'nowrap' }}>
+              Flags {validatedFindingCount}/{requiredFindingCount}
             </Typography>
           </Box>
         </Box>

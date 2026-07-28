@@ -1,430 +1,395 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import {
-  Container,
-  Paper,
-  Box,
-  Typography,
-  Button,
-  Chip,
-  Avatar,
-  Card,
-  CardContent,
-  CardActions,
-  Divider,
-  IconButton,
-  Tooltip,
   Alert,
+  Box,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  Chip,
+  Container,
   Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
   DialogActions,
-  CircularProgress,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  IconButton,
+  Paper,
+  Snackbar,
   Stack,
-  Tab,
-  Tabs,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
-import PeopleIcon from '@mui/icons-material/People';
-import MailOutlinedIcon from '@mui/icons-material/MailOutlined';
-import PlayCircleOutlinedIcon from '@mui/icons-material/PlayCircleOutlined';
-import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import { useNavigate } from 'react-router-dom';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import CheckIcon from '@mui/icons-material/Check';
-import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
+import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
+import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
+import GroupIcon from '@mui/icons-material/Group';
+import MailOutlineOutlinedIcon from '@mui/icons-material/MailOutlineOutlined';
+import LoginIcon from '@mui/icons-material/Login';
+import DoDisturbIcon from '@mui/icons-material/DoDisturb';
 import BlockIcon from '@mui/icons-material/Block';
-import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
 import LaunchIcon from '@mui/icons-material/Launch';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import KeyIcon from '@mui/icons-material/Key';
 import {
-  useGetFamilyRelationshipsQuery,
+  useAcceptFamilyInvitationAsRecipientMutation,
+  useDeclineFamilyInvitationAsRecipientMutation,
   useGetFamilyInvitationsQuery,
+  useGetFamilyRelationshipsQuery,
   useGetAuthorizedFamilySessionsQuery,
   useRevokeFamilyInvitationMutation,
   useUpdateFamilyRelationshipMutation,
+  useJoinFamilySessionMutation,
 } from '@/store/api';
-import type { FamilyRelationship, FamilyRelationshipInvitation, FamilyAuthorizedSession } from '@/types';
-import { FamilyTopBar } from '@/components/family/FamilyTopBar';
-import { InviteFamilyMemberModal } from '@/components/family/InviteFamilyMemberModal';
 
-export const CaregiverHub: React.FC = () => {
+export function CaregiverHub() {
   const navigate = useNavigate();
-  const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [tabValue, setTabValue] = useState(0);
+  const { data: invitations = [], refetch: refetchInvitations } = useGetFamilyInvitationsQuery();
+  const { data: relationships = [], refetch: refetchRelationships } = useGetFamilyRelationshipsQuery();
+  const { data: authorizedSessions = [], refetch: refetchSessions } = useGetAuthorizedFamilySessionsQuery();
+  const [acceptInvitation] = useAcceptFamilyInvitationAsRecipientMutation();
+  const [declineInvitation] = useDeclineFamilyInvitationAsRecipientMutation();
+  const [revokeInvitation] = useRevokeFamilyInvitationMutation();
+  const [updateRelationship] = useUpdateFamilyRelationshipMutation();
+  const [joinSession] = useJoinFamilySessionMutation();
+  const [tabIndex, setTabIndex] = useState(0);
+  const [snackbarMsg, setSnackbarMsg] = useState<string | null>(null);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'revoke' | 'block' | 'unlink';
+    ref: string;
+    label: string;
+  } | null>(null);
 
-  // Unlink / Block confirmation dialog state
-  const [targetRelationship, setTargetRelationship] = useState<{ rel: FamilyRelationship; action: 'unlink' | 'block' } | null>(null);
+  const currentUserEmail = ''; // Will be set from auth context if available
 
-  // Copy feedback state for short codes / links
-  const [copiedCodeMap, setCopiedCodeMap] = useState<Record<string, boolean>>({});
+  // Separate sent vs received invitations
+  const sentInvitations = invitations.filter((inv: any) => inv.token || inv.short_code);
+  const receivedInvitations = invitations.filter((inv: any) => !inv.token && !inv.short_code);
 
-  // RTK Query Hooks
-  const { data: relationships, isLoading: isRelLoading } = useGetFamilyRelationshipsQuery();
-  const { data: invitations, isLoading: isInvLoading } = useGetFamilyInvitationsQuery();
-  const { data: authorizedSessions, isLoading: isSesLoading } = useGetAuthorizedFamilySessionsQuery();
-
-  const [revokeInvitation, { isLoading: isRevoking }] = useRevokeFamilyInvitationMutation();
-  const [updateRelationship, { isLoading: isUpdatingRel }] = useUpdateFamilyRelationshipMutation();
-
-  const activeRelationships = relationships?.filter((r) => r.status === 'active') || [];
-  const pendingInvitations = invitations?.filter((i) => i.status === 'pending') || [];
-
-  const activeSessions = authorizedSessions?.filter((s) => s.state !== 'completed' && s.state !== 'abandoned' && s.state !== 'expired') || [];
-  const reviewSessions = authorizedSessions?.filter((s) => s.state === 'completion_review' || s.state === 'completed') || [];
-
-  const handleCopySecret = (ref: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedCodeMap((prev) => ({ ...prev, [ref]: true }));
-    setTimeout(() => {
-      setCopiedCodeMap((prev) => ({ ...prev, [ref]: false }));
-    }, 2500);
+  const handleCopy = (text: string, label: string) => {
+    void navigator.clipboard.writeText(text);
+    setSnackbarMsg(`${label} copied to clipboard`);
   };
 
-  const handleRevokeInvitation = async (invitationRef: string) => {
+  const handleAccept = async (ref: string) => {
     try {
-      await revokeInvitation(invitationRef).unwrap();
+      await acceptInvitation({ invitation_ref: ref }).unwrap();
+      setSnackbarMsg('Invitation accepted! You are now linked with your family member.');
+      void refetchInvitations();
+      void refetchRelationships();
     } catch {
-      // Handled by RTK Query cache invalidation
+      setSnackbarMsg('Could not accept invitation. It may have expired or been revoked.');
     }
   };
 
-  const handleConfirmRelationshipAction = async () => {
-    if (!targetRelationship) return;
+  const handleDecline = async (ref: string) => {
     try {
-      await updateRelationship({
-        relationship_ref: targetRelationship.rel.relationship_ref,
-        action: targetRelationship.action,
-      }).unwrap();
-      setTargetRelationship(null);
+      await declineInvitation({ invitation_ref: ref }).unwrap();
+      setSnackbarMsg('Invitation declined.');
+      void refetchInvitations();
     } catch {
-      // Handled by RTK Query
+      setSnackbarMsg('Could not decline invitation.');
     }
   };
 
-  const formatDate = (isoString?: string | null) => {
-    if (!isoString) return 'N/A';
+  const handleJoinSession = async () => {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length < 4) {
+      setJoinError('Please enter a valid session code.');
+      return;
+    }
+    setJoining(true);
+    setJoinError(null);
     try {
-      return new Date(isoString).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch {
-      return isoString;
+      const result = await joinSession({ session_code: code }).unwrap();
+      setSnackbarMsg('Joined session successfully!');
+      setJoinCode('');
+      void refetchSessions();
+      navigate(`/family/scenarios/${result.session.transcript_id}/sessions/${result.session.public_id}`);
+    } catch (err: any) {
+      if (err?.status === 404) setJoinError('Invalid session code. Check the code and try again.');
+      else if (err?.status === 400) setJoinError('This session has ended.');
+      else if (err?.status === 409) setJoinError('You are already a member of this session.');
+      else if (err?.status === 403) setJoinError('You must be linked with the learner to join this session.');
+      else setJoinError('Could not join session. Please try again.');
+    } finally {
+      setJoining(false);
     }
   };
+
+  const handleRevoke = async (ref: string) => {
+    try {
+      await revokeInvitation(ref).unwrap();
+      setSnackbarMsg('Invitation revoked.');
+      void refetchInvitations();
+    } catch {
+      setSnackbarMsg('Could not revoke invitation.');
+    }
+    setConfirmAction(null);
+  };
+
+  const handleUpdateRelationship = async (ref: string, action: 'block' | 'unlink') => {
+    try {
+      await updateRelationship({ relationship_ref: ref, action: action }).unwrap();
+      setSnackbarMsg(action === 'block' ? 'Family member blocked.' : 'Family link removed.');
+      void refetchRelationships();
+      void refetchSessions();
+    } catch {
+      setSnackbarMsg('Could not update relationship.');
+    }
+    setConfirmAction(null);
+  };
+
+  const tabs = [
+    { label: 'Family Members', icon: <GroupIcon fontSize="small" /> },
+    { label: 'Invitations', icon: <MailOutlineOutlinedIcon fontSize="small" /> },
+    { label: 'Active Practice Sessions', icon: <PlayArrowIcon fontSize="small" /> },
+  ];
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <FamilyTopBar />
-
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        {/* Header Bar */}
-        <Paper
-          elevation={0}
-          variant="outlined"
-          sx={{
-            p: 3.5,
-            mb: 4,
-            borderRadius: 3,
-            bgcolor: 'background.paper',
-            borderColor: 'divider',
-            display: 'flex',
-            flexDirection: { xs: 'column', sm: 'row' },
-            alignItems: { xs: 'flex-start', sm: 'center' },
-            justifyContent: 'space-between',
-            gap: 2,
-          }}
-        >
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: 'text.primary', letterSpacing: '-0.01em' }}>
-              Caregiver & Family Hub
-            </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-              Manage family links, monitor practice sessions, and access joint discussion guides.
-            </Typography>
-          </Box>
-
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<PersonAddIcon />}
-            onClick={() => setInviteModalOpen(true)}
-            sx={{
-              borderRadius: 2.5,
-              px: 3,
-              py: 1.3,
-              fontWeight: 700,
-              whiteSpace: 'nowrap',
-              boxShadow: '0 4px 14px rgba(25, 118, 210, 0.3)',
-              '&:hover': { transform: 'translateY(-1px)' },
-              transition: 'transform 0.2s ease',
-            }}
-          >
-            Invite Family Member
-          </Button>
-        </Paper>
-
-        {/* Quick Metric Cards */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 3, mb: 4 }}>
-          <Paper
-            variant="outlined"
-            sx={{
-              p: 2.5,
-              borderRadius: 3,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              transition: 'all 0.2s ease',
-              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', borderColor: 'primary.main' },
-            }}
-          >
-            <Avatar sx={{ bgcolor: 'rgba(25, 118, 210, 0.15)', color: 'primary.main', width: 52, height: 52 }}>
-              <PeopleIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                {activeRelationships.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Linked Family Members
-              </Typography>
-            </Box>
-          </Paper>
-
-          <Paper
-            variant="outlined"
-            sx={{
-              p: 2.5,
-              borderRadius: 3,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              transition: 'all 0.2s ease',
-              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', borderColor: 'secondary.main' },
-            }}
-          >
-            <Avatar sx={{ bgcolor: 'rgba(156, 39, 176, 0.15)', color: 'secondary.main', width: 52, height: 52 }}>
-              <MailOutlinedIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                {pendingInvitations.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Pending Invitations
-              </Typography>
-            </Box>
-          </Paper>
-
-          <Paper
-            variant="outlined"
-            sx={{
-              p: 2.5,
-              borderRadius: 3,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              transition: 'all 0.2s ease',
-              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', borderColor: 'info.main' },
-            }}
-          >
-            <Avatar sx={{ bgcolor: 'rgba(2, 136, 209, 0.15)', color: 'info.main', width: 52, height: 52 }}>
-              <PlayCircleOutlinedIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                {activeSessions.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Active Practice Sessions
-              </Typography>
-            </Box>
-          </Paper>
-
-          <Paper
-            variant="outlined"
-            sx={{
-              p: 2.5,
-              borderRadius: 3,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              transition: 'all 0.2s ease',
-              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', borderColor: 'success.main' },
-            }}
-          >
-            <Avatar sx={{ bgcolor: 'rgba(46, 125, 50, 0.15)', color: 'success.main', width: 52, height: 52 }}>
-              <AssignmentTurnedInIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                {reviewSessions.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Guides for Review
-              </Typography>
-            </Box>
-          </Paper>
+    <Container maxWidth="md" sx={{ py: { xs: 2, sm: 4 } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+        <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: 'primary.main', color: 'primary.contrastText', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <GroupIcon />
         </Box>
-
-        {/* Tab Navigation */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-          <Tabs value={tabValue} onChange={(_, val) => setTabValue(val)} textColor="primary" indicatorColor="primary">
-            <Tab label={`Family Members (${activeRelationships.length})`} id="hub-tab-0" />
-            <Tab label={`Invitations (${pendingInvitations.length})`} id="hub-tab-1" />
-            <Tab label={`Active Sessions (${activeSessions.length})`} id="hub-tab-2" />
-            <Tab label={`Completed Discussions (${reviewSessions.length})`} id="hub-tab-3" />
-          </Tabs>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>Caregiver Hub</Typography>
+          <Typography variant="caption" color="text.secondary">Manage family connections and practice sessions</Typography>
         </Box>
+      </Box>
 
-        {/* TAB 0: Family Members & Relationships */}
-        {tabValue === 0 && (
-          <Box>
-            <Alert severity="info" icon={<ShieldOutlinedIcon />} sx={{ mb: 3, borderRadius: 2 }}>
-              Family relationships give caregivers access to joint scenario checkpoints and discussion guides without revealing private AI companion conversations or non-shared activity.
-            </Alert>
+      <ToggleButtonGroup
+        value={tabIndex}
+        exclusive
+        onChange={(_, i) => i !== null && setTabIndex(i)}
+        size="small"
+        sx={{ mb: 3, flexWrap: 'wrap', gap: 0.5, '& .MuiToggleButton-root': { borderRadius: '20px !important', px: 2, textTransform: 'none', fontWeight: 700 } }}
+      >
+        {tabs.map((tab, i) => (
+          <ToggleButton key={i} value={i} selected={tabIndex === i}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {tab.icon}
+              {tab.label}
+            </Box>
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
 
-            {isRelLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress />
-              </Box>
-            ) : relationships && relationships.length > 0 ? (
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
-                {relationships.map((rel) => (
-                  <Card key={rel.relationship_ref} variant="outlined" sx={{ borderRadius: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <CardContent sx={{ flexGrow: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                        <Avatar src={rel.member_avatar_url || undefined} sx={{ width: 56, height: 56, bgcolor: 'primary.main', fontWeight: 'bold' }}>
-                          {rel.member_display_name.charAt(0).toUpperCase()}
-                        </Avatar>
-                        <Box sx={{ flexGrow: 1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                              {rel.member_display_name}
-                            </Typography>
-                            <Chip
-                              label={rel.status === 'active' ? (rel.role === 'caregiver' ? 'Caregiver' : 'Learner') : rel.status.toUpperCase()}
-                              color={rel.status === 'active' ? 'primary' : 'default'}
-                              size="small"
-                            />
-                          </Box>
-                          <Typography variant="caption" color="text.secondary">
-                            Connected on {formatDate(rel.accepted_at)}
-                          </Typography>
-                        </Box>
-                      </Box>
-
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        Role: <strong>{rel.role === 'caregiver' ? 'Caregiver (Observes & Reviews)' : 'Learner (Practices Scenarios)'}</strong>
+      {/* Tab 0: Family Members */}
+      {tabIndex === 0 && (
+        <Stack spacing={2}>
+          {relationships.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3 }} elevation={0} variant="outlined">
+              <GroupIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
+              <Typography color="text.secondary" sx={{ fontWeight: 600 }}>
+                No family members linked yet
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Send or accept an invitation to get started
+              </Typography>
+            </Paper>
+          ) : (
+            relationships.map((rel: any) => (
+              <Card key={rel.relationship_ref} variant="outlined" sx={{ borderRadius: 3 }}>
+                <CardContent sx={{ pb: 1 }}>
+                  <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                    <Box sx={{ width: 40, height: 40, borderRadius: '50%', bgcolor: rel.role === 'caregiver' ? 'secondary.100' : 'primary.100', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1rem' }}>
+                      {rel.member_display_name?.charAt(0)?.toUpperCase() ?? '?'}
+                    </Box>
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                        {rel.member_display_name ?? 'Family Member'}
                       </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {rel.role === 'caregiver' ? 'Your caregiver' : 'Your family learner'} · Connected {new Date(rel.accepted_at).toLocaleDateString()}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      size="small"
+                      label={rel.status}
+                      color={rel.status === 'active' ? 'success' : 'default'}
+                      variant="outlined"
+                      sx={{ fontWeight: 700, textTransform: 'capitalize' }}
+                    />
+                  </Stack>
+                </CardContent>
+                {rel.status === 'active' && (
+                  <CardActions sx={{ px: 2, pb: 2, pt: 0 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<PlayArrowIcon />}
+                      onClick={() => navigate(`/family/scenarios?with=${rel.relationship_ref}`)}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                    >
+                      Start Practice Session
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      color="error"
+                      startIcon={<BlockIcon />}
+                      onClick={() => setConfirmAction({ type: 'block', ref: rel.relationship_ref, label: rel.member_display_name ?? 'this member' })}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, ml: 'auto' }}
+                    >
+                      Block
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      color="inherit"
+                      startIcon={<LinkOffIcon />}
+                      onClick={() => setConfirmAction({ type: 'unlink', ref: rel.relationship_ref, label: rel.member_display_name ?? 'this member' })}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                    >
+                      Unlink
+                    </Button>
+                  </CardActions>
+                )}
+              </Card>
+            ))
+          )}
+        </Stack>
+      )}
 
-                      {rel.status === 'active' && (
-                        <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>
-                          Historical shared session guides remain available if unlinked.
-                        </Typography>
-                      )}
-                    </CardContent>
-
-                    {rel.status === 'active' && (
-                      <>
-                        <Divider />
-                        <CardActions sx={{ justifyContent: 'flex-end', px: 2, py: 1.5 }}>
-                          <Button
+      {/* Tab 1: Invitations */}
+      {tabIndex === 1 && (
+        <Stack spacing={2}>
+          {invitations.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3 }} elevation={0} variant="outlined">
+              <MailOutlineOutlinedIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
+              <Typography color="text.secondary" sx={{ fontWeight: 600 }}>
+                No invitations
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Caregivers can send you an invitation to link your accounts
+              </Typography>
+            </Paper>
+          ) : (
+            <>
+              {/* Received Invitations (no secret — accept directly) */}
+              {receivedInvitations.length > 0 && (
+                <>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.secondary', px: 1 }}>
+                    Invitations For You
+                  </Typography>
+                  {receivedInvitations.map((inv: any) => (
+                    <Card key={inv.invitation_ref} variant="outlined" sx={{ borderRadius: 3 }}>
+                      <CardContent>
+                        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                          <PersonAddAlt1Icon color="primary" sx={{ fontSize: 32 }} />
+                          <Box sx={{ flexGrow: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                              Family Invitation
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Status: {inv.status} · Expires: {new Date(inv.expires_at).toLocaleDateString()}
+                            </Typography>
+                          </Box>
+                          <Chip
                             size="small"
-                            color="inherit"
-                            onClick={() => setTargetRelationship({ rel, action: 'unlink' })}
+                            label={inv.status}
+                            color={inv.status === 'pending' ? 'warning' : inv.status === 'accepted' ? 'success' : 'default'}
+                            variant="outlined"
+                            sx={{ fontWeight: 700, textTransform: 'capitalize' }}
+                          />
+                        </Stack>
+                      </CardContent>
+                      {inv.status === 'pending' && (
+                        <CardActions sx={{ px: 2, pb: 2 }}>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            startIcon={<CheckCircleOutlinedIcon />}
+                            onClick={() => handleAccept(inv.invitation_ref)}
+                            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
                           >
-                            Unlink
+                            Accept
                           </Button>
                           <Button
+                            variant="outlined"
+                            color="inherit"
                             size="small"
-                            color="error"
-                            startIcon={<BlockIcon />}
-                            onClick={() => setTargetRelationship({ rel, action: 'block' })}
+                            startIcon={<DoDisturbIcon />}
+                            onClick={() => handleDecline(inv.invitation_ref)}
+                            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
                           >
-                            Block
+                            Decline
                           </Button>
                         </CardActions>
-                      </>
-                    )}
-                  </Card>
-                ))}
-              </Box>
-            ) : (
-              <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
-                <PeopleIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  No Linked Family Members
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 450, mx: 'auto', mb: 2 }}>
-                  Invite a parent, guardian, or learner to connect accounts and practice digital safety scenarios together.
-                </Typography>
-                <Button variant="contained" startIcon={<PersonAddIcon />} onClick={() => setInviteModalOpen(true)} sx={{ borderRadius: 2, mt: 1 }}>
-                  Invite Family Member
-                </Button>
-              </Paper>
-            )}
-          </Box>
-        )}
+                      )}
+                    </Card>
+                  ))}
+                </>
+              )}
 
-        {/* TAB 1: Invitations */}
-        {tabValue === 1 && (
-          <Box>
-            {isInvLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress />
-              </Box>
-            ) : invitations && invitations.length > 0 ? (
-              <Stack spacing={2}>
-                {invitations.map((inv: FamilyRelationshipInvitation) => {
-                  const shareUrl = inv.token ? `${window.location.origin}/family/invitations/accept?secret=${encodeURIComponent(inv.token)}` : '';
-                  const isCopied = copiedCodeMap[inv.invitation_ref] || false;
-
-                  return (
+              {/* Sent Invitations (have secret — show share link + code) */}
+              {sentInvitations.length > 0 && (
+                <>
+                  <Divider sx={{ my: 1 }} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.secondary', px: 1, mt: 1 }}>
+                    Invitations You Sent
+                  </Typography>
+                  {sentInvitations.map((inv: any) => (
                     <Card key={inv.invitation_ref} variant="outlined" sx={{ borderRadius: 3 }}>
-                      <CardContent sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { sm: 'center' }, justifyContent: 'space-between', gap: 2 }}>
-                        <Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                              {inv.delivery_label || 'Family Invitation'}
+                      <CardContent>
+                        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                          <Box sx={{ flexGrow: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                              Invitation to {inv.delivery_label ?? 'a family member'}
                             </Typography>
-                            <Chip
-                              label={inv.status.toUpperCase()}
-                              size="small"
-                              color={inv.status === 'pending' ? 'warning' : inv.status === 'accepted' ? 'success' : 'default'}
-                            />
+                            <Typography variant="caption" color="text.secondary">
+                              Status: {inv.status} · Expires: {new Date(inv.expires_at).toLocaleDateString()}
+                            </Typography>
                           </Box>
-                          <Typography variant="caption" color="text.secondary">
-                            Created: {formatDate(inv.created_at)} • Expires: {formatDate(inv.expires_at)}
-                          </Typography>
-                        </Box>
+                          <Chip
+                            size="small"
+                            label={inv.status}
+                            color={inv.status === 'pending' ? 'warning' : inv.status === 'accepted' ? 'success' : 'default'}
+                            variant="outlined"
+                            sx={{ fontWeight: 700, textTransform: 'capitalize' }}
+                          />
+                        </Stack>
 
-                        {inv.status === 'pending' && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                            {inv.short_code && (
-                              <Chip
-                                label={`Code: ${inv.short_code}`}
-                                variant="outlined"
-                                color="primary"
-                                onClick={() => handleCopySecret(inv.invitation_ref, inv.short_code || '')}
-                                icon={isCopied ? <CheckIcon /> : <ContentCopyIcon />}
-                                sx={{ fontFamily: 'monospace', fontWeight: 'bold' }}
-                              />
-                            )}
-
-                            {shareUrl && (
-                              <Tooltip title={isCopied ? 'Link Copied!' : 'Copy Share Link'}>
-                                <IconButton color="primary" onClick={() => handleCopySecret(inv.invitation_ref, shareUrl)}>
-                                  {isCopied ? <CheckIcon /> : <ContentCopyIcon />}
-                                </IconButton>
-                              </Tooltip>
-                            )}
-
+                        {inv.status === 'pending' && inv.short_code && (
+                          <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Chip
+                              size="small"
+                              icon={<KeyIcon sx={{ fontSize: '0.85rem !important' }} />}
+                              label={`Code: ${inv.short_code}`}
+                              variant="outlined"
+                              color="primary"
+                              onClick={() => handleCopy(inv.short_code, 'Short code')}
+                              sx={{ fontWeight: 700, cursor: 'pointer' }}
+                            />
                             <Button
                               size="small"
+                              variant="text"
+                              startIcon={<ContentCopyIcon />}
+                              onClick={() => {
+                                const shareUrl = `${window.location.origin}/family/invitations/accept?secret=${inv.token}`;
+                                void handleCopy(shareUrl, 'Invitation link');
+                              }}
+                              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                            >
+                              Copy share URL
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="text"
                               color="error"
-                              startIcon={<CancelOutlinedIcon />}
-                              disabled={isRevoking}
-                              onClick={() => handleRevokeInvitation(inv.invitation_ref)}
+                              onClick={() => setConfirmAction({ type: 'revoke', ref: inv.invitation_ref, label: 'this invitation' })}
+                              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, ml: 'auto' }}
                             >
                               Revoke
                             </Button>
@@ -432,171 +397,142 @@ export const CaregiverHub: React.FC = () => {
                         )}
                       </CardContent>
                     </Card>
-                  );
-                })}
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </Stack>
+      )}
+
+      {/* Tab 2: Active Practice Sessions */}
+      {tabIndex === 2 && (
+        <Stack spacing={2}>
+          {authorizedSessions.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3 }} elevation={0} variant="outlined">
+              <PlayArrowIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
+              <Typography color="text.secondary" sx={{ fontWeight: 600 }}>
+                No active practice sessions
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Linked family members can start a session, or enter a session code below
+              </Typography>
+            </Paper>
+          ) : (
+            authorizedSessions.map((session: any) => (
+              <Card key={session.session_ref} variant="outlined" sx={{ borderRadius: 3 }}>
+                <CardContent>
+                  <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                    <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: 'primary.100', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <PlayArrowIcon color="primary" />
+                    </Box>
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                        Session #{session.transcript_id}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Role: {session.role} · State: {session.state}
+                      </Typography>
+                    </Box>
+                    <Chip size="small" label={session.state} variant="outlined" sx={{ fontWeight: 700, textTransform: 'capitalize' }} />
+                  </Stack>
+                </CardContent>
+                {session.state !== 'completed' && session.state !== 'expired' && session.state !== 'abandoned' && (
+                  <CardActions sx={{ px: 2, pb: 2 }}>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      startIcon={<LaunchIcon />}
+                      onClick={() => navigate(`/family/scenarios/${session.transcript_id}/sessions/${session.session_ref}`)}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Enter Session
+                    </Button>
+                  </CardActions>
+                )}
+              </Card>
+            ))
+          )}
+
+          {/* Join by Code Section */}
+          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, mt: 1 }}>
+            <Stack spacing={1.5}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <LoginIcon fontSize="small" color="primary" />
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                  Join a Session by Code
+                </Typography>
               </Stack>
-            ) : (
-              <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
-                <MailOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  No Active Invitations
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Generate a share link or short code to invite family members.
-                </Typography>
-                <Button variant="contained" startIcon={<PersonAddIcon />} onClick={() => setInviteModalOpen(true)} sx={{ borderRadius: 2 }}>
-                  Create Invitation
+              <Typography variant="caption" color="text.secondary">
+                Enter the 6-character session code shared by the learner
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                <TextField
+                  size="small"
+                  placeholder="e.g. ABC123"
+                  value={joinCode}
+                  onChange={(e) => { setJoinCode(e.target.value.toUpperCase().slice(0, 8)); setJoinError(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void handleJoinSession(); }}
+                  error={!!joinError}
+                  helperText={joinError}
+                  sx={{ flexGrow: 1, '& .MuiOutlinedInput-root': { borderRadius: 2, fontFamily: 'monospace', fontWeight: 700, letterSpacing: 2 } }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => void handleJoinSession()}
+                  disabled={joining || joinCode.trim().length < 4}
+                  sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, px: 3, minHeight: 40 }}
+                >
+                  {joining ? 'Joining...' : 'Join'}
                 </Button>
-              </Paper>
-            )}
-          </Box>
-        )}
-
-        {/* TAB 2: Active Practice Sessions */}
-        {tabValue === 2 && (
-          <Box>
-            {isSesLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress />
               </Box>
-            ) : activeSessions.length > 0 ? (
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
-                {activeSessions.map((session: FamilyAuthorizedSession) => (
-                  <Card key={session.session_ref} variant="outlined" sx={{ borderRadius: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <CardContent sx={{ flexGrow: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                          Scenario #{session.transcript_id}
-                        </Typography>
-                        <Chip label={session.state.replace(/_/g, ' ')} size="small" color="info" />
-                      </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                        Role: <strong>{session.role}</strong> • Started: {formatDate(session.started_at)}
-                      </Typography>
-                    </CardContent>
-                    <Divider />
-                    <CardActions sx={{ p: 2 }}>
-                      <Button
-                        variant="contained"
-                        fullWidth
-                        startIcon={<LaunchIcon />}
-                        onClick={() => navigate(`/family/scenarios/${session.transcript_id}/sessions/${session.session_ref}`)}
-                        sx={{ borderRadius: 2 }}
-                      >
-                        Enter Session
-                      </Button>
-                    </CardActions>
-                  </Card>
-                ))}
-              </Box>
-            ) : (
-              <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
-                <PlayCircleOutlinedIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  No Active Sessions
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Start a practice scenario from the Scenario Library.
-                </Typography>
-                <Button variant="contained" onClick={() => navigate('/family/scenarios')} sx={{ borderRadius: 2 }}>
-                  Browse Scenario Library
-                </Button>
-              </Paper>
-            )}
-          </Box>
-        )}
+            </Stack>
+          </Paper>
+        </Stack>
+      )}
 
-        {/* TAB 3: Completed Discussions & Guides */}
-        {tabValue === 3 && (
-          <Box>
-            {isSesLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress />
-              </Box>
-            ) : reviewSessions.length > 0 ? (
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
-                {reviewSessions.map((session: FamilyAuthorizedSession) => (
-                  <Card key={session.session_ref} variant="outlined" sx={{ borderRadius: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <CardContent sx={{ flexGrow: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                          Scenario #{session.transcript_id} Guide
-                        </Typography>
-                        <Chip label={session.state === 'completed' ? 'Completed' : 'Review Ready'} color="success" size="small" />
-                      </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        Completed: {formatDate(session.completed_at || session.started_at)}
-                      </Typography>
-                    </CardContent>
-                    <Divider />
-                    <CardActions sx={{ p: 2 }}>
-                      <Button
-                        variant="outlined"
-                        fullWidth
-                        startIcon={<AssignmentTurnedInIcon />}
-                        onClick={() => navigate(`/family/scenarios/${session.transcript_id}/sessions/${session.session_ref}`)}
-                        sx={{ borderRadius: 2 }}
-                      >
-                        View Discussion Guide
-                      </Button>
-                    </CardActions>
-                  </Card>
-                ))}
-              </Box>
-            ) : (
-              <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
-                <AssignmentTurnedInIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  No Discussion Guides Yet
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Complete a practice scenario with your family member to generate joint discussion prompts.
-                </Typography>
-              </Paper>
-            )}
-          </Box>
-        )}
-      </Container>
-
-      {/* Invite Family Member Modal */}
-      <InviteFamilyMemberModal open={inviteModalOpen} onClose={() => setInviteModalOpen(false)} />
-
-      {/* Unlink / Block Confirmation Dialog */}
-      <Dialog
-        open={Boolean(targetRelationship)}
-        onClose={() => setTargetRelationship(null)}
-        maxWidth="xs"
-        fullWidth
-        slotProps={{ paper: { style: { borderRadius: 16 } } }}
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <InfoOutlinedIcon color={targetRelationship?.action === 'block' ? 'error' : 'warning'} />
-          <Typography variant="h6" component="span" sx={{ fontWeight: 'bold' }}>
-            {targetRelationship?.action === 'block' ? 'Block Family Member?' : 'Unlink Family Member?'}
-          </Typography>
+      {/* Confirmation Dialog */}
+      <Dialog open={!!confirmAction} onClose={() => setConfirmAction(null)} maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 800 }}>
+          {confirmAction?.type === 'revoke' ? 'Revoke Invitation?' :
+           confirmAction?.type === 'block' ? 'Block Family Member?' : 'Unlink Family Member?'}
         </DialogTitle>
         <DialogContent>
-          <DialogContentText color="text.secondary">
-            {targetRelationship?.action === 'block'
-              ? `Blocking ${targetRelationship.rel.member_display_name} will end active sharing and prevent them from sending future family invitations to your account.`
-              : `Unlinking ${targetRelationship?.rel.member_display_name} will stop active session notifications. Historical completed conversation guides will remain accessible.`}
-          </DialogContentText>
+          <Typography variant="body2" color="text.secondary">
+            {confirmAction?.type === 'revoke'
+              ? `This will cancel the invitation to ${confirmAction?.label}. They will no longer be able to accept it.`
+              : confirmAction?.type === 'block'
+              ? `This will block ${confirmAction?.label} from accessing any active or future sessions. You can unblock them later.`
+              : `This will remove your connection with ${confirmAction?.label}. You can re-link later with a new invitation.`}
+          </Typography>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={() => setTargetRelationship(null)} color="inherit">
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button onClick={() => setConfirmAction(null)} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>
             Cancel
           </Button>
           <Button
-            onClick={handleConfirmRelationshipAction}
-            color={targetRelationship?.action === 'block' ? 'error' : 'warning'}
             variant="contained"
-            disabled={isUpdatingRel}
-            sx={{ borderRadius: 2, px: 3 }}
+            color="error"
+            onClick={() => {
+              if (!confirmAction) return;
+              if (confirmAction.type === 'revoke') void handleRevoke(confirmAction.ref);
+              else void handleUpdateRelationship(confirmAction.ref, confirmAction.type === 'block' ? 'block' : 'unlink');
+            }}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
           >
-            {isUpdatingRel ? 'Updating…' : targetRelationship?.action === 'block' ? 'Block' : 'Unlink'}
+            {confirmAction?.type === 'revoke' ? 'Revoke' : confirmAction?.type === 'block' ? 'Block' : 'Unlink'}
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+
+      {/* Snackbar Feedback */}
+      <Snackbar
+        open={!!snackbarMsg}
+        autoHideDuration={4000}
+        onClose={() => setSnackbarMsg(null)}
+        message={snackbarMsg}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+    </Container>
   );
-};
+}

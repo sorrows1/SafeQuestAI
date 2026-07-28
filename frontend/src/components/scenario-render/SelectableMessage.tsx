@@ -116,8 +116,24 @@ export const ActorAvatar = memo(function ActorAvatar({ label }: { label?: string
   );
 });
 
+function formatTimestamp(raw: string): string {
+  // If it looks like an ISO 8601 string, format it nicely.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) {
+    try {
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      }
+    } catch {
+      // fall through to raw
+    }
+  }
+  // Otherwise return as-is (already a formatted label).
+  return raw;
+}
+
 export function ElementTimestamp({ presentation, timestamp }: { presentation: PresentationToken; timestamp?: string | null }) {
-  const label = presentation.timestamp_label ?? timestamp;
+  const label = presentation.timestamp_label ?? (timestamp ? formatTimestamp(timestamp) : null);
   return label ? (
     <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.725rem", opacity: 0.85, whiteSpace: "nowrap" }}>
       {label}
