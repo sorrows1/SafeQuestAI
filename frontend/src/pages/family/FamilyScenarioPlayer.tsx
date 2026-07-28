@@ -27,6 +27,7 @@ import {
 } from "@/features/family/familySessionSlice";
 import { useAppDispatch, useAppSelector } from "@/store";
 import {
+  safeQuestApi,
   useCommandFamilySessionMutation,
   useCreateCaregiverCommentMutation,
   useExplainWithCompanionMutation,
@@ -117,7 +118,14 @@ export function FamilyScenarioPlayer() {
         client_command_id: commandId(),
       }).unwrap();
       dispatch(familySessionReconciled(next));
-      if (kind === "reset" && next.session.public_id) navigate("/family/sessions/" + next.session.public_id, { replace: true });
+      if (kind === "reset") {
+        const newId = next.session.public_id;
+        if (newId) {
+          // Seed the RTK Query cache for the new session to prevent a loading flash.
+          dispatch(safeQuestApi.util.upsertQueryData('getFamilySession', newId, next));
+          navigate("/family/sessions/" + newId, { replace: true });
+        }
+      }
       return next;
     } catch {
       setActionError("This activity changed or could not be saved. Refreshing its current state lets you retry.");
@@ -125,18 +133,12 @@ export function FamilyScenarioPlayer() {
     }
   }, [command, dispatch, navigate, refetch, session]);
 
+  // Only auto-fire "start" from waiting_for_participants. Never auto-reveal
+  // or auto-enter review — those require explicit user action.
   useEffect(() => {
     if (!session || commandLoading || activeCheckpoint) return;
     if (capabilities?.can_start) {
       const timer = window.setTimeout(() => void sendCommand("start"), 0);
-      return () => window.clearTimeout(timer);
-    }
-    if (capabilities?.can_reveal_next) {
-      const timer = window.setTimeout(() => void sendCommand("reveal_next"), 520);
-      return () => window.clearTimeout(timer);
-    }
-    if (capabilities?.can_enter_completion_review) {
-      const timer = window.setTimeout(() => void sendCommand("enter_completion_review"), 0);
       return () => window.clearTimeout(timer);
     }
   }, [activeCheckpoint, capabilities, commandLoading, sendCommand, session]);
@@ -246,7 +248,7 @@ export function FamilyScenarioPlayer() {
 
   const handleHint = async () => {
     if (!session || !selectedElementKey || !capabilities?.can_request_hint) {
-      setHintNotice("Select an item first, then ask for a hint.");
+      setHintNotice("Tap on any message or element in the conversation to select it for investigation. Selected items show a blue border. You can then check them for red flags or ask for hints.");
       return;
     }
     try {
@@ -260,6 +262,14 @@ export function FamilyScenarioPlayer() {
     } catch {
       setHintNotice("A hint is unavailable right now. Keep looking closely at the item.");
     }
+  };
+
+  const handleRevealNext = () => {
+    void sendCommand("reveal_next");
+  };
+
+  const handleEnterReview = () => {
+    void sendCommand("enter_completion_review");
   };
 
   const handleReset = () => {
@@ -320,6 +330,11 @@ export function FamilyScenarioPlayer() {
       panelNavigation={panelNavigation}
       tagAssignments={tagAssignments}
       onSelectElement={(key) => {
+        // Prevent re-selection of already-completed findings.
+        const completedKeys = validatedFindings.flatMap((f) =>
+          f.element_keys?.length ? f.element_keys : [f.element_key],
+        );
+        if (completedKeys.includes(key)) return;
         const element = detail?.scene.elements.find((item) => item.element_key === key);
         if (!element?.selectable) return;
         setSelectedElementKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
@@ -347,6 +362,12 @@ export function FamilyScenarioPlayer() {
       infoGuideOpen={sessionInfoOpen}
       onInfoGuideOpen={() => setSessionInfoOpen(true)}
       onInfoGuideClose={dismissSessionInfo}
+      canRevealNext={Boolean(capabilities?.can_reveal_next)}
+      canEnterReview={Boolean(capabilities?.can_enter_completion_review)}
+      onRevealNext={handleRevealNext}
+      onEnterReview={handleEnterReview}
+      validatedFindingCount={detail?.progress.validated_finding_count ?? 0}
+      requiredFindingCount={detail?.progress.required_finding_count ?? 0}
       onHint={handleHint}
       onReset={handleReset}
       isResetting={commandLoading}

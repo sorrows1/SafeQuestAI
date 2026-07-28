@@ -76,6 +76,9 @@ function hydrate(state: any, detail: FamilySessionDetail) {
     state.highlightedMessageIds = [];
     state.tagAssignments = {};
     state.checkpointResponses = [];
+    state.lastAttempt = null;
+    state.pendingAttempt = false;
+    state.selectedElementKey = null;
   }
 }
 

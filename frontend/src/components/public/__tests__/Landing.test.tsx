@@ -33,7 +33,7 @@ describe('Landing Page', () => {
     const themeToggleButtons = screen.getAllByRole('button', { name: /switch to/i });
     expect(themeToggleButtons.length).toBeGreaterThan(0);
 
-    const signupLink = screen.getByRole('link', { name: /sign up free/i });
+    const signupLink = screen.getByRole('link', { name: /sign up/i });
     expect(signupLink.getAttribute('href')).toBe('/register');
 
     const loginLink = screen.getByRole('link', { name: /sign in to account/i });

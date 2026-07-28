@@ -400,6 +400,20 @@ class FamilySessionOut(BaseModel):
     attempt_number: int = Field(default=1, ge=1)
     previous_session_id: int | None = None
     updated_at: str | None = None
+    join_code_short: str | None = None
+
+
+class JoinSessionRequest(BaseModel):
+    session_code: str = Field(min_length=1, max_length=16)
+
+
+class JoinSessionResponse(BaseModel):
+    joined: bool
+    session_ref: str | None = None
+
+
+class GenerateJoinCodeResponse(BaseModel):
+    join_code_short: str
 
 
 class FamilyMessageOut(BaseModel):

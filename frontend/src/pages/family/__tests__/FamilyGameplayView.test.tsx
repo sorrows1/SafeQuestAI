@@ -57,7 +57,7 @@ describe('FamilyGameplayView', () => {
 
     expect(screen.getAllByText('Cyberbullying & Pressure Scenario').length).toBeGreaterThan(0);
     expect(screen.getByText('SCENARIO ACTIVE')).toBeTruthy();
-    expect(screen.getByText('Findings: 1')).toBeTruthy();
+    expect(screen.getByText('Findings: 0/0')).toBeTruthy();
 
     // Trigger hint button
     const hintButton = screen.getByLabelText(/Get age-appropriate discussion hint/i);

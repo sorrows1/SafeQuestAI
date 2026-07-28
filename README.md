@@ -58,7 +58,7 @@ OR
 ```bash
 cd backend
 alembic upgrade head
-python -m scripts.migrate_json_to_db--dry-run
+python -m scripts.migrate_json_to_db --dry-run
 python -m scripts.migrate_json_to_db
 ```
 whichevers working.

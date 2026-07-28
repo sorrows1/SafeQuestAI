@@ -26,6 +26,7 @@ mysql_data/
 
 .idea/
 .DS_Store
+.kilo/ 
 
 # Node/Frontend
 node_modules/
@@ -35,3 +36,5 @@ build/
 *.md
 !README.md
 docs/
+
+e2e/

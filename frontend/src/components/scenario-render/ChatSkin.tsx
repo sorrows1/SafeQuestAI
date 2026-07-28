@@ -169,15 +169,12 @@ export function ChatSkin({ scene, selection, onSelect, readOnly, testId }: Scena
                     width: "100%",
                   }}
                 >
-                  {!isRight && <ActorAvatar label={label} />}
                   <Box sx={{ flexGrow: 1, maxWidth: "85%" }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, justifyContent: isRight ? "flex-end" : "flex-start" }}>
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: "text.primary" }}>
-                        {label}
-                      </Typography>
+                    {body}
+                    {/* Timestamp rendered below MessageBubble (which handles its own avatar + label) */}
+                    <Box sx={{ display: "flex", justifyContent: isRight ? "flex-end" : "flex-start", mt: 0.25 }}>
                       <ElementTimestamp presentation={element.presentation} timestamp={element.timestamp} />
                     </Box>
-                    {body}
                   </Box>
                 </Box>
               </InspectableElement>

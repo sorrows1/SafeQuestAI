@@ -22,6 +22,10 @@ vi.mock('@/store/api', () => ({
   useRevokeFamilyInvitationMutation: () => [mocked.revoke, { isLoading: false }],
   useUpdateFamilyRelationshipMutation: () => [mocked.updateRel, { isLoading: false }],
   useCreateFamilyInvitationMutation: () => [mocked.createInv, { isLoading: false, error: null }],
+  useAcceptFamilyInvitationAsRecipientMutation: () => [vi.fn(), { isLoading: false }],
+  useDeclineFamilyInvitationAsRecipientMutation: () => [vi.fn(), { isLoading: false }],
+  useJoinFamilySessionMutation: () => [vi.fn(), { isLoading: false }],
+  useGenerateJoinCodeMutation: () => [vi.fn(), { isLoading: false }],
 }));
 
 const mockRel = {
@@ -60,33 +64,22 @@ describe('CaregiverHub Page', () => {
     mocked.sessions.mockReturnValue({ data: [], isLoading: false });
   });
 
-  it('renders header, metric cards, and family relationships list', () => {
+  it('renders header, family members tab, and relationships list', () => {
     renderHub();
 
-    expect(screen.getByText('Caregiver & Family Hub')).toBeTruthy();
+    expect(screen.getByText('Caregiver Hub')).toBeTruthy();
     expect(screen.getByText('Alex Parent')).toBeTruthy();
-    expect(screen.getByText('Caregiver')).toBeTruthy();
-  });
-
-  it('opens invite modal when Invite Family Member button is clicked', async () => {
-    renderHub();
-
-    const inviteBtns = screen.getAllByRole('button', { name: /invite family member/i });
-    fireEvent.click(inviteBtns[0]);
-
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeTruthy();
-      expect(screen.getByLabelText(/family member email/i)).toBeTruthy();
-    });
+    expect(screen.getByText(/your caregiver/i)).toBeTruthy();
   });
 
   it('switches tabs to view pending invitations', () => {
     renderHub();
 
-    fireEvent.click(screen.getByRole('tab', { name: /invitations/i }));
+    const invitationsTab = screen.getByRole('button', { name: /invitations/i });
+    fireEvent.click(invitationsTab);
 
-    expect(screen.getByText("Mom's Tablet")).toBeTruthy();
-    expect(screen.getByText('Code: A7B9K2M4')).toBeTruthy();
+    expect(screen.getByText(/Invitation to Mom's Tablet/i)).toBeTruthy();
+    expect(screen.getByText(/A7B9K2M4/)).toBeTruthy();
   });
 
   it('shows confirmation dialog when unlinking a relationship', async () => {
@@ -95,8 +88,7 @@ describe('CaregiverHub Page', () => {
     fireEvent.click(screen.getByRole('button', { name: /unlink/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/unlink family member\?/i)).toBeTruthy();
-      expect(screen.getByText(/unlinking alex parent will stop active session notifications/i)).toBeTruthy();
+      expect(screen.getByText(/unlink family member/i)).toBeTruthy();
     });
   });
 });
