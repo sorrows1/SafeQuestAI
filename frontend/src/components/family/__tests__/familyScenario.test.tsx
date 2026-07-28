@@ -10,6 +10,7 @@ import { CheckpointPause } from '../CheckpointPause';
 import type { FamilyMessage, FamilyScene, FlagAttempt, RenderSkin, ValidatedFinding } from '@/types';
 
 vi.mock('@/store/api', () => ({
+  useGetFamilyReviewQuery: vi.fn(() => ({ data: { session_ref: 's1', attempts: [], total_annotated_concerns: 3, identified_concerns: 3, unresolved_concerns: 0, concerns: [], non_concerning_selections: [], completed_checkpoints: [{ responder_role: 'child', checkpoint_message_id: 1, text: 'Talk together' }], shared_discussion: [{ responder_role: 'caregiver', text: 'Talk together' }], suggested_next_steps: ['Ask for help'], practice_areas: ['Privacy'] }, isLoading: false, isError: false })),
   useGetConversationGuideQuery: () => ({
     data: {
       id: 1,

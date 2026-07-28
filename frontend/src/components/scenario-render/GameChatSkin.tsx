@@ -6,7 +6,8 @@ import { ActorAvatar, ElementAttachment, ElementLinkPreview, ElementTimestamp, I
 import { isCompleted, isSelected, type ScenarioSkinProps } from "./types";
 
 export function GameChatSkin({ scene, selection, onSelect, readOnly, testId }: ScenarioSkinProps) {
-  const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor.display_name]));
+  const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor]));
+  const actorOrder = Array.from(new Set(scene.elements.map((element) => element.actor_key).filter(Boolean)));
 
   const firstElement = scene.elements[0];
   const appName = firstElement?.presentation.app_name || "PixelPort";
@@ -84,9 +85,14 @@ export function GameChatSkin({ scene, selection, onSelect, readOnly, testId }: S
             <Typography variant="body2">No game chat activity present.</Typography>
           </Box>
         ) : (
-          scene.elements.map((element) => {
-            const label = actors.get(element.actor_key ?? "") ?? element.presentation.display_label ?? "Gamer";
-            const isRight = element.presentation.alignment === "end";
+          scene.elements.map((element, index) => {
+            const actor = actors.get(element.actor_key ?? "");
+            const label = actor?.display_name ?? element.presentation.display_label ?? "Gamer";
+            const role = actor?.role ?? (element.actor_key?.toLowerCase().includes('respondent') ? 'respondent' : element.actor_key?.toLowerCase().includes('initiator') ? 'initiator' : null);
+            const isRight = role === 'respondent' || role === 'caregiver' || role === 'ai_companion' ? true : role === 'initiator' || role === 'learner' ? false : actorOrder.indexOf(element.actor_key ?? '') > 0;
+            const previous = scene.elements[index - 1];
+            const grouped = Boolean(previous && previous.actor_key === element.actor_key);
+            const timestampLabel = element.presentation.timestamp_label ?? (grouped ? undefined : (previous && previous.actor_key !== element.actor_key ? '1 minute later' : 'Now'));
             const isSystem = element.semantic_role === "system" || Boolean((element.presentation as Record<string, unknown>).is_system);
 
             if (isSystem) {
@@ -128,12 +134,10 @@ export function GameChatSkin({ scene, selection, onSelect, readOnly, testId }: S
                 readOnly={readOnly}
               >
                 <Box sx={{ display: "flex", gap: 1.5, alignItems: "flex-start" }}>
-                  <ActorAvatar label={label} />
+                  {!grouped && <ActorAvatar label={label} />}
                   <Box sx={{ flexGrow: 1 }}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, flexWrap: "wrap" }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#89B4FA", fontSize: "0.875rem" }}>
-                        {label}
-                      </Typography>
+                      {!grouped && <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#89B4FA", fontSize: "0.875rem" }}>{label}</Typography>}
                       {isRight && (
                         <Chip
                           label="Player"
@@ -141,7 +145,7 @@ export function GameChatSkin({ scene, selection, onSelect, readOnly, testId }: S
                           sx={{ height: 16, fontSize: "0.6rem", bgcolor: "#CBA6F7", color: "#11111B", fontWeight: 700 }}
                         />
                       )}
-                      <ElementTimestamp presentation={element.presentation} timestamp={element.timestamp} />
+                      <ElementTimestamp presentation={{ ...element.presentation, timestamp_label: timestampLabel }} timestamp={grouped ? undefined : element.timestamp} />
                     </Box>
 
                     {/* Message Bubble Card */}

@@ -84,6 +84,7 @@ export interface ScenarioBrowserViewProps {
   selected: PublishedFamilyScenario | null;
   onSelectScenario: (item: PublishedFamilyScenario | null) => void;
   onStartSolo: () => void;
+  onStartMode?: (mode: 'solo_with_companion' | 'family_invite' | 'join_family') => void;
   creating: boolean;
   createError: boolean;
 }
@@ -113,6 +114,7 @@ export function ScenarioBrowserView({
   selected,
   onSelectScenario,
   onStartSolo,
+  onStartMode,
   creating,
   createError,
 }: ScenarioBrowserViewProps) {
@@ -704,7 +706,10 @@ export function ScenarioBrowserView({
           </Button>
           <Button
             variant="contained"
-            onClick={onStartSolo}
+            onClick={() => {
+              if (selected?.lifecycle === 'not_started' && onStartMode) onStartMode(participationChoice);
+              else onStartSolo();
+            }}
             disabled={creating}
             startIcon={creating ? undefined : <PlayArrowIcon />}
             sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}

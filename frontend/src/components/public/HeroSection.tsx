@@ -74,7 +74,7 @@ export function HeroSection() {
             color="text.secondary"
             sx={{ maxWidth: 720, mx: 'auto', fontSize: { xs: '1.05rem', md: '1.25rem' }, lineHeight: 1.6, fontWeight: 400 }}
           >
-            Safe Quest helps children and caregivers navigate online pressure, privacy boundaries, and cyberbullying through interactive scenarios — open space for dialogue, never a score or test.
+            Safe Quest helps children and caregivers navigate online pressure, privacy boundaries, and cyberbullying through interactive scenarios.
           </Typography>
 
           {/* CTAs */}
@@ -87,7 +87,7 @@ export function HeroSection() {
               endIcon={<ArrowForwardIcon />}
               sx={{ py: 1.5, px: 4, fontSize: '1rem', fontWeight: 700, borderRadius: '12px' }}
             >
-              Explore Scenarios Free
+              Explore Scenarios
             </Button>
             <Button
               component={RouterLink}

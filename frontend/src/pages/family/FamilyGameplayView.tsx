@@ -20,6 +20,7 @@ import type { ClaimType, CompanionNotice } from '@/components/family/FlagInspect
 import type {
   CheckpointResponse,
   ConversationGuide,
+  FamilyReview,
   FamilyCaregiverComment,
   FamilyMessage,
   FamilyScene,
@@ -70,6 +71,10 @@ export interface FamilyGameplayViewProps {
   onHint?: () => void;
   onReset?: () => void;
   isResetting?: boolean;
+  autoplay?: boolean;
+  autoplaySpeed?: 'slow' | 'normal' | 'fast';
+  onToggleAutoplay?: () => void;
+  onAutoplaySpeedChange?: (speed: 'slow' | 'normal' | 'fast') => void;
   // Progression controls — explicitly require user interaction
   canRevealNext?: boolean;
   canEnterReview?: boolean;
@@ -116,6 +121,9 @@ export interface FamilyGameplayViewProps {
   // Post-session review props
   checkpointResponses?: CheckpointResponse[];
   conversationGuide?: ConversationGuide | null;
+  review?: FamilyReview | null;
+  reviewLoading?: boolean;
+  reviewError?: boolean;
 }
 
 /** Presentational game shell for SafeQuest Family Scenario Player. */
@@ -151,6 +159,10 @@ export function FamilyGameplayView({
   onHint,
   onReset,
   isResetting = false,
+  autoplay = false,
+  autoplaySpeed = 'slow',
+  onToggleAutoplay,
+  onAutoplaySpeedChange,
   canRevealNext = false,
   canEnterReview = false,
   onRevealNext,
@@ -191,6 +203,9 @@ export function FamilyGameplayView({
 
   checkpointResponses = [],
   conversationGuide = null,
+  review = null,
+  reviewLoading = false,
+  reviewError = false,
 }: FamilyGameplayViewProps) {
   const semanticScene: FamilyScene = scene ?? {
     scene_schema_version: 1, skin_version: "1.0", render_skin: renderSkin, elements: messages.map((message) => ({ element_key: "legacy-" + message.id, element_type: "message", parent_element_key: null, source_message_id: message.id, sequence: message.sequence, content: message.content, presentation: {}, selectable: true, accessible_label: "Message from " + message.speaker_label, semantic_role: "article" })), messages,
@@ -208,6 +223,10 @@ export function FamilyGameplayView({
   const handleToggleMessageInternal = (messageId: number) => {
     setSelectedMessageId(messageId);
     onToggleMessage(messageId);
+  };
+
+  const handleSelectMessageInternal = (id: number | null) => {
+    setSelectedMessageId(id);
   };
 
   const handleAskCompanionInternal = async (text: string) => {
@@ -235,7 +254,14 @@ export function FamilyGameplayView({
     if (elementKey.startsWith("legacy-")) {
       const msgId = parseInt(elementKey.replace("legacy-", ""), 10);
       if (!isNaN(msgId)) {
+        setSelectedMessageId(msgId);
         onToggleMessage(msgId);
+      }
+    } else {
+      // For non-legacy element keys, resolve the source message if any.
+      const sourceMsg = semanticScene.elements.find((el) => el.element_key === elementKey)?.source_message_id;
+      if (sourceMsg != null) {
+        setSelectedMessageId(sourceMsg);
       }
     }
   };
@@ -265,6 +291,10 @@ export function FamilyGameplayView({
         onOpenGuide={openGuide}
         onToggleMobileInspector={() => setMobileInspectorOpen(true)}
         isResetting={isResetting}
+        autoplay={autoplay}
+        autoplaySpeed={autoplaySpeed}
+        onToggleAutoplay={onToggleAutoplay}
+        onAutoplaySpeedChange={onAutoplaySpeedChange}
       />
 
       {/* Presence & Stream Status Banner */}
@@ -381,7 +411,7 @@ export function FamilyGameplayView({
               tagAssignments={tagAssignments}
               selectedMessageId={selectedMessageId}
               selectedElementKey={selectedElementKey}
-              onSelectMessage={setSelectedMessageId}
+              onSelectMessage={handleSelectMessageInternal}
               companionNotice={companionNotice}
               onAskCompanion={handleAskCompanionInternal}
               onSubmitAttempt={onSubmitAttempt}
@@ -426,7 +456,7 @@ export function FamilyGameplayView({
             tagAssignments={tagAssignments}
             selectedMessageId={selectedMessageId}
             selectedElementKey={selectedElementKey}
-            onSelectMessage={setSelectedMessageId}
+            onSelectMessage={handleSelectMessageInternal}
             companionNotice={companionNotice}
             onAskCompanion={handleAskCompanionInternal}
             onSubmitAttempt={onSubmitAttempt}
@@ -461,6 +491,9 @@ export function FamilyGameplayView({
         onFinish={onFinishCompletion ?? (() => {})}
         onCloseReviewScene={() => setReviewSceneDismissed(true)}
         onRetryError={onRetryAction}
+        review={review}
+        reviewLoading={reviewLoading}
+        reviewError={reviewError}
       />
     </Container>
   );

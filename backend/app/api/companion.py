@@ -286,13 +286,13 @@ async def submit_flag_attempt(
                 explanations=[span.child_safe_explanation or "" for span in annotations], allowed_tags=allowed_tags, claim=body.claim)
         db.add(CompanionExchange(family_session_id=session.id, exchange_type="flag_attempt", child_text=sanitized_reasoning,
             companion_text=feedback["response_text"], disclosure_triggered=False))
-        result = "validated" if is_concerning else "not_a_flag"
+        result = "validated" if (is_concerning and body.claim == "red_flag") or (not is_concerning and body.claim == "not_red_flag") else ("not_a_flag" if not is_concerning else "needs_support")
     else:
         # A caregiver may contribute a shared attempt, but never receives the child's private companion context.
         from app.companion.service import deterministic_attempt_feedback
         feedback = deterministic_attempt_feedback(is_concerning=is_concerning,
             explanations=[span.child_safe_explanation or "" for span in annotations], allowed_tags=allowed_tags, claim=body.claim)
-        result = "validated" if is_concerning else "not_a_flag"
+        result = "validated" if (is_concerning and body.claim == "red_flag") or (not is_concerning and body.claim == "not_red_flag") else ("not_a_flag" if not is_concerning else "needs_support")
 
     attempt = FlagAttempt(family_session_id=session.id, participant_id=participant.id, element_id=target.id,
         sanitized_reasoning=sanitized_reasoning, claimed_red_flag=body.claim == "red_flag", claim=body.claim,
@@ -300,7 +300,7 @@ async def submit_flag_attempt(
         disclosure_state="triggered" if disclosure else "none",
         visibility="shared" if participant.role == "caregiver" or body.share_reasoning_with_caregiver else "private")
     db.add(attempt)
-    if is_concerning:
+    if is_concerning and body.claim == "red_flag":
         for annotation in annotations:
             finding = db.query(ValidatedFinding).filter(
                 ValidatedFinding.family_session_id == session.id, ValidatedFinding.element_id == target.id,
@@ -337,26 +337,41 @@ def request_hint(
     session, _ = _load_participant_session(family_session_id, current_user, db)
     if current_user.id != session.child_user_id:
         raise HTTPException(403, "Private companion hints are available only to the learner")
-    target = _target(session, body.element_key, db)
+    elements = db.query(CuratedSceneElement).filter(
+        CuratedSceneElement.transcript_id == session.transcript_id,
+        CuratedSceneElement.selectable.is_(True),
+        CuratedSceneElement.sequence <= session.revealed_up_to,
+    ).order_by(CuratedSceneElement.sequence, CuratedSceneElement.id).all()
+    findings = db.query(ValidatedFinding).filter(ValidatedFinding.family_session_id == session.id).all()
+    resolved = {f.red_flag_span_id for f in findings}
+    target = None
+    for element in elements:
+        annotations = _annotations(session, element, db)
+        if any(annotation.id not in resolved for annotation in annotations):
+            target = element
+            break
+    if body.element_key:
+        requested = next((e for e in elements if e.element_key == body.element_key), None)
+        if requested is not None and target is not None and requested.id == target.id:
+            target = requested
+    if target is None:
+        return HintOut(no_hint=True, message="There are no unresolved safety hints in the revealed scene yet.")
     prior_records = db.query(CompanionExchange).filter(
         CompanionExchange.family_session_id == session.id,
         CompanionExchange.exchange_type.like(f"hint:{target.element_key}:%"),
     ).order_by(CompanionExchange.created_at, CompanionExchange.id).all()
     annotations = _annotations(session, target, db)
-    hints = [hint for span in annotations for hint in (span.tiered_hints or [])]
-    generic = [
+    hints = [hint for span in annotations if span.id not in resolved for hint in (span.tiered_hints or [])]
+    ladder = list(dict.fromkeys(hints or [
         "Read this item closely and notice whether it asks you to rush or share something personal.",
         "Think about boundaries: does this leave room to say no and talk to a trusted adult?",
         "Consider what a safe next step could be if this made you uncomfortable.",
-    ]
-    ladder = list(dict.fromkeys(hints or generic))
-    # The hint ladder is finite and durable for this revealed element.
+    ]))
     if len(prior_records) >= len(ladder):
         return HintOut(element_key=target.element_key, hint_level=len(ladder), hint=prior_records[-1].companion_text)
     level = len(prior_records) + 1
     hint = ladder[level - 1]
-    db.add(CompanionExchange(family_session_id=session.id, exchange_type=f"hint:{target.element_key}:{level}",
-        child_text="", companion_text=hint, disclosure_triggered=False))
+    db.add(CompanionExchange(family_session_id=session.id, exchange_type=f"hint:{target.element_key}:{level}", child_text="", companion_text=hint, disclosure_triggered=False))
     db.commit()
     telemetry_record("companion.hint", channel="private_child")
     return HintOut(element_key=target.element_key, hint_level=level, hint=hint)
@@ -398,7 +413,13 @@ async def explain_reasoning(family_session_id: str, body: CompanionExplainReques
     first = context[0] if context else db.query(CuratedMessage).filter(CuratedMessage.transcript_id == session.transcript_id).order_by(CuratedMessage.sequence).first()
     if not first:
         raise HTTPException(404, "Scenario messages not found")
-    response_text, disclosure, resources = await _respond(session, first.transcript.category, body.message, context, llm)
+    prompt = None
+    if body.element_key:
+        target = _target(session, body.element_key, db)
+        annotations = _annotations(session, target, db)
+        facts = "; ".join(f"{a.tactic_tag}: {a.child_safe_explanation or 'reviewed safety concern'}" for a in annotations)
+        prompt = f"Selected reviewed scene wording: {target.content[:2000]}. Authoritative annotations: {facts or 'none'}. Explain only this wording; never contradict these classifications or reveal other answer keys."
+    response_text, disclosure, resources = await _respond(session, first.transcript.category, body.message, context, llm, prompt)
     db.add(CompanionExchange(family_session_id=session.id, exchange_type="explain", child_text=redact_personal_info(body.message),
         companion_text=response_text, disclosure_triggered=disclosure))
     db.commit()

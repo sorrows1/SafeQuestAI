@@ -36,6 +36,8 @@ import {
   useGetFamilySessionQuery,
   useSubmitCheckpointResponseMutation,
   useSubmitCompanionCheckpointMutation,
+  useGetFamilyReviewQuery,
+  useHeartbeatFamilySessionMutation,
 } from "@/store/api";
 import type { FamilySessionCommandType, ParticipantRole } from "@/types";
 import type { ScenePanelNavigation } from "@/components/scenario-render/types";
@@ -54,6 +56,8 @@ export function FamilyScenarioPlayer() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { data: detail, isLoading, isError, refetch } = useGetFamilySessionQuery(sessionId!, { skip: !sessionId });
+  const reviewEnabled = Boolean(detail?.session && ["completion_review", "help_and_resources", "completed"].includes(detail.session.state));
+  const { data: review, isLoading: reviewLoading, isError: reviewError } = useGetFamilyReviewQuery(sessionId!, { skip: !sessionId || !reviewEnabled });
   const [command, { isLoading: commandLoading }] = useCommandFamilySessionMutation();
   useFamilySessionEvents(sessionId, refetch);
   const [submitCheckpoint, { isLoading: submitting }] = useSubmitCheckpointResponseMutation();
@@ -61,6 +65,7 @@ export function FamilyScenarioPlayer() {
   const [explainWithCompanion, { isLoading: explaining }] = useExplainWithCompanionMutation();
   const [submitFlagAttempt, { isLoading: attemptSubmitting }] = useSubmitFlagAttemptMutation();
   const [requestCompanionHint] = useRequestCompanionHintMutation();
+  const [heartbeat] = useHeartbeatFamilySessionMutation();
   const [createCaregiverComment, { isLoading: submittingComment }] = useCreateCaregiverCommentMutation();
   const session = useAppSelector(selectFamilySession);
   const capabilities = useAppSelector(selectFamilyCapabilities);
@@ -77,6 +82,8 @@ export function FamilyScenarioPlayer() {
   const [hintLevel, setHintLevel] = useState(0);
   const [companionNotice, setCompanionNotice] = useState<{ text: string; disclosure: boolean; resources: Array<{ label: string; href: string }> } | null>(null);
   const [showNewContent, setShowNewContent] = useState(false);
+  const [autoplay, setAutoplay] = useState(true);
+  const [autoplaySpeed, setAutoplaySpeed] = useState<'slow' | 'normal' | 'fast'>('slow');
   const [sessionInfoOpen, setSessionInfoOpen] = useState(false);
   const [selectedElementKey, setSelectedElementKey] = useState<string | null>(null);
   const [selectedElementKeys, setSelectedElementKeys] = useState<string[]>([]);
@@ -132,6 +139,23 @@ export function FamilyScenarioPlayer() {
       void refetch();
     }
   }, [command, dispatch, navigate, refetch, session]);
+
+  useEffect(() => {
+    if (!session || !capabilities?.can_heartbeat) return;
+    const beat = () => { if (document.visibilityState === 'visible' && streamStatus !== 'offline') void heartbeat({ sessionId: session.id, client_event_id: commandId() }).unwrap().catch(() => undefined); };
+    beat();
+    const timer = window.setInterval(beat, 30000);
+    const onFocus = () => beat();
+    window.addEventListener('focus', onFocus);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
+  }, [capabilities?.can_heartbeat, heartbeat, session, streamStatus]);
+
+  const autoplayDelay = autoplaySpeed === 'fast' ? 900 : autoplaySpeed === 'normal' ? 1500 : 2600;
+  useEffect(() => {
+    if (!autoplay || !session || commandLoading || !capabilities?.can_reveal_next || activeCheckpoint || actionError || pendingAttempt || streamStatus === 'offline' || streamStatus === 'reconnecting' || streamStatus === 'connecting' || streamStatus === 'idle') return;
+    const timer = window.setTimeout(() => void sendCommand("reveal_next"), autoplayDelay);
+    return () => window.clearTimeout(timer);
+  }, [actionError, activeCheckpoint, autoplay, autoplayDelay, capabilities?.can_reveal_next, commandLoading, pendingAttempt, sendCommand, session, streamStatus]);
 
   // Only auto-fire "start" from waiting_for_participants. Never auto-reveal
   // or auto-enter review — those require explicit user action.
@@ -202,7 +226,8 @@ export function FamilyScenarioPlayer() {
         }).unwrap();
         dispatch(checkpointResponseRecorded(response));
       }
-      await sendCommand("continue_checkpoint");
+      if (responderRole === "child") await sendCommand("continue_checkpoint");
+      else void refetch();
     } catch {
       setActionError("Your reflection could not be saved. It is still here so you can retry.");
       void refetch();
@@ -233,34 +258,33 @@ export function FamilyScenarioPlayer() {
     if (!session || !text.trim()) return;
     setActionError(null);
     try {
-      if (selectedElementKey && capabilities?.can_submit_flag_attempt) {
-        await handleSubmitAttempt({ element_key: selectedElementKey, claim: "unsure", reasoning: text.trim() });
-      } else {
-        const result = await explainWithCompanion({ sessionId: session.id, message: text.trim() }).unwrap();
-        setCompanionNotice({ text: result.response_text, disclosure: result.disclosure_triggered, resources: result.support_resources });
-      }
+      // Always use the explain endpoint for companion questions — flag attempts
+      // have their own submit button that sends the correct claim. Routing
+      // through flag attempts here with claim="unsure" would produce
+      // needs_support for any element that has annotations.
+      const result = await explainWithCompanion({ sessionId: session.id, message: text.trim(), element_key: selectedElementKey ?? undefined }).unwrap();
+      setCompanionNotice({ text: result.response_text, disclosure: result.disclosure_triggered, resources: result.support_resources });
       void refetch();
     } catch {
-      dispatch(flagAttemptPending(false));
       setActionError("The guide could not reply just now. You can retry your message.");
     }
   };
 
   const handleHint = async () => {
-    if (!session || !selectedElementKey || !capabilities?.can_request_hint) {
-      setHintNotice("Tap on any message or element in the conversation to select it for investigation. Selected items show a blue border. You can then check them for red flags or ask for hints.");
-      return;
-    }
+    if (!session || !capabilities?.can_request_hint) return;
     try {
-      const result = await requestCompanionHint({ sessionId: session.id, element_key: selectedElementKey, client_command_id: commandId() }).unwrap();
-      setHintNotice(result.hint);
-      if (typeof result.hint_level === 'number') {
-        setHintLevel(result.hint_level);
+      const result = await requestCompanionHint({ sessionId: session.id, element_key: selectedElementKey ?? undefined, client_command_id: commandId() }).unwrap();
+      if (result.no_hint) {
+        setHintNotice(result.message || "There is no additional hint available for the visible items yet.");
+        setHintLevel(result.hint_level ?? 0);
       } else {
-        setHintLevel((prev) => prev + 1);
+        const target = result.element_key ? `For this item: ${result.hint}` : (result.hint || result.message || "A discussion hint is available.");
+        setHintNotice(target);
+        setHintLevel(result.hint_level ?? 0);
       }
+      void refetch();
     } catch {
-      setHintNotice("A hint is unavailable right now. Keep looking closely at the item.");
+      setHintNotice("A hint is unavailable right now. Keep looking closely at the visible items.");
     }
   };
 
@@ -337,14 +361,19 @@ export function FamilyScenarioPlayer() {
         if (completedKeys.includes(key)) return;
         const element = detail?.scene.elements.find((item) => item.element_key === key);
         if (!element?.selectable) return;
-        setSelectedElementKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+        setAutoplay(false);
+        // Single-select: replace any prior selection with just this element.
+        setSelectedElementKeys([key]);
         setSelectedElementKey(key);
         dispatch(targetSelected(key));
         if (element.source_message_id) dispatch(highlightedMessageToggled(element.source_message_id));
       }}
       onToggleMessage={(messageId) => {
+        setAutoplay(false);
         dispatch(highlightedMessageToggled(messageId));
         const key = detail?.scene.elements.find((item) => item.source_message_id === messageId && item.selectable)?.element_key ?? "legacy-" + messageId;
+        // Single-select: replace any prior selection with just this element.
+        setSelectedElementKeys([key]);
         setSelectedElementKey(key);
         dispatch(targetSelected(key));
       }}
@@ -371,6 +400,10 @@ export function FamilyScenarioPlayer() {
       onHint={handleHint}
       onReset={handleReset}
       isResetting={commandLoading}
+      autoplay={autoplay}
+      autoplaySpeed={autoplaySpeed}
+      onToggleAutoplay={capabilities?.can_reveal_next ? () => setAutoplay((value) => !value) : undefined}
+      onAutoplaySpeedChange={setAutoplaySpeed}
       selectedElementKey={selectedElementKey}
       companionNotice={companionNotice}
       onAskCompanion={handleAskCompanion}
@@ -398,6 +431,9 @@ export function FamilyScenarioPlayer() {
       isSubmittingComment={submittingComment}
       checkpointResponses={detail?.session ? [] : []}
       conversationGuide={null}
+      review={review ?? null}
+      reviewLoading={reviewLoading}
+      reviewError={reviewError}
     >
       <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center", flexWrap: "wrap", mt: 2 }}>
         <Typography color="text.secondary" variant="body2">

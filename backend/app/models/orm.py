@@ -350,8 +350,12 @@ class FamilyRelationshipInvitation(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     public_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True, index=True)
-    caregiver_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    caregiver_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    inviter_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     learner_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    recipient_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    inviter_role: Mapped[str] = mapped_column(String(20), default="caregiver", nullable=False)
+    intended_role: Mapped[str] = mapped_column(String(20), default="learner", nullable=False)
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     short_code_hash: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

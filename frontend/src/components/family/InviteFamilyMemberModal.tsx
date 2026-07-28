@@ -23,7 +23,7 @@ import SendIcon from '@mui/icons-material/Send';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import { useCreateFamilyInvitationMutation } from '@/store/api';
-import type { FamilyRelationshipInvitation } from '@/types';
+import type { FamilyRelationshipInvitation, FamilyRole } from '@/types';
 
 interface InviteFamilyMemberModalProps {
   open: boolean;
@@ -32,6 +32,7 @@ interface InviteFamilyMemberModalProps {
 
 export const InviteFamilyMemberModal: React.FC<InviteFamilyMemberModalProps> = ({ open, onClose }) => {
   const [email, setEmail] = useState('');
+  const [familyRole, setFamilyRole] = useState<FamilyRole>('caregiver');
   const [deliveryLabel, setDeliveryLabel] = useState('');
   const [createdInvitation, setCreatedInvitation] = useState<FamilyRelationshipInvitation | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -41,6 +42,7 @@ export const InviteFamilyMemberModal: React.FC<InviteFamilyMemberModalProps> = (
 
   const handleReset = () => {
     setEmail('');
+    setFamilyRole('caregiver');
     setDeliveryLabel('');
     setCreatedInvitation(null);
     setCopiedLink(false);
@@ -59,6 +61,7 @@ export const InviteFamilyMemberModal: React.FC<InviteFamilyMemberModalProps> = (
     try {
       const res = await createInvitation({
         learner_email: email.trim(),
+        family_role: familyRole,
         delivery_label: deliveryLabel.trim() || undefined,
       }).unwrap();
       setCreatedInvitation(res);
@@ -121,6 +124,19 @@ export const InviteFamilyMemberModal: React.FC<InviteFamilyMemberModalProps> = (
                 {errorMessage}
               </Alert>
             )}
+
+            <TextField
+              select
+              label="Your family role"
+              value={familyRole}
+              onChange={(e) => setFamilyRole(e.target.value as FamilyRole)}
+              fullWidth
+              disabled={isLoading}
+              slotProps={{ select: { native: true } }}
+            >
+              <option value="caregiver">Caregiver (inviting a learner)</option>
+              <option value="learner">Learner (inviting a caregiver)</option>
+            </TextField>
 
             <TextField
               label="Family Member Email"

@@ -23,6 +23,7 @@ export function FamilyScenarioLobby() {
   const [selected, setSelected] = useState<PublishedFamilyScenario | null>(null);
   const [selectorModalOpen, setSelectorModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const relationshipContext = searchParams.get('with');
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -112,12 +113,25 @@ export function FamilyScenarioLobby() {
     }
   };
 
+  const handleStartMode = (mode: 'solo_with_companion' | 'family_invite' | 'join_family') => {
+    if (mode === 'join_family') {
+      setSelected(null);
+      navigate('/family/hub');
+      return;
+    }
+    if (mode === 'solo_with_companion') {
+      void handleStartSession();
+      return;
+    }
+    setSelectorModalOpen(true);
+  };
+
   const handleStartSession = async (relationshipRef?: string) => {
     if (!selected) return;
     try {
       const session = await createSession({
         transcriptId: selected.id,
-        relationship_ref: relationshipRef,
+        relationship_ref: relationshipRef || relationshipContext || undefined,
       }).unwrap();
       setSelectorModalOpen(false);
       setSelected(null);
@@ -157,6 +171,7 @@ export function FamilyScenarioLobby() {
         selected={selected}
         onSelectScenario={handleScenarioClick}
         onStartSolo={handleLifecycleAction}
+        onStartMode={handleStartMode}
         creating={creating || restarting}
         createError={Boolean(error || restartError)}
       />

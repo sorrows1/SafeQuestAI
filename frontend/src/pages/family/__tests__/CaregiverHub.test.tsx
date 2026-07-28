@@ -31,6 +31,8 @@ vi.mock('@/store/api', () => ({
 const mockRel = {
   relationship_ref: 'fr_123',
   role: 'caregiver',
+  viewer_role: 'caregiver',
+  member_role: 'learner',
   member_ref: 'member_456',
   member_display_name: 'Alex Parent',
   member_avatar_url: null,
@@ -46,6 +48,9 @@ const mockInv = {
   delivery_label: "Mom's Tablet",
   token: 'tok_abc123',
   short_code: 'A7B9K2M4',
+  direction: 'sent',
+  inviter_role: 'caregiver',
+  intended_role: 'learner',
 };
 
 const renderHub = () =>
@@ -67,9 +72,9 @@ describe('CaregiverHub Page', () => {
   it('renders header, family members tab, and relationships list', () => {
     renderHub();
 
-    expect(screen.getByText('Caregiver Hub')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Caregiver Hub' })).toBeTruthy();
     expect(screen.getByText('Alex Parent')).toBeTruthy();
-    expect(screen.getByText(/your caregiver/i)).toBeTruthy();
+    expect(screen.getByText(/Learner · Connected/i)).toBeTruthy();
   });
 
   it('switches tabs to view pending invitations', () => {

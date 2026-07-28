@@ -45,6 +45,10 @@ interface Props {
   onOpenGuide: () => void;
   onToggleMobileInspector?: () => void;
   isResetting?: boolean;
+  autoplay?: boolean;
+  autoplaySpeed?: 'slow' | 'normal' | 'fast';
+  onToggleAutoplay?: () => void;
+  onAutoplaySpeedChange?: (speed: 'slow' | 'normal' | 'fast') => void;
 }
 
 export function GameplayMissionBar({
@@ -70,6 +74,10 @@ export function GameplayMissionBar({
   onOpenGuide,
   onToggleMobileInspector,
   isResetting = false,
+  autoplay = false,
+  autoplaySpeed = 'slow',
+  onToggleAutoplay,
+  onAutoplaySpeedChange,
 }: Props) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -180,6 +188,15 @@ export function GameplayMissionBar({
           {/* Status & Actions */}
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             {getStatusChip()}
+
+            {onToggleAutoplay && (
+              <Button size="small" variant={autoplay ? 'contained' : 'outlined'} startIcon={autoplay ? <PauseOutlinedIcon /> : <PlayArrowOutlinedIcon />} onClick={onToggleAutoplay} sx={{ borderRadius: '20px', textTransform: 'none', minHeight: 36 }}>
+                {autoplay ? 'Pause autoplay' : 'Autoplay'}
+              </Button>
+            )}
+            {autoplay && onAutoplaySpeedChange && (
+              <Button size="small" variant="text" onClick={() => onAutoplaySpeedChange(autoplaySpeed === 'slow' ? 'normal' : autoplaySpeed === 'normal' ? 'fast' : 'slow')} aria-label="Change autoplay speed" sx={{ textTransform: 'none' }}>Speed: {autoplaySpeed}</Button>
+            )}
 
             {/* Continue / Reveal Next Button */}
             {canRevealNext && (

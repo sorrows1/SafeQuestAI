@@ -49,6 +49,7 @@ from app.models.schemas import (
     FamilyRole,
     FamilySceneOut,
     FamilySessionDetailOut,
+    FamilyReviewOut, FamilyReviewItemOut, FamilyReviewAttemptOut, FamilyReviewDiscussionOut,
     FamilySessionCapabilitiesOut,
     FamilySessionCommandRequest,
     FamilySessionCommandType,
@@ -466,7 +467,7 @@ def _new_attempt(
     _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED, {"member_ref": member_ref(learner_id), "role": "learner"}, actor_participant=learner)
     _emit_event(db, session, FamilySessionEventType.PARTICIPANT_PRESENCE, {"member_ref": member_ref(learner_id), "status": "online"}, actor_participant=learner)
     if caregiver_id is not None:
-        db.add(FamilySessionParticipant(family_session_id=session.id, user_id=caregiver_id, role="caregiver", presence_status="offline"))
+        db.add(FamilySessionParticipant(family_session_id=session.id, user_id=caregiver_id, role="caregiver", presence_status="pending"))
     eligible = db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == transcript.id).count()
     db.add(SessionProgress(family_session_id=session.id, eligible_target_count=eligible, required_finding_count=eligible))
     return session
@@ -696,9 +697,12 @@ def _session_detail_out(session: FamilySession, current_user: User, db: Session)
         CuratedSceneElement.sequence > session.revealed_up_to,
     ).first() is not None
     progress = _progress_out(session, db)
+    caregiver_admitted = True
+    if session.parent_user_id is not None:
+        caregiver_admitted = db.query(FamilySessionParticipant.id).filter(FamilySessionParticipant.family_session_id == session.id, FamilySessionParticipant.user_id == session.parent_user_id, FamilySessionParticipant.left_at.is_(None), FamilySessionParticipant.presence_status != "pending").first() is not None
     review_acknowledged = session.completion_acknowledged_at is not None
     capabilities = FamilySessionCapabilitiesOut(
-        can_start=active and is_learner and owns_turn and session.state == "waiting_for_participants",
+        can_start=active and is_learner and owns_turn and session.state == "waiting_for_participants" and caregiver_admitted,
         can_reveal_next=active and is_learner and owns_turn and session.state == "in_progress" and session.active_checkpoint_element_key is None and next_element_exists,
         can_continue_checkpoint=active and is_learner and owns_turn and session.state == "checkpoint" and session.active_checkpoint_element_key is not None,
         can_enter_completion_review=active and is_learner and owns_turn and session.state == "in_progress" and progress.completion_ready,
@@ -1020,6 +1024,8 @@ def command_session(
     ):
         _stale_state(session, current_user, db, "It is the learner’s turn to move the scenario forward")
     if command is FamilySessionCommandType.START:
+        if session.parent_user_id is not None and not db.query(FamilySessionParticipant.id).filter(FamilySessionParticipant.family_session_id == session.id, FamilySessionParticipant.user_id == session.parent_user_id, FamilySessionParticipant.left_at.is_(None), FamilySessionParticipant.presence_status != "pending").first():
+            _stale_state(session, current_user, db, "The caregiver must join before this shared session can start")
         if session.state == "waiting_for_participants":
             session.state = "in_progress"
             session.state_version += 1
@@ -1194,14 +1200,6 @@ def join_session(
     if is_terminal_family_session_state(session.state):
         raise HTTPException(status_code=400, detail="Session has ended")
 
-    # Caregiver must not already be a participant.
-    existing = db.query(FamilySessionParticipant).filter(
-        FamilySessionParticipant.family_session_id == session.id,
-        FamilySessionParticipant.user_id == current_user.id,
-    ).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="You are already a member of this session")
-
     # Caregiver must have an active relationship with the learner.
     relationship = db.query(FamilyRelationship).filter(
         FamilyRelationship.learner_user_id == session.child_user_id,
@@ -1215,6 +1213,26 @@ def join_session(
     salted = body.session_code.strip().upper() + (session.public_id or "")
     if session.join_code_hash != sha256(salted.encode()).hexdigest():
         raise HTTPException(status_code=404, detail="Invalid session code")
+
+    # Caregiver must not already be a participant.
+    existing = db.query(FamilySessionParticipant).filter(
+        FamilySessionParticipant.family_session_id == session.id,
+        FamilySessionParticipant.user_id == current_user.id,
+    ).first()
+    if existing:
+        if existing.left_at is not None:
+            raise HTTPException(status_code=403, detail="You are no longer a member of this session")
+        # Joining is idempotent: transition the pre-created pending row once.
+        if existing.presence_status != "online":
+            now = datetime.now(timezone.utc)
+            existing.last_seen_at = now
+            existing.last_heartbeat_at = now
+            existing.presence_expires_at = now + PRESENCE_TTL
+            existing.presence_status = "online"
+            _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED,
+                {"member_ref": member_ref(current_user.id), "role": "caregiver"}, actor_participant=existing)
+            db.commit()
+        return _session_detail_out(session, current_user, db)
 
     # Add caregiver as participant.
     now = datetime.now(timezone.utc)
@@ -1352,6 +1370,50 @@ def complete_session(
     db.commit()
     db.refresh(guide)
     return _guide_out(guide)
+
+
+@router.get("/sessions/{session_id}/review", response_model=FamilyReviewOut)
+def get_family_review(session_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    session = _load_session(session_id, current_user, db)
+    if session.state not in {"completion_review", "help_and_resources", "completed"}:
+        raise HTTPException(status_code=409, detail="Family review is available after completion review opens")
+    spans = db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == session.transcript_id).order_by(RedFlagSpan.message_sequence, RedFlagSpan.id).all()
+    elements = {e.id: e for e in db.query(CuratedSceneElement).filter(CuratedSceneElement.transcript_id == session.transcript_id).all()}
+    findings = db.query(ValidatedFinding).filter(ValidatedFinding.family_session_id == session.id).all()
+    identified = {f.red_flag_span_id for f in findings}
+    attempts = db.query(FlagAttempt).filter(FlagAttempt.family_session_id == session.id).order_by(FlagAttempt.created_at, FlagAttempt.id).all()
+    shared_attempts = {a.element_id: a for a in attempts if a.visibility == "shared"}
+    concerns = []
+    for span in spans:
+        element = elements.get(span.scene_element_id)
+        if not element: continue
+        same = [x for x in spans if x.scene_element_id == span.scene_element_id]
+        if span.id != min(x.id for x in same): continue
+        shared = shared_attempts.get(element.id)
+        concerns.append(FamilyReviewItemOut(element_key=element.element_key, annotation_ids=[x.id for x in same], tactic_tag=span.tactic_tag, text=element.content or "", explanation=span.child_safe_explanation, identified=any(x.id in identified for x in same), selected_for_revisit=bool(shared and shared.claim != "red_flag"), shared_reasoning=shared.sanitized_reasoning if shared else None))
+    visible_attempts = [a for a in attempts if current_user.id == session.child_user_id or a.visibility == "shared"]
+    attempt_records = []
+    for a in visible_attempts:
+        element = elements.get(a.element_id)
+        if not element: continue
+        annotated = any(x.scene_element_id == a.element_id for x in spans)
+        persisted = any(f.element_id == a.element_id for f in findings)
+        disposition = "identified" if persisted and a.claim == "red_flag" else ("revisit" if annotated or a.claim == "red_flag" else "safe_selection")
+        attempt_records.append(FamilyReviewAttemptOut(element_key=element.element_key, claim=a.claim, disposition=disposition, reasoning=a.sanitized_reasoning, shared=a.visibility == "shared"))
+    non_concerning = [a for a in attempt_records if a.disposition == "safe_selection"]
+    response_query = db.query(CheckpointResponse).filter(CheckpointResponse.family_session_id == session.id)
+    if current_user.id != session.child_user_id:
+        response_query = response_query.filter(CheckpointResponse.visibility == "shared")
+    responses = response_query.order_by(CheckpointResponse.created_at, CheckpointResponse.id).all()
+    checkpoint_records = [FamilyReviewDiscussionOut(responder_role=r.responder_role, checkpoint_message_id=r.checkpoint_message_id, text=r.response_text) for r in responses]
+    discussion = list(checkpoint_records)
+    comments = db.query(FamilyCaregiverComment).filter(FamilyCaregiverComment.family_session_id == session.id, FamilyCaregiverComment.deleted_at.is_(None)).all()
+    discussion.extend(FamilyReviewDiscussionOut(responder_role="caregiver", text=c.text) for c in comments)
+    events = db.query(FamilySessionEvent).filter(FamilySessionEvent.family_session_id == session.id, FamilySessionEvent.event_type == "companion_shared_feedback").order_by(FamilySessionEvent.sequence).all()
+    discussion.extend(FamilyReviewDiscussionOut(responder_role="ai_companion", text=str((e.payload or {}).get("response_text", "")), element_key=(e.payload or {}).get("element_key")) for e in events if (e.payload or {}).get("response_text"))
+    identified_count = sum(1 for span in spans if span.scene_element_id in elements and span.id in identified)
+    total_count = sum(1 for span in spans if span.scene_element_id in elements)
+    return FamilyReviewOut(session_ref=session.public_id or str(session.id), total_annotated_concerns=total_count, identified_concerns=identified_count, unresolved_concerns=total_count - identified_count, concerns=concerns, attempts=attempt_records, non_concerning_selections=non_concerning, completed_checkpoints=checkpoint_records, shared_discussion=discussion, suggested_next_steps=["Choose a boundary and talk with a trusted adult if something feels uncomfortable."], practice_areas=list(dict.fromkeys(x.tactic_tag for x in concerns if not x.identified)))
 
 
 @router.get("/sessions/{session_id}/conversation-guide", response_model=ConversationGuideOut)

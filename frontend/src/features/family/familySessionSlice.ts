@@ -121,9 +121,11 @@ const familySessionSlice = createSlice({
       state.participantTurn = action.payload;
     },
     highlightedMessageToggled(state, action: PayloadAction<number>) {
-      const index = state.highlightedMessageIds.indexOf(action.payload);
-      if (index >= 0) state.highlightedMessageIds.splice(index, 1);
-      else state.highlightedMessageIds.push(action.payload);
+      // Single-select: replace current selection with only this message.
+      state.highlightedMessageIds = [action.payload];
+    },
+    highlightedMessageCleared(state) {
+      state.highlightedMessageIds = [];
     },
     tagAssignmentSet(state, action: PayloadAction<{ messageId: number; tag: string }>) {
       if (action.payload.tag.trim()) state.tagAssignments[action.payload.messageId] = action.payload.tag.trim();
@@ -192,6 +194,7 @@ export const {
   familySessionStreamStatusSet,
   targetSelected,
   highlightedMessageToggled,
+  highlightedMessageCleared,
   participantTurnSet,
   revealThrough,
   tagAssignmentSet,

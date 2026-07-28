@@ -18,7 +18,7 @@ export function GameplayPreviewSection() {
   return (
     <Box id="gameplay-preview" sx={{ py: { xs: 8, md: 12 } }}>
       <Container maxWidth="lg">
-        <Stack spacing={2} sx={{ textAlign: 'center', mb: 5 }}>
+        <Stack spacing={2} sx={{ textAlign: 'center', mb: 5, alignItems: 'center' }}>
           <Typography variant="overline" color="primary" sx={{ fontWeight: 800, letterSpacing: '0.1em' }}>
             MULTIPLE PLATFORM SKINS
           </Typography>

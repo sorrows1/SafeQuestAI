@@ -41,7 +41,7 @@ llm_service: LLMService | None = None
 # Keep this explicit instead of calling ``create_all`` at startup. A deploy
 # that has not run the latest migration must fail fast rather than quietly
 # serving a partially upgraded contract.
-EXPECTED_SCHEMA_REVISION = "20260727_join_code"
+EXPECTED_SCHEMA_REVISION = "20260728_family_invitation_roles"
 
 def _init_db() -> None:
     """Verify the database has been migrated; startup never changes schema."""

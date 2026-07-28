@@ -10,16 +10,19 @@ export interface MessageBubbleProps {
   side: MessageSide;
   pace?: string;
   selectable?: boolean;
+  showAvatar?: boolean;
+  showLabel?: boolean;
+  role?: 'initiator' | 'respondent';
 }
 
 /** A presentation-only message bubble shared by admin and player experiences. */
-export const MessageBubble = memo(function MessageBubble({ content, speakerLabel, side, pace = 'normal', selectable = false }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ content, speakerLabel, side, pace = 'normal', selectable = false, showAvatar = true, showLabel = true, role }: MessageBubbleProps) {
   const isRight = side === 'right';
 
   return (
     <Fade in timeout={180} appear>
       <Box sx={{ display: 'flex', justifyContent: isRight ? 'flex-end' : 'flex-start', mb: 2, alignItems: 'flex-end', gap: 1 }}>
-        {!isRight && <Avatar speakerLabel={speakerLabel} />}
+        {!isRight && showAvatar && <Avatar speakerLabel={showLabel ? speakerLabel : ''} role={role} />}
         <Box sx={{ maxWidth: '72%' }}>
           <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary', textAlign: isRight ? 'right' : 'left' }}>
             {speakerLabel}
@@ -44,7 +47,7 @@ export const MessageBubble = memo(function MessageBubble({ content, speakerLabel
             </Paper>
           </Grow>
         </Box>
-        {isRight && <Avatar speakerLabel={speakerLabel} />}
+        {isRight && showAvatar && <Avatar speakerLabel={speakerLabel} role={role} />}
       </Box>
     </Fade>
   );

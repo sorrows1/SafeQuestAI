@@ -18,9 +18,11 @@ import type {
   FamilyRelationshipInvitation,
   FamilyRelationship,
   FamilyAuthorizedSession,
+  FamilyRole,
   FamilyMessage,
   CheckpointResponse,
   ConversationGuide,
+  FamilyReview,
   ParticipantRole,
   CompanionCheckpointResult,
   SupportResource,
@@ -119,8 +121,8 @@ export const safeQuestApi = createApi({
       query: ({ transcriptId, ...body }) => ({ url: '/family/scenarios/' + transcriptId + '/sessions/restart', method: 'POST', body }),
       invalidatesTags: ['FamilySession', 'FamilyCatalog'],
     }),
-    createFamilyInvitation: build.mutation<FamilyRelationshipInvitation, { learner_email: string; delivery_label?: string }>({ query: (body) => ({ url: '/family/invitations', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
-    getFamilyInvitations: build.query<FamilyRelationshipInvitation[], void>({ query: () => '/family/invitations', providesTags: ['FamilyLink'] }),
+    createFamilyInvitation: build.mutation<FamilyRelationshipInvitation, { learner_email: string; family_role: FamilyRole; delivery_label?: string }>({ query: (body) => ({ url: '/family/invitations', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
+    getFamilyInvitations: build.query<FamilyRelationshipInvitation[], void>({ query: () => '/family/invitations', providesTags: ['FamilyLink'], keepUnusedDataFor: 30 }),
     previewFamilyInvitation: build.query<{ invitation_ref: string; inviter_display_name: string; intended_role: 'learner'; expires_at: string; sharing_summary: string }, string>({ query: (secret) => '/family/invitations/preview?secret=' + encodeURIComponent(secret) }),
     acceptFamilyInvitation: build.mutation<FamilyRelationship, { secret: string }>({ query: (body) => ({ url: '/family/invitations/accept', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
     declineFamilyInvitation: build.mutation<void, { secret: string }>({ query: (body) => ({ url: '/family/invitations/decline', method: 'POST', body }), invalidatesTags: ['FamilyLink'] }),
@@ -207,12 +209,12 @@ export const safeQuestApi = createApi({
       query: ({ sessionId, ...body }) => ({ url: "/companion/sessions/" + sessionId + "/flag-attempts", method: "POST", body }),
       invalidatesTags: (_result, _error, { sessionId }) => [{ type: "FamilySession", id: sessionId }],
     }),
-    requestCompanionHint: build.mutation<HintResponse, { sessionId: number | string; element_key: string; client_command_id: string }>({
+    requestCompanionHint: build.mutation<HintResponse, { sessionId: number | string; element_key?: string; client_command_id: string }>({
       query: ({ sessionId, ...body }) => ({ url: "/companion/sessions/" + sessionId + "/hints", method: "POST", body }),
     }),
     explainWithCompanion: build.mutation<
       { response_text: string; disclosure_triggered: boolean; support_resources: SupportResource[] },
-      { sessionId: number | string; message: string }
+      { sessionId: number | string; message: string; element_key?: string }
     >({
       query: ({ sessionId, ...body }) => ({ url: '/companion/sessions/' + sessionId + '/explain', method: 'POST', body }),
     }),
@@ -224,6 +226,7 @@ export const safeQuestApi = createApi({
       query: (sessionId) => ({ url: '/family/sessions/' + sessionId + '/complete', method: 'POST' }),
       invalidatesTags: (_result, _error, sessionId) => [{ type: 'FamilySession', id: sessionId }, 'FamilyCatalog'],
     }),
+    getFamilyReview: build.query<FamilyReview, number | string>({ query: (sessionId) => '/family/sessions/' + sessionId + '/review', providesTags: (_result, _error, sessionId) => [{ type: 'FamilySession', id: sessionId }] }),
     getConversationGuide: build.query<ConversationGuide, number | string>({
       query: (sessionId) => '/family/sessions/' + sessionId + '/conversation-guide',
       providesTags: (_result, _error, sessionId) => [{ type: 'FamilySession', id: sessionId }],
@@ -538,6 +541,7 @@ export const {
   useRequestSharedCompanionFeedbackMutation,
   useCompleteFamilySessionMutation,
   useGetConversationGuideQuery,
+  useGetFamilyReviewQuery,
   useGetSummaryQuery,
   useCreateSimulationMutation,
   useListSimulationsQuery,

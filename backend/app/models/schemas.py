@@ -104,6 +104,7 @@ class FamilySessionCommandType(str, Enum):
 
 
 class ParticipantPresenceStatus(str, Enum):
+    PENDING = "pending"
     ONLINE = "online"
     OFFLINE = "offline"
     LEFT = "left"
@@ -458,6 +459,47 @@ class ConversationGuideOut(BaseModel):
     generated_at: str
 
 
+class FamilyReviewItemOut(BaseModel):
+    element_key: str
+    annotation_ids: list[int] = Field(default_factory=list)
+    tactic_tag: str
+    text: str
+    explanation: str | None = None
+    identified: bool = False
+    selected_for_revisit: bool = False
+    shared_reasoning: str | None = None
+
+
+class FamilyReviewAttemptOut(BaseModel):
+    element_key: str
+    claim: Literal["red_flag", "not_red_flag", "unsure"]
+    disposition: Literal["identified", "revisit", "safe_selection"]
+    reasoning: str | None = None
+    shared: bool = False
+
+
+class FamilyReviewDiscussionOut(BaseModel):
+    responder_role: str
+    text: str
+    element_key: str | None = None
+    checkpoint_message_id: int | None = None
+
+
+class FamilyReviewOut(BaseModel):
+    session_ref: str
+    total_annotated_concerns: int
+    identified_concerns: int
+    unresolved_concerns: int
+    concerns: list[FamilyReviewItemOut] = Field(default_factory=list)
+    attempts: list[FamilyReviewAttemptOut] = Field(default_factory=list)
+    non_concerning_selections: list[FamilyReviewAttemptOut] = Field(default_factory=list)
+    shared_discussion: list[FamilyReviewDiscussionOut] = Field(default_factory=list)
+    completed_checkpoints: list[FamilyReviewDiscussionOut] = Field(default_factory=list)
+    suggested_next_steps: list[str] = Field(default_factory=list)
+    practice_areas: list[str] = Field(default_factory=list)
+
+
+
 # ---------------------------------------------------------------------------
 # Versioned family session, scene, and discovery contracts
 # ---------------------------------------------------------------------------
@@ -766,7 +808,7 @@ class FlagAttemptRequest(BaseModel):
 
 
 class HintRequest(BaseModel):
-    element_key: str = Field(min_length=1, max_length=255)
+    element_key: str | None = Field(default=None, min_length=1, max_length=255)
     client_command_id: str = Field(min_length=8, max_length=128)
 
 
@@ -798,9 +840,11 @@ class FlagAttemptOut(BaseModel):
 
 
 class HintOut(BaseModel):
-    element_key: str
-    hint_level: int = Field(ge=1)
-    hint: str
+    element_key: str | None = None
+    hint_level: int = Field(default=0, ge=0)
+    hint: str | None = None
+    no_hint: bool = False
+    message: str | None = None
 
 
 class FamilySessionEventOut(BaseModel):
@@ -870,6 +914,7 @@ FamilySessionDetailOut.model_rebuild()
 
 class FamilyRelationshipInvitationCreateRequest(BaseModel):
     learner_email: str = Field(min_length=3, max_length=255)
+    family_role: FamilyRole = FamilyRole.CAREGIVER
     delivery_label: str | None = Field(default=None, max_length=120)
 
 
@@ -881,6 +926,9 @@ class FamilyRelationshipInvitationOut(BaseModel):
     delivery_label: str | None = None
     token: str | None = None
     short_code: str | None = None
+    inviter_role: FamilyRole = FamilyRole.CAREGIVER
+    intended_role: FamilyRole = FamilyRole.LEARNER
+    direction: Literal["sent", "received"] | None = None
 
 
 class FamilyRelationshipInvitationAcceptRequest(BaseModel):
@@ -890,6 +938,8 @@ class FamilyRelationshipInvitationAcceptRequest(BaseModel):
 class FamilyRelationshipOut(BaseModel):
     relationship_ref: str
     role: FamilyRole
+    viewer_role: FamilyRole | None = None
+    member_role: FamilyRole | None = None
     member_ref: str
     member_display_name: str
     member_avatar_url: str | None = None
@@ -1058,6 +1108,7 @@ class CompanionCheckpointOut(BaseModel):
 
 class CompanionExplainRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10_000)
+    element_key: str | None = Field(default=None, min_length=1, max_length=255)
 
 class CompanionExplainOut(BaseModel):
     response_text: str

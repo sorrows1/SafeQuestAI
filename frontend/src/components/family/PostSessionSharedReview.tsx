@@ -29,6 +29,7 @@ import type {
   ConversationGuide,
   FamilyCaregiverComment,
   ValidatedFinding,
+  FamilyReview,
 } from '@/types';
 
 interface PostSessionSharedReviewProps {
@@ -39,6 +40,9 @@ interface PostSessionSharedReviewProps {
   checkpointResponses?: CheckpointResponse[];
   caregiverComments?: FamilyCaregiverComment[];
   conversationGuide?: ConversationGuide | null;
+  review?: FamilyReview | null;
+  reviewLoading?: boolean;
+  reviewError?: boolean;
   onReturnToLibrary?: () => void;
   onContinueLater?: () => void;
   onOpenHelpResources?: () => void;
@@ -52,6 +56,9 @@ export function PostSessionSharedReview({
   checkpointResponses = [],
   caregiverComments = [],
   conversationGuide = null,
+  review = null,
+  reviewLoading = false,
+  reviewError = false,
   onReturnToLibrary,
   onContinueLater,
   onOpenHelpResources,
@@ -151,7 +158,7 @@ export function PostSessionSharedReview({
               Identified Safety Tactics & Observations ({validatedFindings.length})
             </Typography>
 
-            {validatedFindings.length > 0 ? (
+            {reviewLoading ? <Alert severity="info">Loading persisted review…</Alert> : reviewError ? <Alert severity="error">Review is temporarily unavailable.</Alert> : review ? <Stack spacing={1}><Typography variant="body2">Annotated concerns: {review.total_annotated_concerns} · Identified: {review.identified_concerns} · To revisit: {review.unresolved_concerns}</Typography>{review.concerns.filter((c) => c.identified || c.selected_for_revisit).map((c) => <Paper key={c.element_key} sx={{ p: 2 }}><Typography variant="subtitle2">{c.tactic_tag.replace(/_/g, " ")}</Typography><Typography variant="body2">{c.text}</Typography>{c.shared_reasoning && <Typography variant="caption">Shared reflection: {c.shared_reasoning}</Typography>}</Paper>)}</Stack> : validatedFindings.length > 0 ? (
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
                 {validatedFindings.map((finding, idx) => (
                   <Paper
@@ -188,10 +195,14 @@ export function PostSessionSharedReview({
               </Box>
             ) : (
               <Alert severity="info" sx={{ borderRadius: 2.5 }}>
-                No red flags were explicitly tagged during this session, but reading through the interaction together builds valuable safety intuition.
+                No persisted concern summary is available yet. You can revisit the scene together.
               </Alert>
             )}
           </Stack>
+        )}
+
+        {review && (review.completed_checkpoints.length > 0 || review.shared_discussion.length > 0 || review.suggested_next_steps.length > 0 || review.practice_areas.length > 0) && (
+          <Paper sx={{ p: 2 }}><Typography variant="subtitle2">Discussion and next steps</Typography><Typography variant="body2">Completed checkpoints: {review.completed_checkpoints.length}</Typography>{[...review.completed_checkpoints.map((item) => item.text), ...review.shared_discussion.map((item) => item.text), ...review.suggested_next_steps, ...review.practice_areas].map((item, i) => <Typography key={i} variant="body2">• {item}</Typography>)}</Paper>
         )}
 
         {/* Tab 1: Shareable Excerpts & Discussion Prompts */}

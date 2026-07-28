@@ -9,7 +9,7 @@ export function SafetyPrivacySection() {
   return (
     <Box id="safety-privacy" sx={{ py: { xs: 8, md: 12 }, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)' }}>
       <Container maxWidth="lg">
-        <Stack spacing={2} sx={{ textAlign: 'center', mb: 6 }}>
+        <Stack spacing={2} sx={{ textAlign: 'center', mb: 6, alignItems: 'center' }}>
           <Typography variant="overline" color="primary" sx={{ fontWeight: 800, letterSpacing: '0.1em' }}>
             SAFETY & PRIVACY FIRST
           </Typography>

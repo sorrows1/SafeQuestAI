@@ -24,6 +24,7 @@ import type {
   FamilyCaregiverComment,
   FamilyMessage,
   ValidatedFinding,
+  FamilyReview,
 } from '@/types';
 import { PostSessionSharedReview } from './PostSessionSharedReview';
 
@@ -47,6 +48,9 @@ interface Props {
   checkpointResponses?: CheckpointResponse[];
   caregiverComments?: FamilyCaregiverComment[];
   conversationGuide?: ConversationGuide | null;
+  review?: FamilyReview | null;
+  reviewLoading?: boolean;
+  reviewError?: boolean;
 }
 
 export function CompletionReviewModal({
@@ -67,6 +71,9 @@ export function CompletionReviewModal({
   checkpointResponses = [],
   caregiverComments = [],
   conversationGuide = null,
+  review = null,
+  reviewLoading = false,
+  reviewError = false,
 }: Props) {
   return (
     <Dialog open={open} onClose={onCloseReviewScene} maxWidth="md" fullWidth slotProps={{ paper: { sx: { borderRadius: 3, p: 1 } } }}>
@@ -121,7 +128,12 @@ export function CompletionReviewModal({
                   Flagged Red Flags & Tactics ({highlightedMessages.length})
                 </Typography>
 
-                {highlightedMessages.length > 0 ? (
+                {reviewLoading ? <Alert severity="info">Loading persisted review…</Alert> : reviewError ? <Alert severity="error">The review could not be loaded. Try again shortly.</Alert> : review ? (
+                  <Stack spacing={1}>
+                    <Typography variant="body2">Annotated concerns: {review.total_annotated_concerns} · Identified: {review.identified_concerns} · Still to revisit: {review.unresolved_concerns}</Typography>
+                    {review.concerns.filter((c) => c.identified || c.selected_for_revisit).map((c) => <Paper key={c.element_key} sx={{ p: 1.5 }}><Typography variant="subtitle2">{c.tactic_tag.replace(/_/g, ' ')}</Typography><Typography variant="body2">{c.text}</Typography>{c.shared_reasoning && <Typography variant="caption">Shared reflection: {c.shared_reasoning}</Typography>}</Paper>)}
+                  </Stack>
+                ) : highlightedMessages.length > 0 ? (
                   <Stack spacing={1} sx={{ maxHeight: 180, overflowY: 'auto', pr: 0.5 }}>
                     {highlightedMessages.map((msg) => (
                       <Paper
@@ -159,7 +171,7 @@ export function CompletionReviewModal({
                 ) : (
                   <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'action.hover', fontStyle: 'italic', textAlign: 'center' }}>
                     <Typography variant="body2" color="text.secondary">
-                      No specific red flags were highlighted in this attempt, but discussing the scenario log together helps build awareness.
+                      No persisted concern summary is available yet. You can revisit the scene together.
                     </Typography>
                   </Paper>
                 )}
@@ -206,6 +218,7 @@ export function CompletionReviewModal({
                   {actionError}
                 </Alert>
               )}
+              {review && (review.completed_checkpoints.length > 0 || review.shared_discussion.length > 0 || review.suggested_next_steps.length > 0 || review.practice_areas.length > 0) && <Paper sx={{ p: 2 }}><Typography variant="subtitle2">Discussion and next steps</Typography><Typography variant="body2">Completed checkpoints: {review.completed_checkpoints.length}</Typography>{[...review.completed_checkpoints.map((item) => item.text), ...review.shared_discussion.map((item) => item.text), ...review.suggested_next_steps, ...review.practice_areas].map((item, i) => <Typography key={i} variant="body2">• {item}</Typography>)}</Paper>}
             </Stack>
           </DialogContent>
 

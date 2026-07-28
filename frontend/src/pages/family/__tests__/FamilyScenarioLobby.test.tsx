@@ -160,7 +160,6 @@ describe('FamilyScenarioLobby Container', () => {
     renderLobby('/family/scenarios');
     fireEvent.click(screen.getByRole('button', { name: /start scenario for a private prize/i }));
     fireEvent.click(screen.getByRole('button', { name: /start practice/i }));
-    fireEvent.click(screen.getByRole('button', { name: /start session/i }));
 
     await waitFor(() => {
       expect(mocked.create).toHaveBeenCalledWith({ transcriptId: 1, relationship_ref: undefined });

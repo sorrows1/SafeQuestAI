@@ -265,7 +265,7 @@ export interface PresentationToken {
   account_age_label?: string; trade_link_label?: string; badges?: string[]; stats?: string[]; bio?: string;
   panel_kind?: "profile" | "attachment" | "linked_site" | "listing" | "thread";
 }
-export interface SceneActor { actor_key: string; display_name: string; avatar_label?: string | null; }
+export interface SceneActor { actor_key: string; display_name: string; avatar_label?: string | null; role?: 'initiator' | 'respondent' | 'learner' | 'caregiver' | 'ai_companion' | 'simulated_character' | null; }
 export interface ElementRelationshipTarget { relationship: ElementRelationship; target_element_key: string; }
 export type FlagValidationResult = "pending" | "validated" | "not_a_flag" | "needs_support";
 export type FindingVisibility = "private" | "shared";
@@ -313,17 +313,22 @@ export interface FamilySessionParticipant {
 
 export interface FamilyRelationshipInvitation {
   invitation_ref: string;
-  status: 'pending' | 'accepted' | 'declined' | 'revoked';
+  status: 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired';
   expires_at: string;
   created_at: string;
   delivery_label?: string | null;
   token?: string | null;
   short_code?: string | null;
+  inviter_role?: FamilyRole;
+  intended_role?: FamilyRole;
+  direction?: 'sent' | 'received' | null;
 }
 
 export interface FamilyRelationship {
   relationship_ref: string;
   role: FamilyRole;
+  viewer_role?: FamilyRole | null;
+  member_role?: FamilyRole | null;
   member_ref: string;
   member_display_name: string;
   member_avatar_url?: string | null;
@@ -544,7 +549,7 @@ export interface FlagAttempt {
   progress: SessionProgress;
 }
 
-export interface HintResponse { element_key: string; hint_level: number; hint: string; }
+export interface HintResponse { element_key: string | null; hint_level: number; hint: string | null; no_hint: boolean; message: string | null; }
 
 
 export interface FamilySessionEvent {
@@ -607,6 +612,11 @@ export interface ConversationGuide {
   completed_together: boolean;
   generated_at: string;
 }
+
+export interface FamilyReviewConcern { element_key: string; annotation_ids: number[]; tactic_tag: string; text: string; explanation: string | null; identified: boolean; selected_for_revisit: boolean; shared_reasoning: string | null; }
+export interface FamilyReviewAttempt { element_key: string; claim: "red_flag" | "not_red_flag" | "unsure"; disposition: "identified" | "revisit" | "safe_selection"; reasoning: string | null; shared: boolean; }
+export interface FamilyReviewDiscussion { responder_role: string; text: string; element_key?: string | null; checkpoint_message_id?: number | null; }
+export interface FamilyReview { session_ref: string; total_annotated_concerns: number; identified_concerns: number; unresolved_concerns: number; attempts: FamilyReviewAttempt[]; concerns: FamilyReviewConcern[]; non_concerning_selections: FamilyReviewAttempt[]; completed_checkpoints: FamilyReviewDiscussion[]; shared_discussion: FamilyReviewDiscussion[]; suggested_next_steps: string[]; practice_areas: string[]; }
 
 export interface SupportResource {
   label: string;

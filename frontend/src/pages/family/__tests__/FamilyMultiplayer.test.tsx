@@ -192,6 +192,16 @@ describe('Phase 8 —  Multiplayer & Post-Session Review UI', () => {
       expect(screen.queryByText(/Score/i)).toBeNull();
       expect(screen.queryByText(/Accuracy/i)).toBeNull();
     });
+
+    it('renders persisted review totals, unresolved concerns, reasoning, checkpoints and next steps', () => {
+      render(<ThemeProvider theme={theme}><PostSessionSharedReview review={{ session_ref: 's1', attempts: [], total_annotated_concerns: 3, identified_concerns: 3, unresolved_concerns: 1, concerns: [{ element_key: 'e1', annotation_ids: [1], tactic_tag: 'BOUNDARY_PRESSURE', text: 'A pressured request', explanation: 'Notice pressure', identified: true, selected_for_revisit: true, shared_reasoning: 'We would pause and ask for help.' }], non_concerning_selections: [], completed_checkpoints: [{ responder_role: 'child', checkpoint_message_id: 1, text: 'We discussed this together.' }, { responder_role: 'parent', checkpoint_message_id: 2, text: 'We paused together.' }], shared_discussion: [{ responder_role: 'caregiver', text: 'We discussed this together.' }], suggested_next_steps: ['Talk to a trusted adult.'], practice_areas: ['Privacy boundaries'] }} /></ThemeProvider>);
+      expect(screen.getByText(/Annotated concerns: 3 · Identified: 3 · To revisit: 1/)).toBeTruthy();
+      expect(screen.getByText('A pressured request')).toBeTruthy();
+      expect(screen.getByText(/We would pause and ask for help/)).toBeTruthy();
+      expect(screen.getByText(/Completed checkpoints: 2/)).toBeTruthy();
+      expect(screen.getByText(/Talk to a trusted adult/)).toBeTruthy();
+      expect(screen.queryByText(/No red flags were explicitly tagged/)).toBeNull();
+    });
   });
 
   describe('FamilyGameplayView Multiplayer Integration', () => {

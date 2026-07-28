@@ -8,9 +8,9 @@ from app.telemetry import sanitize_attributes
 
 def test_release_schema_head_matches_startup_guard_without_create_all() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["20260727_join_code"]
+    assert script.get_heads() == ["20260728_family_invitation_roles"]
     startup = Path("app/main.py").read_text(encoding="utf-8")
-    assert "EXPECTED_SCHEMA_REVISION = \"20260727_join_code\"" in startup
+    assert "EXPECTED_SCHEMA_REVISION = \"20260728_family_invitation_roles\"" in startup
     assert ".create_all(" not in startup
     lifecycle_migration = Path("alembic/versions/20260727_phase6_session_lifecycle.py").read_text(encoding="utf-8")
     assert "_widen_alembic_version_column()" in lifecycle_migration

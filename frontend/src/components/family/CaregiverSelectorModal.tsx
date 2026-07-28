@@ -44,7 +44,7 @@ export const CaregiverSelectorModal: React.FC<CaregiverSelectorModalProps> = ({
 }) => {
   const { data: relationships, isLoading } = useGetFamilyRelationshipsQuery(undefined, { skip: !open });
 
-  const activeRelationships = relationships?.filter((r) => r.status === 'active') || [];
+  const activeRelationships = relationships?.filter((r) => r.status === 'active' && r.viewer_role === 'learner' && r.member_role === 'caregiver') || [];
 
   // Default selection: if active relationships exist, select the first one; otherwise solo mode
   const [selectedRef, setSelectedRef] = useState<string | 'solo'>(() => {
@@ -93,39 +93,6 @@ export const CaregiverSelectorModal: React.FC<CaregiverSelectorModalProps> = ({
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            {/* Solo Companion Mode Option */}
-            <Card
-              variant="outlined"
-              onClick={() => setSelectedRef('solo')}
-              sx={{
-                cursor: 'pointer',
-                borderRadius: 2,
-                borderColor: selectedRef === 'solo' ? 'primary.main' : 'divider',
-                borderWidth: selectedRef === 'solo' ? 2 : 1,
-                bgcolor: selectedRef === 'solo' ? 'action.selected' : 'background.paper',
-                transition: 'all 0.2s ease',
-                '&:hover': { borderColor: 'primary.light' },
-              }}
-            >
-              <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, '&:last-child': { pb: 2 } }}>
-                <Radio checked={selectedRef === 'solo'} value="solo" onChange={() => setSelectedRef('solo')} />
-                <Avatar sx={{ bgcolor: 'info.main', color: 'common.white' }}>
-                  <SmartToyOutlinedIcon />
-                </Avatar>
-                <Box sx={{ flexGrow: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                      Practice solo with Companion
-                    </Typography>
-                    <Chip label="Private" size="small" color="info" variant="outlined" />
-                  </Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Guided practice with SafeQuest AI Guide. Your caregiver won't be notified or required for checkpoints.
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-
             {/* Linked Family Members */}
             {activeRelationships.length > 0 ? (
               activeRelationships.map((rel: FamilyRelationship) => {
@@ -191,7 +158,7 @@ export const CaregiverSelectorModal: React.FC<CaregiverSelectorModalProps> = ({
                 }
                 sx={{ borderRadius: 2 }}
               >
-                No linked family members yet. You can practice solo or invite a family member to connect!
+                No eligible caregiver is linked yet. Invite a caregiver to start shared practice.
               </Alert>
             )}
           </Box>

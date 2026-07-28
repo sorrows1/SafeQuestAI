@@ -128,12 +128,13 @@ function formatTimestamp(raw: string): string {
       // fall through to raw
     }
   }
-  // Otherwise return as-is (already a formatted label).
-  return raw;
+  // Never expose raw server timestamps; use a neutral human label for unknown semantics.
+  return "Earlier";
 }
 
 export function ElementTimestamp({ presentation, timestamp }: { presentation: PresentationToken; timestamp?: string | null }) {
-  const label = presentation.timestamp_label ?? (timestamp ? formatTimestamp(timestamp) : null);
+  const supplied = presentation.timestamp_label ?? timestamp ?? null;
+  const label = supplied && /^\d{4}-\d{2}-\d{2}T/.test(supplied) ? formatTimestamp(supplied) : presentation.timestamp_label ?? (timestamp ? formatTimestamp(timestamp) : null);
   return label ? (
     <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.725rem", opacity: 0.85, whiteSpace: "nowrap" }}>
       {label}

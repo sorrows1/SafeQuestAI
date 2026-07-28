@@ -25,6 +25,8 @@ import {
   Typography,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { FamilyAppShell } from '@/components/family/FamilyAppShell';
+import { InviteFamilyMemberModal } from '@/components/family/InviteFamilyMemberModal';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
 import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
@@ -50,9 +52,9 @@ import {
 
 export function CaregiverHub() {
   const navigate = useNavigate();
-  const { data: invitations = [], refetch: refetchInvitations } = useGetFamilyInvitationsQuery();
-  const { data: relationships = [], refetch: refetchRelationships } = useGetFamilyRelationshipsQuery();
-  const { data: authorizedSessions = [], refetch: refetchSessions } = useGetAuthorizedFamilySessionsQuery();
+  const { data: invitations = [], isLoading: invitationsLoading, isError: invitationsError, refetch: refetchInvitations } = useGetFamilyInvitationsQuery();
+  const { data: relationships = [], isLoading: relationshipsLoading, isError: relationshipsError, refetch: refetchRelationships } = useGetFamilyRelationshipsQuery();
+  const { data: authorizedSessions = [], isLoading: sessionsLoading, isError: sessionsError, refetch: refetchSessions } = useGetAuthorizedFamilySessionsQuery(undefined, { pollingInterval: 10000 });
   const [acceptInvitation] = useAcceptFamilyInvitationAsRecipientMutation();
   const [declineInvitation] = useDeclineFamilyInvitationAsRecipientMutation();
   const [revokeInvitation] = useRevokeFamilyInvitationMutation();
@@ -63,6 +65,7 @@ export function CaregiverHub() {
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     type: 'revoke' | 'block' | 'unlink';
     ref: string;
@@ -72,8 +75,8 @@ export function CaregiverHub() {
   const currentUserEmail = ''; // Will be set from auth context if available
 
   // Separate sent vs received invitations
-  const sentInvitations = invitations.filter((inv: any) => inv.token || inv.short_code);
-  const receivedInvitations = invitations.filter((inv: any) => !inv.token && !inv.short_code);
+  const sentInvitations = invitations.filter((inv: any) => inv.direction === 'sent');
+  const receivedInvitations = invitations.filter((inv: any) => inv.direction === 'received');
 
   const handleCopy = (text: string, label: string) => {
     void navigator.clipboard.writeText(text);
@@ -156,6 +159,7 @@ export function CaregiverHub() {
   ];
 
   return (
+    <FamilyAppShell>
     <Container maxWidth="md" sx={{ py: { xs: 2, sm: 4 } }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
         <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: 'primary.main', color: 'primary.contrastText', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -164,6 +168,7 @@ export function CaregiverHub() {
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800 }}>Caregiver Hub</Typography>
           <Typography variant="caption" color="text.secondary">Manage family connections and practice sessions</Typography>
+          <Button size="small" variant="contained" startIcon={<PersonAddAlt1Icon />} onClick={() => setInviteModalOpen(true)} sx={{ mt: 1, borderRadius: 2, textTransform: 'none' }}>Invite family member</Button>
         </Box>
       </Box>
 
@@ -187,6 +192,8 @@ export function CaregiverHub() {
       {/* Tab 0: Family Members */}
       {tabIndex === 0 && (
         <Stack spacing={2}>
+          {relationshipsLoading && <Alert severity="info">Loading family members…</Alert>}
+          {relationshipsError && <Alert severity="error" action={<Button onClick={() => void refetchRelationships()}>Retry</Button>}>Could not load family members.</Alert>}
           {relationships.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3 }} elevation={0} variant="outlined">
               <GroupIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
@@ -210,7 +217,7 @@ export function CaregiverHub() {
                         {rel.member_display_name ?? 'Family Member'}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {rel.role === 'caregiver' ? 'Your caregiver' : 'Your family learner'} · Connected {new Date(rel.accepted_at).toLocaleDateString()}
+                        {rel.member_role === 'caregiver' ? 'Caregiver' : rel.member_role === 'learner' ? 'Learner' : 'Family member'} · Connected {new Date(rel.accepted_at).toLocaleDateString()}
                       </Typography>
                     </Box>
                     <Chip
@@ -264,6 +271,8 @@ export function CaregiverHub() {
       {/* Tab 1: Invitations */}
       {tabIndex === 1 && (
         <Stack spacing={2}>
+          {invitationsLoading && <Alert severity="info">Loading invitations…</Alert>}
+          {invitationsError && <Alert severity="error" action={<Button onClick={() => void refetchInvitations()}>Retry</Button>}>Could not load invitations.</Alert>}
           {invitations.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3 }} elevation={0} variant="outlined">
               <MailOutlineOutlinedIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
@@ -297,7 +306,7 @@ export function CaregiverHub() {
                           </Box>
                           <Chip
                             size="small"
-                            label={inv.status}
+                            label={inv.status === 'expired' ? 'Expired' : inv.status}
                             color={inv.status === 'pending' ? 'warning' : inv.status === 'accepted' ? 'success' : 'default'}
                             variant="outlined"
                             sx={{ fontWeight: 700, textTransform: 'capitalize' }}
@@ -354,7 +363,7 @@ export function CaregiverHub() {
                           </Box>
                           <Chip
                             size="small"
-                            label={inv.status}
+                            label={inv.status === 'expired' ? 'Expired' : inv.status}
                             color={inv.status === 'pending' ? 'warning' : inv.status === 'accepted' ? 'success' : 'default'}
                             variant="outlined"
                             sx={{ fontWeight: 700, textTransform: 'capitalize' }}
@@ -408,6 +417,8 @@ export function CaregiverHub() {
       {/* Tab 2: Active Practice Sessions */}
       {tabIndex === 2 && (
         <Stack spacing={2}>
+          {sessionsLoading && <Alert severity="info">Loading practice sessions…</Alert>}
+          {sessionsError && <Alert severity="error" action={<Button onClick={() => void refetchSessions()}>Retry</Button>}>Could not load practice sessions.</Alert>}
           {authorizedSessions.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3 }} elevation={0} variant="outlined">
               <PlayArrowIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
@@ -428,16 +439,16 @@ export function CaregiverHub() {
                     </Box>
                     <Box sx={{ flexGrow: 1 }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                        Session #{session.transcript_id}
+                        {session.state === 'waiting_for_participants' ? 'Family invitation awaiting join' : `Session #${session.transcript_id}`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Role: {session.role} · State: {session.state}
+                        {session.role === 'caregiver' && session.state === 'waiting_for_participants' ? 'Invitation awaiting your join code' : `Role: ${session.role} · State: ${session.state}`}
                       </Typography>
                     </Box>
-                    <Chip size="small" label={session.state} variant="outlined" sx={{ fontWeight: 700, textTransform: 'capitalize' }} />
+                    <Chip size="small" label={session.state === 'waiting_for_participants' ? 'Awaiting join' : session.state} variant="outlined" sx={{ fontWeight: 700, textTransform: 'capitalize' }} />
                   </Stack>
                 </CardContent>
-                {session.state !== 'completed' && session.state !== 'expired' && session.state !== 'abandoned' && (
+                {session.state !== 'completed' && session.state !== 'expired' && session.state !== 'abandoned' && !(session.role === 'caregiver' && session.state === 'waiting_for_participants') && (
                   <CardActions sx={{ px: 2, pb: 2 }}>
                     <Button
                       variant="contained"
@@ -534,5 +545,7 @@ export function CaregiverHub() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Container>
+    <InviteFamilyMemberModal open={inviteModalOpen} onClose={() => setInviteModalOpen(false)} />
+    </FamilyAppShell>
   );
 }

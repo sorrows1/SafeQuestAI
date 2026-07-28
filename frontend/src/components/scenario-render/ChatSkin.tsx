@@ -9,7 +9,8 @@ import { ActorAvatar, ElementAttachment, ElementLinkPreview, ElementTimestamp, I
 import { isCompleted, isSelected, type ScenarioSkinProps } from "./types";
 
 export function ChatSkin({ scene, selection, onSelect, readOnly, testId }: ScenarioSkinProps) {
-  const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor.display_name]));
+  const actors = new Map((scene.actors ?? []).map((actor) => [actor.actor_key, actor]));
+  const actorOrder = Array.from(new Set(scene.elements.map((element) => element.actor_key).filter(Boolean)));
 
   // Extract presentation metadata if present
   const firstElement = scene.elements[0];
@@ -100,9 +101,14 @@ export function ChatSkin({ scene, selection, onSelect, readOnly, testId }: Scena
             <Typography variant="body2">No messages in this chat session.</Typography>
           </Box>
         ) : (
-          scene.elements.map((element) => {
-            const label = actors.get(element.actor_key ?? "") ?? element.presentation.display_label ?? "Scenario participant";
-            const isRight = element.presentation.alignment === "end";
+          scene.elements.map((element, index) => {
+            const actor = actors.get(element.actor_key ?? "");
+            const label = actor?.display_name ?? element.presentation.display_label ?? "Scenario participant";
+            const role = actor?.role ?? (element.actor_key?.toLowerCase().includes('respondent') ? 'respondent' : element.actor_key?.toLowerCase().includes('initiator') ? 'initiator' : null);
+            const isRight = role === 'respondent' || role === 'caregiver' || role === 'ai_companion' ? true : role === 'initiator' || role === 'learner' ? false : actorOrder.indexOf(element.actor_key ?? '') > 0;
+            const previous = scene.elements[index - 1];
+            const grouped = Boolean(previous && previous.actor_key === element.actor_key);
+            const timestampLabel = element.presentation.timestamp_label ?? (grouped ? undefined : (previous && previous.actor_key !== element.actor_key ? '1 minute later' : 'Now'));
             const isSystem = element.semantic_role === "system" || Boolean((element.presentation as Record<string, unknown>).is_system);
 
             if (isSystem) {
@@ -147,6 +153,8 @@ export function ChatSkin({ scene, selection, onSelect, readOnly, testId }: Scena
                   speakerLabel={label}
                   side={isRight ? "right" : "left"}
                   pace="normal"
+                  showAvatar={!grouped}
+                  showLabel={!grouped}
                   selectable={element.selectable}
                 />
               );
@@ -173,7 +181,7 @@ export function ChatSkin({ scene, selection, onSelect, readOnly, testId }: Scena
                     {body}
                     {/* Timestamp rendered below MessageBubble (which handles its own avatar + label) */}
                     <Box sx={{ display: "flex", justifyContent: isRight ? "flex-end" : "flex-start", mt: 0.25 }}>
-                      <ElementTimestamp presentation={element.presentation} timestamp={element.timestamp} />
+                      <ElementTimestamp presentation={{ ...element.presentation, timestamp_label: timestampLabel }} timestamp={grouped ? undefined : element.timestamp} />
                     </Box>
                   </Box>
                 </Box>

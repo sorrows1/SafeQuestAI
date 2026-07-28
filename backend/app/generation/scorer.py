@@ -96,8 +96,60 @@ def scene_quality_issues(draft: Any, modifier: DifficultyModifier | None = None)
     if len(targets) and len(set(tag_counts)) < min(modifier.min_distinct_tactics, len(set(targets))) and not repeated_with_justification:
         issues.append(QualityIssue("TACTIC_DIVERSITY", "Use distinct primary tactics across red-flag targets where the target budget allows, or record a repeat justification."))
 
+    # Edited annotations must remain semantically grounded in their target wording.
+    def _supports_tactic(annotation: Any, element: Any) -> bool:
+        if element is None:
+            return True
+        
+        # 1. Safely parse element text and presentation data
+        texts = [getattr(element, "content", "") or ""]
+        presentation = getattr(element, "presentation", None)
+        if isinstance(presentation, dict):
+            texts.extend(str(v) for v in presentation.values() if isinstance(v, str))
+            texts.extend(str(i) for v in presentation.values() if isinstance(v, list) for i in v)
+        elif presentation is not None:
+            texts.extend(str(v) for v in getattr(presentation, "__dict__", {}).values() if isinstance(v, str))
+            texts.extend(str(i) for v in getattr(presentation, "__dict__", {}).values() if isinstance(v, list) for i in v)
+            
+        content_text = " ".join(texts).casefold()
+        content_tokens = set(re.findall(r"[a-z]+", content_text))
+        
+        # SAFEGUARD: Fallback to empty string for safe casing
+        tactic_tag_lower = (getattr(annotation, "tactic_tag", "") or "").casefold()
+        tag_tokens = [token for token in re.findall(r"[a-z]+", tactic_tag_lower) if len(token) > 3]
+        
+        # 2. Extract explanation and hint text safely
+        annotation_texts = [getattr(annotation, "explanation", "") or ""]
+        if hasattr(annotation, "tiered_hints") and annotation.tiered_hints:
+            annotation_texts.extend(annotation.tiered_hints)
+            
+        explanation_text = " ".join(annotation_texts).casefold()
+        explanation_tokens = [token for token in re.findall(r"[a-z]+", explanation_text) if len(token) > 3]
+        
+        combined_annotation_tokens = tag_tokens + explanation_tokens
+        
+        # Match 1: Exact token intersection
+        if set(combined_annotation_tokens) & content_tokens:
+            return True
+            
+        # Match 2: Substring match (Annotation tokens inside Content string)
+        for token in combined_annotation_tokens:
+            if token in content_text:
+                return True
+                
+        # Match 3: Dual-direction substring match (Content tokens inside Annotation string)
+        content_long_tokens = [t for t in content_tokens if len(t) > 3]
+        for token in content_long_tokens:
+            if token in explanation_text or token in tactic_tag_lower:
+                return True
+                
+        return False
+
     allowed = set(TACTIC_TAGS_BY_CATEGORY[draft.category])
     for annotation in draft.annotations:
+        element = elements.get(annotation.element_key)
+        if element is not None and not _supports_tactic(annotation, element):
+            issues.append(QualityIssue("TACTIC_UNSUPPORTED", f"{annotation.element_key!r} wording no longer supports tactic {annotation.tactic_tag!r}; revise the text or annotation."))
         if annotation.tactic_tag not in allowed:
             issues.append(QualityIssue("INVALID_TACTIC_TAG", f"{annotation.tactic_tag!r} is not available for {draft.category.value}."))
         if not (annotation.explanation or "").strip():
