@@ -47,6 +47,7 @@ export type ClaimType = 'red_flag' | 'not_red_flag' | 'unsure';
 export interface FlagInspectorRailProps {
   scenarioTitle?: string;
   scenarioDescription?: string;
+  showContextCard?: boolean;
   messages: FamilyMessage[];
   highlightedMessageIds: number[];
   tagAssignments: Record<number, string>;
@@ -65,9 +66,54 @@ export interface FlagInspectorRailProps {
   children?: ReactNode;
 }
 
+export function ScenarioDescriptionCard({ scenarioDescription }: { scenarioDescription?: string }) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 2.5,
+        borderRadius: 3,
+        border: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+      }}
+    >
+      <Stack spacing={1.5}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
+          <InfoOutlinedIcon fontSize="small" />
+          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+            Scenario Description
+          </Typography>
+        </Box>
+        <Typography variant="body2" color="text.secondary">
+          {scenarioDescription || 'A reviewed situation for a calm family conversation.'}
+        </Typography>
+        <Box
+          sx={{
+            p: 1.5,
+            borderRadius: 2,
+            bgcolor: 'action.hover',
+            border: '1px solid',
+            borderColor: 'divider',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 1.25,
+          }}
+        >
+          <SecurityIcon color="primary" sx={{ fontSize: 20, mt: 0.2 }} />
+          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.primary' }}>
+            Spot manipulative red flags or pressure tactics in the scene. Click any message to evaluate it together with your Safety Companion.
+          </Typography>
+        </Box>
+      </Stack>
+    </Paper>
+  );
+}
+
 export function FlagInspectorRail({
-  scenarioTitle,
   scenarioDescription,
+  showContextCard = true,
   messages,
   highlightedMessageIds,
   tagAssignments,
@@ -137,49 +183,7 @@ export function FlagInspectorRail({
 
   return (
     <Stack spacing={2.5} sx={{ height: '100%' }}>
-      {/* 1. Context & Objective Card */}
-      <Paper
-        elevation={0}
-        sx={{
-          p: 2.5,
-          borderRadius: 3,
-          border: '1px solid',
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-        }}
-      >
-        <Stack spacing={1.5}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
-            <InfoOutlinedIcon fontSize="small" />
-            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-              {scenarioTitle || 'Scenario Objective'}
-            </Typography>
-          </Box>
-          {scenarioDescription && (
-            <Typography variant="body2" color="text.secondary">
-              {scenarioDescription}
-            </Typography>
-          )}
-          <Box
-            sx={{
-              p: 1.5,
-              borderRadius: 2,
-              bgcolor: 'action.hover',
-              border: '1px solid',
-              borderColor: 'divider',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 1.25,
-            }}
-          >
-            <SecurityIcon color="primary" sx={{ fontSize: 20, mt: 0.2 }} />
-            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.primary' }}>
-              Spot manipulative red flags or pressure tactics in the scene. Click any message to evaluate it together with your Safety Companion.
-            </Typography>
-          </Box>
-        </Stack>
-      </Paper>
+      {showContextCard && <ScenarioDescriptionCard scenarioDescription={scenarioDescription} />}
 
       {/* 2. Flag Inspector & Reasoning Composer Card */}
       <Paper
@@ -734,10 +738,11 @@ export function FlagInspectorRail({
               size="small"
               onClick={handleSendGeneralQuestion}
               disabled={!generalInput.trim() || isExplaining}
-              endIcon={<SendIcon sx={{ fontSize: '0.9rem !important' }} />}
+              startIcon={isExplaining ? <CircularProgress size={15} color="inherit" /> : undefined}
+              endIcon={!isExplaining ? <SendIcon sx={{ fontSize: '0.9rem !important' }} /> : undefined}
               sx={{ alignSelf: 'flex-end', borderRadius: '18px', textTransform: 'none', fontWeight: 600, minHeight: 36, px: 2 }}
             >
-              Ask Guide
+              {isExplaining ? 'Thinking…' : 'Ask Guide'}
             </Button>
           </Stack>
         </AccordionDetails>

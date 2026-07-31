@@ -117,19 +117,25 @@ def _write_or_count(db, kind: str, item, getter, upserter, dry_run: bool, counts
 
 
 def _fixture_scene_elements(fixture: dict) -> list[dict]:
-    """Return explicit scene elements or legacy-compatible message elements."""
+    """Return explicit scene elements or message elements with stable speaker actors."""
     if "scene_elements" in fixture:
         return fixture["scene_elements"]
+
+    def actor_key(speaker_label: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", speaker_label.casefold()).strip("-")
+        return f"speaker-{slug or 'unknown'}"
+
     return [{
         "element_key": f"message-{message['sequence']}",
         "element_type": "message",
         "source_message_sequence": message["sequence"],
         "sequence": message["sequence"],
         "content": message["content"],
+        "actor_key": actor_key(message["speaker_label"]),
         "presentation": {},
         "selectable": True,
         "accessible_label": f"Message from {message['speaker_label']}",
-        "semantic_role": "article",
+        "semantic_role": "system" if message["speaker_label"].casefold() == "system" else "article",
     } for message in fixture.get("messages", [])]
 
 

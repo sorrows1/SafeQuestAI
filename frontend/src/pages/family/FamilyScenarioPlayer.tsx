@@ -382,7 +382,9 @@ export function FamilyScenarioPlayer() {
       showNewContent={showNewContent}
       onJumpToNewest={jumpToNewest}
       checkpoint={checkpoint}
-      title="Family Safety Scenario"
+      title=""
+      scenarioDescription={detail?.scenario_description}
+      joinCode={session.companion_mode ? null : session.join_code_short}
       state={session.state}
       revealedCount={detail?.progress.content_progress ?? visibleMessages.length}
       totalCount={detail?.progress.content_total ?? visibleMessages.length}

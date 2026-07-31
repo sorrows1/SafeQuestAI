@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Box,
   Button,
+  CircularProgress,
   Chip,
   Paper,
   Stack,
@@ -134,10 +135,11 @@ export function CaregiverCommentSection({
                   variant="contained"
                   color="secondary"
                   disabled={isSubmitting || !inputText.trim()}
-                  endIcon={<SendIcon />}
+                  endIcon={!isSubmitting ? <SendIcon /> : undefined}
+                  startIcon={isSubmitting ? <CircularProgress size={15} color="inherit" /> : undefined}
                   sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
                 >
-                  Post Note
+                  {isSubmitting ? 'Posting…' : 'Post Note'}
                 </Button>
               </Box>
             </Stack>

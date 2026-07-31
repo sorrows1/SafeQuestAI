@@ -47,6 +47,22 @@ def test_prompt_audit_uses_exact_metadata_aware_templates():
     }
 
 
+def test_fixture_message_elements_reuse_actor_keys_per_speaker():
+    fixture = {
+        "messages": [
+            {"sequence": 0, "speaker_label": "Nova", "content": "Hello"},
+            {"sequence": 1, "speaker_label": "Riley", "content": "Hi"},
+            {"sequence": 2, "speaker_label": "Nova", "content": "Ready?"},
+        ]
+    }
+
+    elements = seed_content._fixture_scene_elements(fixture)
+
+    assert [element["actor_key"] for element in elements] == [
+        "speaker-nova", "speaker-riley", "speaker-nova"
+    ]
+
+
 def test_demo_fixtures_are_reviewed_unpublished_and_taxonomy_bounded():
     content = seed_content.load_seed_content()
     fixtures = {fixture["source_scenario_id"]: fixture for fixture in content.demo_fixtures}
@@ -57,6 +73,13 @@ def test_demo_fixtures_are_reviewed_unpublished_and_taxonomy_bounded():
         category = ScenarioCategory(fixture["category"])
         assert set(fixture["tactic_tags"]).issubset(TACTIC_TAGS_BY_CATEGORY[category])
         assert all(span["tactic_tag"] in TACTIC_TAGS_BY_CATEGORY[category] for span in fixture["red_flag_spans"])
+
+
+def test_demo_red_flags_target_initiator_style_messages_not_respondent_messages():
+    content = seed_content.load_seed_content()
+    for fixture in content.demo_fixtures:
+        messages = {message["sequence"]: message for message in fixture["messages"]}
+        assert all(messages[span["message_sequence"]]["speaker_label"] != "Riley" for span in fixture["red_flag_spans"])
 
 
 def test_runtime_layers_include_role_system_prompt_and_isolate_respondent():

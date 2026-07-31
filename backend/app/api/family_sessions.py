@@ -20,6 +20,7 @@ from app.family.guide_builder import build_conversation_guide
 from app.models.orm import (
     CheckpointResponse,
     CompanionExchange,
+    ContentScenario,
     ConversationGuide,
     CuratedMessage,
     CuratedSceneElement,
@@ -291,8 +292,38 @@ def _load_session(session_id: int | str, current_user: User, db: Session) -> Fam
         session = db.query(FamilySession).filter(
             (FamilySession.public_id == str(session_id))
         ).first()
-    if not session or not session_participant(session, current_user.id, db):
+    if not session:
         raise HTTPException(status_code=404, detail="Family session not found")
+
+    participant = db.query(FamilySessionParticipant).filter(
+        FamilySessionParticipant.family_session_id == session.id,
+        FamilySessionParticipant.user_id == current_user.id,
+        FamilySessionParticipant.left_at.is_(None),
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Family session not found")
+
+    # A caregiver selected through an accepted relationship is pre-authorized.
+    # Opening the session admits that caregiver without requiring a second code.
+    if participant.presence_status == "pending":
+        relationship = db.query(FamilyRelationship).filter(
+            FamilyRelationship.learner_user_id == session.child_user_id,
+            FamilyRelationship.caregiver_user_id == current_user.id,
+            FamilyRelationship.status == "active",
+            FamilyRelationship.revoked_at.is_(None),
+        ).first()
+        if session.parent_user_id != current_user.id or not relationship:
+            raise HTTPException(status_code=404, detail="Family session not found")
+        now = datetime.now(timezone.utc)
+        participant.last_seen_at = now
+        participant.last_heartbeat_at = now
+        participant.presence_expires_at = now + PRESENCE_TTL
+        participant.presence_status = "online"
+        _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED,
+            {"member_ref": member_ref(current_user.id), "role": "caregiver"}, actor_participant=participant)
+        _emit_event(db, session, FamilySessionEventType.PARTICIPANT_PRESENCE,
+            {"member_ref": member_ref(current_user.id), "status": "online"}, actor_participant=participant)
+        db.commit()
     return session
 
 
@@ -467,7 +498,13 @@ def _new_attempt(
     _emit_event(db, session, FamilySessionEventType.PARTICIPANT_JOINED, {"member_ref": member_ref(learner_id), "role": "learner"}, actor_participant=learner)
     _emit_event(db, session, FamilySessionEventType.PARTICIPANT_PRESENCE, {"member_ref": member_ref(learner_id), "status": "online"}, actor_participant=learner)
     if caregiver_id is not None:
-        db.add(FamilySessionParticipant(family_session_id=session.id, user_id=caregiver_id, role="caregiver", presence_status="pending"))
+        # An accepted relationship authorizes this participant up front. The
+        # caregiver is admitted when opening the session, so the learner still
+        # waits for them without requiring a second join-code step.
+        db.add(FamilySessionParticipant(
+            family_session_id=session.id, user_id=caregiver_id, role="caregiver",
+            presence_status="pending",
+        ))
     eligible = db.query(RedFlagSpan).filter(RedFlagSpan.transcript_id == transcript.id).count()
     db.add(SessionProgress(family_session_id=session.id, eligible_target_count=eligible, required_finding_count=eligible))
     return session
@@ -697,6 +734,12 @@ def _session_detail_out(session: FamilySession, current_user: User, db: Session)
         CuratedSceneElement.sequence > session.revealed_up_to,
     ).first() is not None
     progress = _progress_out(session, db)
+    scenario_snapshot = transcript.public_metadata_snapshot or {}
+    scenario_description = scenario_snapshot.get("description")
+    if not scenario_description and transcript.source_scenario_id:
+        content_scenario = db.get(ContentScenario, transcript.source_scenario_id)
+        scenario_description = (content_scenario.data or {}).get("description") if content_scenario else None
+    scenario_description = str(scenario_description or "A reviewed situation for a calm family conversation.")
     caregiver_admitted = True
     if session.parent_user_id is not None:
         caregiver_admitted = db.query(FamilySessionParticipant.id).filter(FamilySessionParticipant.family_session_id == session.id, FamilySessionParticipant.user_id == session.parent_user_id, FamilySessionParticipant.left_at.is_(None), FamilySessionParticipant.presence_status != "pending").first() is not None

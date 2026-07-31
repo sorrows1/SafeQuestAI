@@ -230,7 +230,17 @@ export function ScenarioBrowserView({
         >
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' } }}>
             <Box sx={{ maxWidth: 700 }}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5, flexWrap: 'wrap' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'flex-start',
+                  gap: 0.75,
+                  mb: 1.5,
+                  '& .MuiChip-root': { maxWidth: '100%', height: 'auto', minHeight: 24 },
+                  '& .MuiChip-label': { whiteSpace: 'normal', overflowWrap: 'anywhere', py: 0.5 },
+                }}
+              >
                 <Chip icon={<StarOutlinedIcon sx={{ fontSize: 16 }} />} label="Featured Scenario" size="small" color="primary" sx={{ fontWeight: 700 }} />
                 <Chip size="small" label={featuredVm.categoryLabel} variant="outlined" />
                 <Chip size="small" label={featured.difficulty} variant="outlined" />
@@ -241,7 +251,7 @@ export function ScenarioBrowserView({
                   variant={featuredVm.hasActiveSession ? 'filled' : 'outlined'}
                   sx={{ fontWeight: 700 }}
                 />
-              </Stack>
+              </Box>
               <Typography variant="h3" component="h2" sx={{ fontWeight: 800 }}>
                 {featured.title}
               </Typography>
@@ -484,8 +494,18 @@ export function ScenarioBrowserView({
                     },
                   }}
                 >
-                  <CardContent sx={{ flexGrow: 1, p: 2.5 }}>
-                    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', mb: 1.5 }}>
+                  <CardContent sx={{ flexGrow: 1, p: 2.5, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'flex-start',
+                        gap: 0.75,
+                        mb: 1.5,
+                        '& .MuiChip-root': { maxWidth: '100%', height: 'auto', minHeight: 24 },
+                        '& .MuiChip-label': { whiteSpace: 'normal', overflowWrap: 'anywhere', py: 0.5 },
+                      }}
+                    >
                       <Chip size="small" label={vm.categoryLabel} color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
                       <Chip size="small" label={item.difficulty} variant="outlined" />
                       <Chip size="small" icon={getSkinIcon(item.render_skin)} label={label(item.render_skin)} variant="outlined" />
@@ -496,7 +516,7 @@ export function ScenarioBrowserView({
                         variant={vm.hasActiveSession ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 700 }}
                       />
-                    </Stack>
+                    </Box>
 
                     <Typography variant="h5" component="h2" sx={{ fontWeight: 700, mb: 1 }}>
                       {vm.title}
@@ -510,11 +530,20 @@ export function ScenarioBrowserView({
                       <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                         Learning Goals:
                       </Typography>
-                      <Stack direction="row" spacing={0.8} sx={{ flexWrap: 'wrap' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          alignItems: 'flex-start',
+                          gap: 0.75,
+                          '& .MuiChip-root': { height: 'auto', minHeight: 24, maxWidth: '100%' },
+                          '& .MuiChip-label': { whiteSpace: 'normal', overflowWrap: 'anywhere', py: 0.5, lineHeight: 1.25 },
+                        }}
+                      >
                         {item.learning_objectives.map((obj, i) => (
                           <Chip key={i} label={obj} size="small" sx={{ fontSize: '0.7rem', bgcolor: alpha(theme.palette.text.primary, 0.05) }} />
                         ))}
-                      </Stack>
+                      </Box>
 
                       <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5 }}>
                         {vm.durationLabel} · {item.message_count} messages · {item.checkpoint_count} discussion pauses
@@ -634,20 +663,19 @@ export function ScenarioBrowserView({
                   sx={{
                     p: 2,
                     borderRadius: 3,
-                    opacity: 0.75,
                     cursor: 'pointer',
                     borderColor: participationChoice === 'family_invite' ? 'primary.main' : theme.palette.divider,
                     bgcolor: participationChoice === 'family_invite' ? alpha(theme.palette.primary.main, 0.04) : 'transparent',
                   }}
                 >
                   <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
-                    <PeopleOutlinedIcon color="action" sx={{ mt: 0.2 }} />
+                    <PeopleOutlinedIcon color="primary" sx={{ mt: 0.2 }} />
                     <Box>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                         Invite Family Member (Cooperative Practice)
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Family invitations will appear here once linked family profiles are configured.
+                        Choose a linked family member, or invite someone new, for cooperative practice.
                       </Typography>
                     </Box>
                   </Stack>
@@ -660,20 +688,19 @@ export function ScenarioBrowserView({
                   sx={{
                     p: 2,
                     borderRadius: 3,
-                    opacity: 0.75,
                     cursor: 'pointer',
                     borderColor: participationChoice === 'join_family' ? 'primary.main' : theme.palette.divider,
                     bgcolor: participationChoice === 'join_family' ? alpha(theme.palette.primary.main, 0.04) : 'transparent',
                   }}
                 >
                   <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
-                    <QrCodeOutlinedIcon color="action" sx={{ mt: 0.2 }} />
+                    <QrCodeOutlinedIcon color="primary" sx={{ mt: 0.2 }} />
                     <Box>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                         Join Active Session
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Join codes and active session links will appear here once accounts can be linked.
+                        Open Caregiver Hub to join a linked session, or use a code shared by the learner.
                       </Typography>
                     </Box>
                   </Stack>

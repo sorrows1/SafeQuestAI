@@ -161,15 +161,25 @@ export function CaregiverHub() {
   return (
     <FamilyAppShell>
     <Container maxWidth="md" sx={{ py: { xs: 2, sm: 4 } }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: 'primary.main', color: 'primary.contrastText', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <GroupIcon />
-        </Box>
-        <Box>
-          <Typography variant="h5" sx={{ fontWeight: 800 }}>Caregiver Hub</Typography>
-          <Typography variant="caption" color="text.secondary">Manage family connections and practice sessions</Typography>
-          <Button size="small" variant="contained" startIcon={<PersonAddAlt1Icon />} onClick={() => setInviteModalOpen(true)} sx={{ mt: 1, borderRadius: 2, textTransform: 'none' }}>Invite family member</Button>
-        </Box>
+      <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', minWidth: 0 }}>
+          <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: 'primary.main', color: 'primary.contrastText', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <GroupIcon />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>Caregiver Hub</Typography>
+            <Typography variant="caption" color="text.secondary">Manage family connections and practice sessions</Typography>
+          </Box>
+        </Stack>
+        <Button
+          size="small"
+          variant="contained"
+          startIcon={<PersonAddAlt1Icon />}
+          onClick={() => setInviteModalOpen(true)}
+          sx={{ borderRadius: 2, textTransform: 'none', flexShrink: 0, mt: { xs: 0, sm: 0 } }}
+        >
+          Invite family member
+        </Button>
       </Box>
 
       <ToggleButtonGroup
@@ -439,16 +449,16 @@ export function CaregiverHub() {
                     </Box>
                     <Box sx={{ flexGrow: 1 }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                        {session.state === 'waiting_for_participants' ? 'Family invitation awaiting join' : `Session #${session.transcript_id}`}
+                        {session.state === 'waiting_for_participants' ? 'Family practice invitation' : `Session #${session.transcript_id}`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {session.role === 'caregiver' && session.state === 'waiting_for_participants' ? 'Invitation awaiting your join code' : `Role: ${session.role} · State: ${session.state}`}
+                        {session.role === 'caregiver' && session.state === 'waiting_for_participants' ? 'Ready to join — open the session to practice together' : `Role: ${session.role} · State: ${session.state}`}
                       </Typography>
                     </Box>
-                    <Chip size="small" label={session.state === 'waiting_for_participants' ? 'Awaiting join' : session.state} variant="outlined" sx={{ fontWeight: 700, textTransform: 'capitalize' }} />
+                    <Chip size="small" label={session.state === 'waiting_for_participants' ? (session.role === 'caregiver' ? 'Ready to join' : 'Waiting for family member') : session.state} variant="outlined" sx={{ fontWeight: 700, textTransform: 'capitalize' }} />
                   </Stack>
                 </CardContent>
-                {session.state !== 'completed' && session.state !== 'expired' && session.state !== 'abandoned' && !(session.role === 'caregiver' && session.state === 'waiting_for_participants') && (
+                {session.state !== 'completed' && session.state !== 'expired' && session.state !== 'abandoned' && (
                   <CardActions sx={{ px: 2, pb: 2 }}>
                     <Button
                       variant="contained"
@@ -475,7 +485,7 @@ export function CaregiverHub() {
                 </Typography>
               </Stack>
               <Typography variant="caption" color="text.secondary">
-                Enter the 6-character session code shared by the learner
+                Use this only when the learner shared a code for a session that was not preselected for your linked account.
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                 <TextField

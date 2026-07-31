@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Box, Button, Chip, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material';
 import PauseOutlinedIcon from '@mui/icons-material/PauseOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 
@@ -25,12 +25,16 @@ export function CheckpointPause({ prompt, selectedCount, companionMode, submitti
       sx={{
         p: { xs: 1.5, sm: 2 },
         mt: 1.5,
+        width: '100%',
+        alignSelf: 'stretch',
+        boxSizing: 'border-box',
         borderRadius: 2.5,
         border: '1.5px solid',
         borderColor: 'warning.main',
         bgcolor: 'background.paper',
         boxShadow: '0 2px 12px rgba(245, 158, 11, 0.12)',
-        position: 'relative',
+        position: 'sticky',
+        bottom: { xs: 8, sm: 16 },
         zIndex: 2,
       }}
     >
@@ -91,10 +95,11 @@ export function CheckpointPause({ prompt, selectedCount, companionMode, submitti
             size="small"
             onClick={() => response.trim() && onSubmit(response.trim(), tag.trim())}
             disabled={!response.trim() || submitting}
-            endIcon={<ArrowForwardIcon sx={{ fontSize: '0.9rem !important' }} />}
+            startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : undefined}
+            endIcon={!submitting ? <ArrowForwardIcon sx={{ fontSize: '0.9rem !important' }} /> : undefined}
             sx={{ borderRadius: '16px', textTransform: 'none', fontWeight: 700, px: 2.5, py: 0.75 }}
           >
-            Submit Reflection & Continue
+            {submitting ? 'Saving reflection…' : 'Submit Reflection & Continue'}
           </Button>
         </Box>
       </Stack>

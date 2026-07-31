@@ -776,6 +776,7 @@ class FamilySessionDetailOut(BaseModel):
     session_schema_version: int = 3
     session: FamilySessionOut
     scene: FamilySceneOut
+    scenario_description: str = ""
     progress: SessionProgressOut
     participants: list[FamilySessionParticipantOut] = Field(default_factory=list)
     participant_role: FamilyRole = FamilyRole.LEARNER

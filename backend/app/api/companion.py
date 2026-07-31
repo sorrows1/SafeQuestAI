@@ -22,7 +22,7 @@ from app.models.orm import (
     CuratedTranscript, FamilySession, FamilySessionParticipant, FlagAttempt,
     RedFlagSpan, SessionProgress, User, ValidatedFinding, get_db,
 )
-from app.api.family_sessions import _emit_event
+from app.api.family_sessions import _emit_event, session_participant
 from app.models.schemas import (
     CheckpointResponseOut, CompanionCheckpointOut, CompanionCheckpointRequest,
     CompanionExplainOut, CompanionExplainRequest, FindingVisibility, FlagAttemptOut,
@@ -85,6 +85,14 @@ def _checkpoint(session: FamilySession, checkpoint_id: int, db: Session) -> Cura
         CuratedMessage.transcript_id == session.transcript_id, CuratedMessage.is_checkpoint.is_(True)).first()
     if not checkpoint:
         raise HTTPException(422, "Checkpoint message does not belong to this session")
+    if session.state != "checkpoint":
+        raise HTTPException(409, "There is no active discussion pause")
+    active_element = db.query(CuratedSceneElement).filter(
+        CuratedSceneElement.transcript_id == session.transcript_id,
+        CuratedSceneElement.element_key == session.active_checkpoint_element_key,
+    ).first()
+    if not active_element or active_element.source_message_id != checkpoint.id:
+        raise HTTPException(409, "This is not the active discussion pause")
     return checkpoint
 
 
@@ -381,6 +389,27 @@ def request_hint(
 async def companion_checkpoint(family_session_id: str, body: CompanionCheckpointRequest, db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user), llm: LLMService | None = Depends(get_llm_service)):
     session = _load_child_session(family_session_id, current_user, db)
+    if body.client_command_id:
+        existing_child = db.query(CheckpointResponse).filter(
+            CheckpointResponse.family_session_id == session.id,
+            CheckpointResponse.client_command_id == body.client_command_id,
+            CheckpointResponse.responder_role == ParticipantRole.CHILD.value,
+        ).first()
+        if existing_child:
+            existing_companion = db.query(CheckpointResponse).filter(
+                CheckpointResponse.family_session_id == session.id,
+                CheckpointResponse.checkpoint_message_id == existing_child.checkpoint_message_id,
+                CheckpointResponse.responder_role == ParticipantRole.AI_COMPANION.value,
+                CheckpointResponse.created_at >= existing_child.created_at,
+            ).order_by(CheckpointResponse.id).first()
+            if existing_companion:
+                return CompanionCheckpointOut(
+                    response_text=existing_companion.response_text,
+                    child_response=_out(existing_child),
+                    checkpoint_response=_out(existing_companion),
+                    disclosure_triggered=False,
+                    support_resources=[],
+                )
     checkpoint = _checkpoint(session, body.checkpoint_message_id, db)
     _validate_flags(session, body.flagged_message_ids, db)
     context = db.query(CuratedMessage).filter(CuratedMessage.transcript_id == session.transcript_id,
@@ -393,7 +422,7 @@ async def companion_checkpoint(family_session_id: str, body: CompanionCheckpoint
         visibility="private", client_command_id=body.client_command_id)
     companion = CheckpointResponse(family_session_id=session.id, checkpoint_message_id=checkpoint.id,
         responder_role=ParticipantRole.AI_COMPANION.value, response_text=response_text, flagged_message_ids=[], tactic_tag_guess=None,
-        visibility="private")
+        visibility="private", client_command_id=f"{body.client_command_id}:companion"[:128] if body.client_command_id else None)
     db.add_all([child, companion])
     db.flush()
     _emit_event(db, session, FamilySessionEventType.CHECKPOINT_RESPONSE, {

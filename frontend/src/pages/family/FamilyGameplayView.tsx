@@ -30,7 +30,7 @@ import type {
   ValidatedFinding,
 } from '@/types';
 import { GameplayMissionBar } from '@/components/family/GameplayMissionBar';
-import { FlagInspectorRail } from '@/components/family/FlagInspectorRail';
+import { FlagInspectorRail, ScenarioDescriptionCard } from '@/components/family/FlagInspectorRail';
 import { InstructionsGuideModal } from '@/components/family/InstructionsGuideModal';
 import { CompletionReviewModal } from '@/components/family/CompletionReviewModal';
 import { PresenceAvatarBar } from '@/components/family/PresenceAvatarBar';
@@ -55,6 +55,7 @@ export interface FamilyGameplayViewProps {
   checkpoint?: ReactNode;
   companion?: ReactNode;
   children?: ReactNode;
+  joinCode?: string | null;
 
   // Mission bar & Inspector shell metadata
   title?: string;
@@ -144,6 +145,7 @@ export function FamilyGameplayView({
   checkpoint,
   companion,
   children,
+  joinCode,
 
   title = 'Family Safety Scenario',
   category,
@@ -267,7 +269,7 @@ export function FamilyGameplayView({
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 1, sm: 2 }, px: { xs: 1, sm: 2.5 }, height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <Container maxWidth="xl" sx={{ py: { xs: 1, sm: 2 }, px: { xs: 1, sm: 2.5 }, height: { xs: 'calc(100dvh - 60px)', md: 'calc(100dvh - 68px)' }, overflow: 'hidden', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* 1. Top Mission Bar */}
       <GameplayMissionBar
         title={title}
@@ -297,26 +299,18 @@ export function FamilyGameplayView({
         onAutoplaySpeedChange={onAutoplaySpeedChange}
       />
 
-      {/* Presence & Stream Status Banner */}
-      <PresenceAvatarBar
-        participants={participants}
-        streamStatus={streamStatus}
-        turnRole={turnRole}
-        userRole={userRole}
-        onReconnect={onReconnectStream}
-        onContinueAsync={onContinueAsync}
-        onEndLater={onEndTogetherLater}
-      />
-
       {/* 2. Main Responsive Layout (Scenario on Left, Inspector Rail on Right) */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: { xs: 1.5, sm: 2.5 }, alignItems: 'start', flex: 1, minHeight: 0 }}>
-        {/* Left Column: Authentic Scenario Surface & Checkpoint */}
-        <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: { xs: 1.5, sm: 2.5 }, alignItems: 'stretch', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        {/* Left Column: Scenario Description & Authentic Scenario Surface */}
+        <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+          <ScenarioDescriptionCard scenarioDescription={scenarioDescription} />
+
           <Paper
             elevation={0}
             sx={{
               p: { xs: 1, sm: 2 },
               borderRadius: 3,
+              mt: { xs: 1.5, sm: 2 },
               border: '1px solid',
               borderColor: 'divider',
               bgcolor: 'background.paper',
@@ -335,8 +329,10 @@ export function FamilyGameplayView({
               ref={sceneRef}
               onScroll={onSceneScroll}
               sx={{
-                maxHeight: { xs: '52dvh', sm: '58dvh', lg: 'calc(100dvh - 230px)' },
-                minHeight: 280,
+                flex: 1,
+                minHeight: 0,
+                height: '100%',
+                maxHeight: 'none',
                 overflowY: 'auto',
                 pr: { sm: 0.5 },
                 position: 'relative',
@@ -392,42 +388,59 @@ export function FamilyGameplayView({
             />
           )}
 
-          {/* Compact Checkpoint Pause Card */}
-          {checkpoint}
-
           {/* Legacy or Custom Companion Children */}
           {companion}
           {children}
         </Box>
 
         {/* Right Column: Persistent Desktop Inspector Rail & Caregiver Comments */}
-        <Box sx={{ minWidth: 0, display: { xs: 'none', lg: 'block' }, overflowY: 'auto', maxHeight: 'calc(100vh - 160px)', pr: 0.5 }}>
+        <Box sx={{ minWidth: 0, display: 'block', overflowY: 'auto', maxHeight: 'calc(100vh - 160px)', pr: 0.5 }}>
           <Stack spacing={2}>
-            <FlagInspectorRail
-              scenarioTitle={title}
-              scenarioDescription={scenarioDescription}
-              messages={messages}
-              highlightedMessageIds={highlightedMessageIds}
-              tagAssignments={tagAssignments}
-              selectedMessageId={selectedMessageId}
-              selectedElementKey={selectedElementKey}
-              onSelectMessage={handleSelectMessageInternal}
-              companionNotice={companionNotice}
-              onAskCompanion={handleAskCompanionInternal}
-              onSubmitAttempt={onSubmitAttempt}
-              pendingAttempt={pendingAttempt}
-              lastAttempt={lastAttempt}
-              validatedFindings={validatedFindings}
-              isExplaining={isExplaining}
+            {joinCode && userRole === 'learner' && (
+              <Alert severity="info" sx={{ borderRadius: 3 }}>
+                Your linked family member can open this session directly from Caregiver Hub. If they need to join by code, share <strong>{joinCode}</strong>.
+              </Alert>
+            )}
+            <PresenceAvatarBar
+              participants={participants}
+              streamStatus={streamStatus}
+              turnRole={turnRole}
+              userRole={userRole}
+              onReconnect={onReconnectStream}
+              onContinueAsync={onContinueAsync}
+              onEndLater={onEndTogetherLater}
             />
+            {checkpoint}
+            <Box sx={{ display: { xs: 'none', lg: 'block' } }}>
+              <Stack spacing={2}>
+                <FlagInspectorRail
+                scenarioTitle={title}
+                scenarioDescription={scenarioDescription}
+                showContextCard={false}
+                messages={messages}
+                highlightedMessageIds={highlightedMessageIds}
+                tagAssignments={tagAssignments}
+                selectedMessageId={selectedMessageId}
+                selectedElementKey={selectedElementKey}
+                onSelectMessage={handleSelectMessageInternal}
+                companionNotice={companionNotice}
+                onAskCompanion={handleAskCompanionInternal}
+                onSubmitAttempt={onSubmitAttempt}
+                pendingAttempt={pendingAttempt}
+                lastAttempt={lastAttempt}
+                validatedFindings={validatedFindings}
+                  isExplaining={isExplaining}
+                />
 
-            <CaregiverCommentSection
-              comments={caregiverComments}
-              elementKey={selectedElementKey}
-              canAddComment={canAddComment}
-              onSubmitComment={onSubmitComment}
-              isSubmitting={isSubmittingComment}
-            />
+                <CaregiverCommentSection
+                  comments={caregiverComments}
+                  elementKey={selectedElementKey}
+                  canAddComment={canAddComment}
+                  onSubmitComment={onSubmitComment}
+                  isSubmitting={isSubmittingComment}
+                />
+              </Stack>
+            </Box>
           </Stack>
         </Box>
       </Box>
@@ -451,6 +464,7 @@ export function FamilyGameplayView({
           <FlagInspectorRail
             scenarioTitle={title}
             scenarioDescription={scenarioDescription}
+            showContextCard={false}
             messages={messages}
             highlightedMessageIds={highlightedMessageIds}
             tagAssignments={tagAssignments}

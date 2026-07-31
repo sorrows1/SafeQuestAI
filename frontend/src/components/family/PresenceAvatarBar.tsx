@@ -62,7 +62,7 @@ export function PresenceAvatarBar({
   };
 
   return (
-    <Stack spacing={1.5} sx={{ mb: 2 }}>
+    <Stack spacing={1.5} sx={{ mb: 0 }}>
       {/* Stream Status Reconnect Banner if connecting/reconnecting/offline */}
       {isDisconnected && (
         <Alert

@@ -174,9 +174,11 @@ export function GameplayMissionBar({
               {renderSkin === 'chat' ? '💬' : renderSkin === 'email' ? '📧' : '📱'}
             </Box>
             <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
-                {title}
-              </Typography>
+              {title && (
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
+                  {title}
+                </Typography>
+              )}
               {category && (
                 <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'capitalize', display: 'block', mt: 0.25 }}>
                   {category.replace('_', ' ')}

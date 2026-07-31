@@ -403,6 +403,7 @@ export interface FamilySession {
   attempt_number?: number;
   previous_session_id?: number | null;
   updated_at?: string | null;
+  join_code_short?: string | null;
 }
 
 export interface FamilyMessage {
@@ -508,6 +509,7 @@ export interface FamilySessionDetail {
     updated_at: string | null;
   };
   scene: FamilyScene;
+  scenario_description: string;
   progress: SessionProgress;
   participants: FamilySessionParticipant[];
   participant_role: FamilyRole;
