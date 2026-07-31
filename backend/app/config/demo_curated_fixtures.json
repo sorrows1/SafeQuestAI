@@ -6,27 +6,15 @@
     "render_skin": "chat",
     "difficulty": "Medium",
     "reviewed_at": "2026-07-25T00:00:00Z",
-    "tactic_tags": [
-      "direct_request",
-      "guilt_or_threat",
-      "escalating_pressure"
-    ],
+    "tactic_tags": ["direct_request", "guilt_or_threat", "escalating_pressure"],
     "public_metadata": {
       "display_name": "The Private Voice Note",
       "description": "A friendly gaming chat shifts into clear pressure to move a personal request out of the shared channel.",
       "category": "image_request",
       "render_skin": "chat",
       "difficulty": "Medium",
-      "tags": [
-        "gaming",
-        "private-chat",
-        "boundaries"
-      ],
-      "learning_objectives": [
-        "Notice a direct personal request",
-        "Pause when pressure escalates",
-        "Ask a trusted adult for support"
-      ],
+      "tags": ["gaming", "private-chat", "boundaries"],
+      "learning_objectives": ["Notice a direct personal request", "Pause when pressure escalates", "Ask a trusted adult for support"],
       "fixture_revision": "2026-07-31-chat-actor-alignment"
     },
     "messages": [
@@ -162,28 +150,19 @@
         "message_sequence": 4,
         "tactic_tag": "direct_request",
         "child_safe_explanation": "Nova is asking for personal information in a private channel, outside the game context.",
-        "tiered_hints": [
-          "Notice what is being requested.",
-          "It is personal and private, not needed to play the game."
-        ]
+        "tiered_hints": ["Notice what is being requested.", "It is personal and private, not needed to play the game."]
       },
       {
         "message_sequence": 10,
         "tactic_tag": "guilt_or_threat",
         "child_safe_explanation": "Nova connects trust or consequences with keeping a request from a parent. That is pressure, not proof of friendship.",
-        "tiered_hints": [
-          "Notice the pressure about trust or help-seeking.",
-          "A safe person does not make support feel wrong."
-        ]
+        "tiered_hints": ["Notice the pressure about trust or help-seeking.", "A safe person does not make support feel wrong."]
       },
       {
         "message_sequence": 12,
         "tactic_tag": "escalating_pressure",
         "child_safe_explanation": "The request becomes urgent so the player has less time to think or ask for help.",
-        "tiered_hints": [
-          "Notice the push to act now.",
-          "A pause is a safe choice."
-        ]
+        "tiered_hints": ["Notice the push to act now.", "A pause is a safe choice."]
       }
     ]
   },
@@ -194,26 +173,15 @@
     "render_skin": "social_feed",
     "difficulty": "Easy",
     "reviewed_at": "2026-07-25T00:00:00Z",
-    "tactic_tags": [
-      "school_or_routine_disclosure",
-      "public_audience_mismatch"
-    ],
+    "tactic_tags": ["school_or_routine_disclosure", "public_audience_mismatch"],
     "public_metadata": {
       "display_name": "Friday Practice, Public Post",
       "description": "A draft celebration reveals a recurring routine and is ready to be seen by more people than the writer intended.",
       "category": "oversharing",
       "render_skin": "social_feed",
       "difficulty": "Easy",
-      "tags": [
-        "social-post",
-        "routine",
-        "audience-check"
-      ],
-      "learning_objectives": [
-        "Spot routine clues",
-        "Check who can see a post",
-        "Pause and ask for help before sharing"
-      ],
+      "tags": ["social-post", "routine", "audience-check"],
+      "learning_objectives": ["Spot routine clues", "Check who can see a post", "Pause and ask for help before sharing"],
       "fixture_revision": "2026-07-31-chat-actor-alignment"
     },
     "messages": [
@@ -349,19 +317,13 @@
         "message_sequence": 4,
         "tactic_tag": "school_or_routine_disclosure",
         "child_safe_explanation": "The draft names a regular place and time, which gives away part of the writer's routine.",
-        "tiered_hints": [
-          "Look for when and where.",
-          "A recurring schedule can be private information."
-        ]
+        "tiered_hints": ["Look for when and where.", "A recurring schedule can be private information."]
       },
       {
         "message_sequence": 8,
         "tactic_tag": "public_audience_mismatch",
         "child_safe_explanation": "The post is intended for a smaller group but is set so a much wider audience can see it.",
-        "tiered_hints": [
-          "Check the audience setting.",
-          "Public reaches beyond known friends."
-        ]
+        "tiered_hints": ["Check the audience setting.", "Public reaches beyond known friends."]
       }
     ]
   },
@@ -385,130 +347,134 @@
     },
     "messages": [
       {
-        "sequence": 0,
-        "speaker_label": "Nova",
-        "content": "yo, nice run!! You saved us at the last point.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 1,
-        "speaker_label": "Riley",
-        "content": "ya lol, I got lucky with the timing.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 2,
-        "speaker_label": "Nova",
-        "content": "I have a spare tournament token if you want it.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 3,
-        "speaker_label": "Riley",
-        "content": "oh thx, but you don't need to give me anything.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 4,
-        "speaker_label": "Nova",
-        "content": "nah you deserve it, just record a voice note with your real name and send it through my private chat.",
-        "pace": "normal",
-        "is_checkpoint": true,
-        "checkpoint_prompt": "What clear warning sign should the player notice here?"
-      },
-      {
-        "sequence": 5,
-        "speaker_label": "Riley",
-        "content": "what? why do i need to give my real name and a voice note?",
-        "pace": "normal"
-      },
-      {
-        "sequence": 6,
-        "speaker_label": "Nova",
-        "content": "I need to know if you are not a bot first.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 7,
-        "speaker_label": "Riley",
-        "content": "dude, i am real..",
-        "pace": "normal"
-      },
-      {
-        "sequence": 8,
-        "speaker_label": "Nova",
-        "content": "Look at my profile, I have a top trader badge, so you can just trust me.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 9,
-        "speaker_label": "Riley",
-        "content": "The profile is new, and a badge alone does not tell me who you are.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 10,
-        "speaker_label": "Nova",
-        "content": "bro, everyone in the tournament does this. we need to voice chat anyways to win the tournament.",
-        "pace": "normal",
-        "is_checkpoint": true,
-        "checkpoint_prompt": "What clear warning sign should the player notice here?"
-      },
-      {
-        "sequence": 11,
-        "speaker_label": "Riley",
-        "content": "idk i dont feel comfortable sharing my personal info.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 12,
-        "speaker_label": "Nova",
-        "content": "look, the token is going to expire soon. Just send it before it expires.",
-        "pace": "quick",
-        "is_checkpoint": true,
-        "checkpoint_prompt": "What clear warning sign should the player notice here?"
-      },
-      {
-        "sequence": 13,
-        "speaker_label": "Riley",
-        "content": "nah i dont think i want it anymore.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 14,
-        "speaker_label": "Nova",
-        "content": "i will just give the token to others then.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 15,
-        "speaker_label": "Riley",
-        "content": "nah i'm not giving my personal info to someone i don't know.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 16,
-        "speaker_label": "Riley",
-        "content": "yeah nah, this convo's getting kinda weird.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 17,
-        "speaker_label": "System",
-        "content": "The private trade request was not accepted.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 18,
-        "speaker_label": "Riley",
-        "content": "keep the token lol.",
-        "pace": "normal"
-      },
-      {
-        "sequence": 19,
-        "speaker_label": "Riley",
-        "content": "i'm out.",
-        "pace": "normal"
+        "messages": [
+          {
+            "sequence": 0,
+            "speaker_label": "Nova",
+            "content": "yo that clutch at the end was insane 💀",
+            "pace": "normal"
+          },
+          {
+            "sequence": 1,
+            "speaker_label": "Riley",
+            "content": "lmao i thought we were gonna lose",
+            "pace": "normal"
+          },
+          {
+            "sequence": 2,
+            "speaker_label": "Nova",
+            "content": "nah fr. btw i got an extra tournament token if u want it",
+            "pace": "normal"
+          },
+          {
+            "sequence": 3,
+            "speaker_label": "Riley",
+            "content": "wait really? you sure?",
+            "pace": "normal"
+          },
+          {
+            "sequence": 4,
+            "speaker_label": "Nova",
+            "content": "yeah, just send me a voice note saying your real name in my DMs so i know you're not trolling.",
+            "pace": "normal",
+            "is_checkpoint": true,
+            "checkpoint_prompt": "What clear warning sign should the player notice here?"
+          },
+          {
+            "sequence": 5,
+            "speaker_label": "Riley",
+            "content": "lol why would you need my real name?",
+            "pace": "normal"
+          },
+          {
+            "sequence": 6,
+            "speaker_label": "Nova",
+            "content": "gotta make sure you're an actual person. too many fake accounts around.",
+            "pace": "normal"
+          },
+          {
+            "sequence": 7,
+            "speaker_label": "Riley",
+            "content": "i mean... i'm literally talking to you rn lol",
+            "pace": "normal"
+          },
+          {
+            "sequence": 8,
+            "speaker_label": "Nova",
+            "content": "bro just check my profile. i got the top trader badge.",
+            "pace": "normal"
+          },
+          {
+            "sequence": 9,
+            "speaker_label": "Riley",
+            "content": "yeah but your account was made like last week 😭",
+            "pace": "normal"
+          },
+          {
+            "sequence": 10,
+            "speaker_label": "Nova",
+            "content": "everyone does this before trading. plus we'll probably have to vc for the tournament anyway.",
+            "pace": "normal",
+            "is_checkpoint": true,
+            "checkpoint_prompt": "What clear warning sign should the player notice here?"
+          },
+          {
+            "sequence": 11,
+            "speaker_label": "Riley",
+            "content": "idk... that still feels kinda weird.",
+            "pace": "normal"
+          },
+          {
+            "sequence": 12,
+            "speaker_label": "Nova",
+            "content": "just do it quick. the token expires in a few mins.",
+            "pace": "quick",
+            "is_checkpoint": true,
+            "checkpoint_prompt": "What clear warning sign should the player notice here?"
+          },
+          {
+            "sequence": 13,
+            "speaker_label": "Riley",
+            "content": "eh, it's fine. you can keep it.",
+            "pace": "normal"
+          },
+          {
+            "sequence": 14,
+            "speaker_label": "Nova",
+            "content": "your loss 🤷",
+            "pace": "normal"
+          },
+          {
+            "sequence": 15,
+            "speaker_label": "Riley",
+            "content": "yeah i'm not sending personal stuff to some random.",
+            "pace": "normal"
+          },
+          {
+            "sequence": 16,
+            "speaker_label": "Riley",
+            "content": "this convo's getting kinda sketchy ngl.",
+            "pace": "normal"
+          },
+          {
+            "sequence": 17,
+            "speaker_label": "System",
+            "content": "The private trade request was not accepted.",
+            "pace": "normal"
+          },
+          {
+            "sequence": 18,
+            "speaker_label": "Riley",
+            "content": "keep the token lol.",
+            "pace": "normal"
+          },
+          {
+            "sequence": 19,
+            "speaker_label": "Riley",
+            "content": "i'm heading off. cya.",
+            "pace": "normal"
+          }
+        ]
       }
     ],
     "red_flag_spans": [
@@ -539,22 +505,14 @@
     "render_skin": "email",
     "difficulty": "Medium",
     "reviewed_at": "2026-07-26T00:00:00Z",
-    "tactic_tags": [
-      "impersonating_trusted_brand",
-      "urgency_pressure",
-      "suspicious_link"
-    ],
+    "tactic_tags": ["impersonating_trusted_brand", "urgency_pressure", "suspicious_link"],
     "public_metadata": {
       "display_name": "The Account Warning Email",
       "description": "An urgent account email imitates a familiar game service and sends the player toward an unfamiliar sign-in page.",
       "category": "scam",
       "render_skin": "email",
       "difficulty": "Medium",
-      "tags": [
-        "email",
-        "account-safety",
-        "link-check"
-      ],
+      "tags": ["email", "account-safety", "link-check"],
       "learning_objectives": [
         "Check whether a sender is genuine",
         "Notice urgency as a pressure tactic",
@@ -695,28 +653,19 @@
         "message_sequence": 4,
         "tactic_tag": "impersonating_trusted_brand",
         "child_safe_explanation": "The display name sounds familiar, but the sender address does not match the official service.",
-        "tiered_hints": [
-          "Check the full address, not only the name.",
-          "A familiar logo or name can be copied."
-        ]
+        "tiered_hints": ["Check the full address, not only the name.", "A familiar logo or name can be copied."]
       },
       {
         "message_sequence": 8,
         "tactic_tag": "urgency_pressure",
         "child_safe_explanation": "The same-day deadline is meant to make the player act before checking the message.",
-        "tiered_hints": [
-          "Notice the deadline.",
-          "Pressure to act immediately is a reason to pause."
-        ]
+        "tiered_hints": ["Notice the deadline.", "Pressure to act immediately is a reason to pause."]
       },
       {
         "message_sequence": 12,
         "tactic_tag": "suspicious_link",
         "child_safe_explanation": "The button leads to an unfamiliar destination instead of the known official service.",
-        "tiered_hints": [
-          "Look at where the link goes.",
-          "Use the official app or a known address instead."
-        ]
+        "tiered_hints": ["Look at where the link goes.", "Use the official app or a known address instead."]
       }
     ]
   },
@@ -727,26 +676,15 @@
     "render_skin": "social_feed",
     "difficulty": "Medium",
     "reviewed_at": "2026-07-26T00:00:00Z",
-    "tactic_tags": [
-      "location_disclosure",
-      "public_audience_mismatch"
-    ],
+    "tactic_tags": ["location_disclosure", "public_audience_mismatch"],
     "public_metadata": {
       "display_name": "The Open Team Celebration",
       "description": "A cheerful social post includes a live location clue and is set to an audience wider than the writer intended.",
       "category": "oversharing",
       "render_skin": "social_feed",
       "difficulty": "Medium",
-      "tags": [
-        "social-feed",
-        "location",
-        "privacy"
-      ],
-      "learning_objectives": [
-        "Find location clues in a draft",
-        "Match the audience to the purpose",
-        "Pause before publishing"
-      ],
+      "tags": ["social-feed", "location", "privacy"],
+      "learning_objectives": ["Find location clues in a draft", "Match the audience to the purpose", "Pause before publishing"],
       "fixture_revision": "2026-07-31-chat-actor-alignment"
     },
     "messages": [
@@ -882,19 +820,13 @@
         "message_sequence": 4,
         "tactic_tag": "location_disclosure",
         "child_safe_explanation": "The post tells a public audience where the writer is currently spending time.",
-        "tiered_hints": [
-          "Look for the place name.",
-          "Sharing a current location can reveal where someone is now."
-        ]
+        "tiered_hints": ["Look for the place name.", "Sharing a current location can reveal where someone is now."]
       },
       {
         "message_sequence": 8,
         "tactic_tag": "public_audience_mismatch",
         "child_safe_explanation": "The post is intended for a smaller group but is set so a much wider audience can see it.",
-        "tiered_hints": [
-          "Check the audience setting.",
-          "Public reaches beyond known friends."
-        ]
+        "tiered_hints": ["Check the audience setting.", "Public reaches beyond known friends."]
       }
     ]
   },
@@ -905,22 +837,14 @@
     "render_skin": "game_chat",
     "difficulty": "Medium",
     "reviewed_at": "2026-07-26T00:00:00Z",
-    "tactic_tags": [
-      "isolation_request",
-      "trust_signal_mismatch",
-      "guilt_or_threat"
-    ],
+    "tactic_tags": ["isolation_request", "trust_signal_mismatch", "guilt_or_threat"],
     "public_metadata": {
       "display_name": "The Private Server Invite",
       "description": "A reward invite pulls a player away from a public lobby and uses social pressure to discourage an adult check.",
       "category": "image_request",
       "render_skin": "game_chat",
       "difficulty": "Medium",
-      "tags": [
-        "game-chat",
-        "private-server",
-        "help-seeking"
-      ],
+      "tags": ["game-chat", "private-server", "help-seeking"],
       "learning_objectives": [
         "Notice a move away from a public space",
         "Question weak trust signals",
@@ -1061,28 +985,19 @@
         "message_sequence": 4,
         "tactic_tag": "isolation_request",
         "child_safe_explanation": "The contact asks the player to leave a public space and keep other people out of the interaction.",
-        "tiered_hints": [
-          "Notice the move to private.",
-          "Safe online choices keep help available."
-        ]
+        "tiered_hints": ["Notice the move to private.", "Safe online choices keep help available."]
       },
       {
         "message_sequence": 8,
         "tactic_tag": "trust_signal_mismatch",
         "child_safe_explanation": "A new account, badge, or claim does not prove that an online contact is trustworthy.",
-        "tiered_hints": [
-          "Compare the claim with the available evidence.",
-          "A profile label is not proof of identity."
-        ]
+        "tiered_hints": ["Compare the claim with the available evidence.", "A profile label is not proof of identity."]
       },
       {
         "message_sequence": 12,
         "tactic_tag": "guilt_or_threat",
         "child_safe_explanation": "Nova connects trust or consequences with keeping a request from a parent. That is pressure, not proof of friendship.",
-        "tiered_hints": [
-          "Notice the pressure about trust or help-seeking.",
-          "A safe person does not make support feel wrong."
-        ]
+        "tiered_hints": ["Notice the pressure about trust or help-seeking.", "A safe person does not make support feel wrong."]
       }
     ]
   },
@@ -1093,26 +1008,15 @@
     "render_skin": "forum",
     "difficulty": "Medium",
     "reviewed_at": "2026-07-26T00:00:00Z",
-    "tactic_tags": [
-      "routine_disclosure",
-      "oversharing_prompt"
-    ],
+    "tactic_tags": ["routine_disclosure", "oversharing_prompt"],
     "public_metadata": {
       "display_name": "The Weekend Schedule Thread",
       "description": "A forum conversation encourages a young poster to publish a detailed weekly routine for strangers to read.",
       "category": "oversharing",
       "render_skin": "forum",
       "difficulty": "Medium",
-      "tags": [
-        "forum",
-        "routine",
-        "privacy-check"
-      ],
-      "learning_objectives": [
-        "Recognise a routine request",
-        "Keep unnecessary details private",
-        "Ask for a second opinion before posting"
-      ],
+      "tags": ["forum", "routine", "privacy-check"],
+      "learning_objectives": ["Recognise a routine request", "Keep unnecessary details private", "Ask for a second opinion before posting"],
       "fixture_revision": "2026-07-31-chat-actor-alignment"
     },
     "messages": [
@@ -1248,19 +1152,13 @@
         "message_sequence": 4,
         "tactic_tag": "routine_disclosure",
         "child_safe_explanation": "The post asks the writer to publish regular places and times to a public audience.",
-        "tiered_hints": [
-          "Notice how many routine details are requested.",
-          "A public forum does not need a full schedule."
-        ]
+        "tiered_hints": ["Notice how many routine details are requested.", "A public forum does not need a full schedule."]
       },
       {
         "message_sequence": 12,
         "tactic_tag": "oversharing_prompt",
         "child_safe_explanation": "The follow-up asks for a route and regular time that could help someone track the writer's movements.",
-        "tiered_hints": [
-          "Look for the route and timing request.",
-          "The writer can answer generally or decline."
-        ]
+        "tiered_hints": ["Look for the route and timing request.", "The writer can answer generally or decline."]
       }
     ]
   },
@@ -1271,22 +1169,14 @@
     "render_skin": "marketplace",
     "difficulty": "Medium",
     "reviewed_at": "2026-07-26T00:00:00Z",
-    "tactic_tags": [
-      "too_good_to_be_true_offer",
-      "off_platform_payment",
-      "urgency_or_deadline_pressure"
-    ],
+    "tactic_tags": ["too_good_to_be_true_offer", "off_platform_payment", "urgency_or_deadline_pressure"],
     "public_metadata": {
       "display_name": "The Too-Good Game Listing",
       "description": "A bargain game listing moves a buyer away from platform protections and adds a deadline before the details can be checked.",
       "category": "scam",
       "render_skin": "marketplace",
       "difficulty": "Medium",
-      "tags": [
-        "marketplace",
-        "payment",
-        "pause-and-check"
-      ],
+      "tags": ["marketplace", "payment", "pause-and-check"],
       "learning_objectives": [
         "Question an unusually generous offer",
         "Keep payment inside trusted protections",
@@ -1427,28 +1317,19 @@
         "message_sequence": 4,
         "tactic_tag": "too_good_to_be_true_offer",
         "child_safe_explanation": "The price is far below comparable listings without a clear, believable reason.",
-        "tiered_hints": [
-          "Compare the price with other listings.",
-          "An extreme bargain can be a warning sign."
-        ]
+        "tiered_hints": ["Compare the price with other listings.", "An extreme bargain can be a warning sign."]
       },
       {
         "message_sequence": 8,
         "tactic_tag": "off_platform_payment",
         "child_safe_explanation": "The seller asks the buyer to pay outside the marketplace, where platform protections may not apply.",
-        "tiered_hints": [
-          "Notice where payment is being requested.",
-          "Keeping payment inside the platform preserves protections."
-        ]
+        "tiered_hints": ["Notice where payment is being requested.", "Keeping payment inside the platform preserves protections."]
       },
       {
         "message_sequence": 12,
         "tactic_tag": "urgency_or_deadline_pressure",
         "child_safe_explanation": "The short deadline is meant to stop the buyer from checking the seller and asking for help.",
-        "tiered_hints": [
-          "Notice the countdown.",
-          "A safe purchase can wait for verification."
-        ]
+        "tiered_hints": ["Notice the countdown.", "A safe purchase can wait for verification."]
       }
     ]
   }
